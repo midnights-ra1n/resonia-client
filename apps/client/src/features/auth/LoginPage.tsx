@@ -42,7 +42,12 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-neutral-900 p-8 shadow-xl">
-        <h1 className="text-2xl font-bold text-white">Login</h1>
+
+        <div className="flex justify-center items-center">
+          <img src="/favicon.svg" alt="Logo Resonia" className="w-64" />
+        </div>
+
+        <h1 className="text-2xl font-bold text-white text-center">Login</h1>
 
         <div className="space-y-1">
           <label className="text-sm text-neutral-400">Server URL</label>

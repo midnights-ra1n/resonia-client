@@ -14,7 +14,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.3",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "@resonia/api-client": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -32,7 +32,7 @@ export function LoginPage() {
       if (err instanceof SubsonicApiError || err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur inconnue est survenue.");
+        setError("An error occurred.");
       }
     } finally {
       setLoading(false);
@@ -42,10 +42,10 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-neutral-900 p-8 shadow-xl">
-        <h1 className="text-2xl font-bold text-white">Se connecter</h1>
+        <h1 className="text-2xl font-bold text-white">Login</h1>
 
         <div className="space-y-1">
-          <label className="text-sm text-neutral-400">Adresse du serveur</label>
+          <label className="text-sm text-neutral-400">Server URL</label>
           <input
             type="url"
             required
@@ -57,7 +57,7 @@ export function LoginPage() {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm text-neutral-400">Nom d'utilisateur</label>
+          <label className="text-sm text-neutral-400">Username</label>
           <input
             type="text"
             required
@@ -68,7 +68,7 @@ export function LoginPage() {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm text-neutral-400">Mot de passe</label>
+          <label className="text-sm text-neutral-400">Password</label>
           <input
             type="password"
             required
@@ -85,7 +85,7 @@ export function LoginPage() {
           disabled={loading}
           className="w-full rounded-full bg-emerald-500 py-2.5 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
         >
-          {loading ? "Connexion..." : "Se connecter"}
+          {loading ? "Connecting..." : "Login"}
         </button>
       </form>
     </div>

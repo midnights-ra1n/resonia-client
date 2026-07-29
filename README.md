@@ -1,4 +1,4 @@
-<img src="assets/icons/resonia.png" alt="logo" title="resonia-client" align="right" height="60px" width="60px" />
+<img src="assets/icons/resonia.png" alt="logo" title="resonia-client" align="right" height="50px" width="50px" />
 
 # resonia-client
 

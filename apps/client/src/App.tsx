@@ -17,7 +17,8 @@ function App() {
     return <LoginPage />;
   }
 
-  return <div className="p-8 text-white">Connecté ! (page d'accueil à venir)</div>;
+  return <div className="p-8 text-white bg-black min-h-screen">Connecté ! (page d'accueil à venir)</div>;
 }
 
 export default App;
+

@@ -1,0 +1,22 @@
+{
+  "common": {
+    "appName": "Resonia",
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "save": "Save",
+    "confirm": "Confirm",
+    "error": "An error occurred"
+  },
+  "auth": {
+    "login": {
+      "title": "Log in",
+      "serverUrl": "Server address",
+      "serverUrlPlaceholder": "https://music.example.com",
+      "username": "Username",
+      "password": "Password",
+      "submit": "Log in",
+      "submitting": "Logging in...",
+      "genericError": "An unknown error occurred."
+    }
+  }
+}

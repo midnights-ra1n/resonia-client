@@ -1,0 +1,22 @@
+{
+  "common": {
+    "appName": "Resonia",
+    "loading": "Chargement...",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "confirm": "Confirmer",
+    "error": "Une erreur est survenue"
+  },
+  "auth": {
+    "login": {
+      "title": "Connexion",
+      "serverUrl": "Adresse du serveur",
+      "serverUrlPlaceholder": "https://musique.exemple.com",
+      "username": "Nom d'utilisateur",
+      "password": "Mot de passe",
+      "submit": "Se connecter",
+      "submitting": "Connexion...",
+      "genericError": "Une erreur inconnue est survenue."
+    }
+  }
+}

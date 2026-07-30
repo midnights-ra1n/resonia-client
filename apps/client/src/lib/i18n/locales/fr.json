@@ -27,5 +27,10 @@
   },
   "home": {
     "greeting": "Bienvenue, {{username}} !"
+  },
+  "search": {
+    "placeholder": "Rechercher titres, artistes, albums...",
+    "noResults": "Aucun résultat",
+    "title": "Résultats de recherche"
   }
 }

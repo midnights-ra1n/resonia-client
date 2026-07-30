@@ -26,6 +26,6 @@
     "settings": "Paramètres"
   },
   "home": {
-    "greeting": "Ravi de te revoir"
+    "greeting": "Bienvenue, {{username}} !"
   }
 }

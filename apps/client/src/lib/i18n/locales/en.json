@@ -26,6 +26,6 @@
     "settings": "Settings"
   },
   "home": {
-    "greeting": "Good to see you"
+    "greeting": "Welcome, {{username}}!"
   }
 }

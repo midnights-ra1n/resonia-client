@@ -2,7 +2,7 @@
 
 import { createSystem, defaultConfig } from "@chakra-ui/react"
 
-const system = createSystem(defaultConfig, {
+void createSystem(defaultConfig, {
   theme: {
     tokens: {
       fonts: {
@@ -11,8 +11,4 @@ const system = createSystem(defaultConfig, {
       },
     },
   },
-
-  
 })
-
-

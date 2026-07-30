@@ -14,7 +14,10 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4">
-      <div className="mb-6 px-2 text-xl font-bold text-white">{t("common.appName")}</div>
+
+      <div className="flex justify-center items-center gap-4 py-4">
+        <img src="/favicon.svg" alt="Description" className="w-16" />
+      </div>
       {links.map(({ to, icon: Icon, key }) => (
         <NavLink
           key={to}

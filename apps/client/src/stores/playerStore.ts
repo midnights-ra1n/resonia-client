@@ -87,9 +87,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   function prefetchNextInQueue() {
     const { queue, queueIndex, isShuffle } = get();
     if (queue.length < 2) return;
-
-    // Prédiction simple : le titre suivant naturel. En mode shuffle, la prochaine
-    // piste réelle est aléatoire donc imprévisible ; on ne pré-charge pas dans ce cas.
     if (isShuffle) return;
 
     const nextIndex = queueIndex + 1;
@@ -119,7 +116,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     const url = resolveStreamUrl(currentTrack);
     if (!url) {
-      // no active server available, retry later
       reconnectTimer = setTimeout(attemptReconnect, 3000);
       return;
     }
@@ -147,12 +143,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     reconnectTimer = setTimeout(attemptReconnect, 2000);
   }
 
-  // --- Événements natifs de l'élément <audio> ---
   audio.addEventListener("timeupdate", () => set({ currentTime: audio.currentTime }));
   audio.addEventListener("play", () => set({ isPlaying: true }));
   audio.addEventListener("pause", () => {
-    // Une pause déclenchée par handleInterruption a déjà mis isPlaying à false ;
-    // on évite ici d'écraser networkStatus si c'est une vraie pause utilisateur.
     if (get().networkStatus === "online") set({ isPlaying: false });
   });
   audio.addEventListener("ended", () => get().nextTrack());
@@ -162,7 +155,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   });
   audio.addEventListener("playing", () => set({ networkStatus: "online" }));
 
-  // --- Coupure réseau explicite (navigateur) ---
   window.addEventListener("offline", () => {
     if (get().currentTrack && get().isPlaying) handleInterruption();
   });
@@ -170,14 +162,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     if (get().networkStatus === "interrupted") attemptReconnect();
   });
 
-  // --- Détection de sortie de veille (gros écart de temps) ---
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       wasPlayingBeforeHide = get().isPlaying;
       lastHiddenAt = Date.now();
     } else {
       const gap = Date.now() - lastHiddenAt;
-      // > 15s d'inactivité de l'onglet = probable mise en veille système.
       if (gap > 15000 && wasPlayingBeforeHide && get().currentTrack) {
         lastKnownTime = audio.currentTime;
         set({ networkStatus: "reconnecting" });
@@ -200,13 +190,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       clearReconnectTimer();
 
-      // On révoque l'ancienne Object URL (cache) si elle existe, pour éviter les fuites mémoire.
       if (activeObjectUrl) {
         URL.revokeObjectURL(activeObjectUrl);
         activeObjectUrl = null;
       }
 
-      // 1. Titre déjà en cache local -> lecture instantanée, zéro réseau.
       const cachedUrl = await getCachedTrackUrl(track.id, qualityId);
       if (cachedUrl) {
         activeObjectUrl = cachedUrl;
@@ -228,8 +216,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         return;
       }
 
-      // 2. Pas en cache -> streaming direct (déjà rapide grâce au Range HTTP progressif),
-      //    et mise en cache en tâche de fond pour la prochaine fois.
       const streamUrl = resolveStreamUrl(track);
       if (!streamUrl) {
         console.warn("[player] Aucun serveur actif, lecture impossible");

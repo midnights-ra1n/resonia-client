@@ -23,7 +23,13 @@
     "home": "Accueil",
     "stats": "Statistiques",
     "downloads": "Téléchargements",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "favorites": "Favoris",
+    "artists": "Artistes",
+    "tracks": "Morceaux",
+    "genres": "Genres",
+    "folders": "Dossiers",
+    "playlists": "Playlists"
   },
   "home": {
     "greeting": "Bienvenue, {{username}} !"

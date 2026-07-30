@@ -23,7 +23,13 @@
     "home": "Home",
     "stats": "Statistics",
     "downloads": "Downloads",
-    "settings": "Settings"
+    "favorites": "Favorites",
+    "artists": "Artists",
+    "tracks": "Tracks",
+    "genres": "Genres",
+    "folders": "Folders",
+    "settings": "Settings",
+    "playlists": "Playlists"
   },
   "home": {
     "greeting": "Welcome, {{username}}!"

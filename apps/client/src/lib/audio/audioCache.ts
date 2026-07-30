@@ -2,10 +2,10 @@ import { storage } from "../storage";
 
 const CACHE_NAME = "resonia-audio-cache-v1";
 const META_KEY = "resonia:audioCache:meta";
-const DEFAULT_MAX_BYTES = 500 * 1024 * 1024; // 500 Mo, ajustable plus tard dans les paramètres
+const DEFAULT_MAX_BYTES = 500 * 1024 * 1024;
 
 interface CacheEntryMeta {
-  key: string; // `${trackId}:${qualityId}`
+  key: string;
   size: number;
   lastAccessedAt: number;
 }
@@ -14,8 +14,6 @@ function cacheKeyFor(trackId: string, qualityId: string): string {
   return `${trackId}:${qualityId}`;
 }
 
-// URL synthétique stable, indépendante du token d'auth (qui peut changer),
-// utilisée uniquement comme clé d'entrée dans le Cache Storage.
 function syntheticRequestFor(key: string): Request {
   return new Request(`https://resonia.local/audio-cache/${encodeURIComponent(key)}`);
 }
@@ -64,60 +62,35 @@ async function enforceLimit(maxBytes: number = DEFAULT_MAX_BYTES): Promise<void>
   await writeMeta(remaining);
 }
 
-const inFlight = new Set<string>();
-
 /**
- * Vérifie si un titre est déjà en cache et retourne une Object URL locale si oui.
- * Met aussi à jour son horodatage de dernier accès (LRU).
+ * Retourne le buffer d'un titre : depuis le cache si présent (instantané),
+ * sinon le télécharge intégralement puis le met en cache en tâche de fond.
  */
-export async function getCachedTrackUrl(trackId: string, qualityId: string): Promise<string | null> {
-  if (!("caches" in window)) return null;
-
-  const key = cacheKeyFor(trackId, qualityId);
-  const cache = await caches.open(CACHE_NAME);
-  const response = await cache.match(syntheticRequestFor(key));
-  if (!response) return null;
-
-  await touchEntry(key);
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
-
-/**
- * Télécharge et met en cache un titre en arrière-plan, sans bloquer la lecture en cours.
- * Ne fait rien si déjà en cache ou déjà en cours de téléchargement.
- */
-export async function cacheTrackInBackground(
+export async function loadTrackArrayBuffer(
   trackId: string,
   qualityId: string,
   streamUrl: string,
-): Promise<void> {
-  if (!("caches" in window)) return;
-
+): Promise<ArrayBuffer> {
   const key = cacheKeyFor(trackId, qualityId);
-  if (inFlight.has(key)) return;
-
   const cache = await caches.open(CACHE_NAME);
-  const already = await cache.match(syntheticRequestFor(key));
-  if (already) return;
 
-  inFlight.add(key);
-
-  try {
-    const response = await fetch(streamUrl);
-    if (!response.ok || !response.body) return;
-
-    const blob = await response.clone().blob();
-    await cache.put(syntheticRequestFor(key), response);
-    await touchEntry(key, blob.size);
-    await enforceLimit();
-  } catch (err) {
-    console.warn(`[audioCache] Échec de mise en cache pour ${trackId}`, err);
-  } finally {
-    inFlight.delete(key);
+  const cached = await cache.match(syntheticRequestFor(key));
+  if (cached) {
+    await touchEntry(key);
+    return cached.arrayBuffer();
   }
-}
 
-export function isCachingInProgress(trackId: string, qualityId: string): boolean {
-  return inFlight.has(cacheKeyFor(trackId, qualityId));
+  const response = await fetch(streamUrl);
+  if (!response.ok || !response.body) {
+    throw new Error(`Échec du téléchargement (${response.status})`);
+  }
+
+  const buffer = await response.clone().arrayBuffer();
+
+  // Mise en cache en tâche de fond, ne bloque pas la lecture.
+  cache.put(syntheticRequestFor(key), response).then(() => {
+    touchEntry(key, buffer.byteLength).then(() => enforceLimit());
+  });
+
+  return buffer;
 }

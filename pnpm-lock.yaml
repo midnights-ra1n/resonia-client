@@ -33,10 +33,10 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(jiti@2.7.0))
       react:
-        specifier: ^19.2.7
+        specifier: ^19.2.8
         version: 19.2.8
       react-dom:
-        specifier: ^19.2.7
+        specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-router-dom:
         specifier: ^7.18.2
@@ -52,7 +52,7 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.8.0(jiti@2.7.0))
       '@types/node':
-        specifier: ^24.13.2
+        specifier: ^24.13.3
         version: 24.13.3
       '@types/react':
         specifier: ^19.2.17
@@ -61,10 +61,10 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
-        specifier: ^6.0.3
+        specifier: ^6.0.4
         version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(jiti@2.7.0))
       eslint:
-        specifier: ^10.6.0
+        specifier: ^10.8.0
         version: 10.8.0(jiti@2.7.0)
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
@@ -73,16 +73,16 @@ importers:
         specifier: ^0.5.3
         version: 0.5.3(eslint@10.8.0(jiti@2.7.0))
       globals:
-        specifier: ^17.7.0
+        specifier: ^17.8.0
         version: 17.8.0
       typescript:
-        specifier: ~6.0.2
+        specifier: ~6.0.3
         version: 6.0.3
       typescript-eslint:
-        specifier: ^8.62.0
+        specifier: ^8.65.0
         version: 8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
       vite:
-        specifier: ^8.1.1
+        specifier: ^8.1.5
         version: 8.1.5(@types/node@24.13.3)(jiti@2.7.0)
 
   packages/api-client:
@@ -338,8 +338,8 @@ packages:
   '@oxc-project/types@0.139.0':
     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
 
-  '@pandacss/is-valid-prop@1.11.5':
-    resolution: {integrity: sha512-8m1/gG0wSRMa1QypCkWzeKUeMKY7k14nxsJCHs7Z1g1fI9I7WsLjW/VI58bLZdJxAxtoreMtm6TfIITda8P4zQ==}
+  '@pandacss/is-valid-prop@1.12.0':
+    resolution: {integrity: sha512-P7tXdSwpJz9sTqQTtuC6V7lyaEGEc1M42JxRbn5MSdpIzjQzIXOS45aVBDYQuX7ADiMjGvkwRP1bJsnJZGPnkQ==}
     engines: {node: '>=20'}
 
   '@rolldown/binding-android-arm64@1.1.5':
@@ -1043,8 +1043,8 @@ packages:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
     engines: {node: 18 || 20 || >=22}
 
-  baseline-browser-mapping@2.11.5:
-    resolution: {integrity: sha512-xJo6a6YZnwZfnyGmQKWMbVOcii7XRibjOskRh+WJ9UHQoX16xrQrcIgAMQOzfvs8XiLMx6ih/fsLPF73iY2D1A==}
+  baseline-browser-mapping@2.11.6:
+    resolution: {integrity: sha512-69D/imtToCsIcAl8WBS2YaRwA4jO/j0HhU+hELqMEu9f54MoUtI6+XH5mrKU8rEFNEk/Ui1I2MK4/JkWacclGw==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -1101,11 +1101,11 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
-  electron-to-chromium@1.5.397:
-    resolution: {integrity: sha512-khGTy9U9x02KEtsKM8vx5A62BsRmcOsIgDpWr1ImE32Ax8GxHGPHZf+Eu9H8zOOyHJnB0jTbseyTHbq2XCT8yw==}
+  electron-to-chromium@1.5.398:
+    resolution: {integrity: sha512-AsvhAxopJGh6museTDMIjn6JpDYOfgu4RLlygomt87MUwBUqTfd/1EiPtx10/LZE8xpTvkP2E9Gafq7lkLtodQ==}
 
-  enhanced-resolve@5.24.3:
-    resolution: {integrity: sha512-PwKooW9JUzh5chmYfHM3IQl5OkK2u2Nm011MgeZrss3JmFraUx/fqrf78kk8GUMYoibx/14MdwTl/1WKkG7TpQ==}
+  enhanced-resolve@5.24.4:
+    resolution: {integrity: sha512-GVoi+ICHocoOIU7qVVM48wOJziRsqrsyqlI0Ce0LdowRn6v3bcH2zUa9kp85ncx0nwIb9/HOCOLS3fdThDG/XQ==}
     engines: {node: '>=10.13.0'}
 
   error-ex@1.3.4:
@@ -1984,7 +1984,7 @@ snapshots:
       '@emotion/serialize': 1.3.3
       '@emotion/use-insertion-effect-with-fallbacks': 1.2.0(react@19.2.8)
       '@emotion/utils': 1.4.2
-      '@pandacss/is-valid-prop': 1.11.5
+      '@pandacss/is-valid-prop': 1.12.0
       csstype: 3.2.3
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -2170,7 +2170,7 @@ snapshots:
 
   '@oxc-project/types@0.139.0': {}
 
-  '@pandacss/is-valid-prop@1.11.5': {}
+  '@pandacss/is-valid-prop@1.12.0': {}
 
   '@rolldown/binding-android-arm64@1.1.5':
     optional: true
@@ -2230,7 +2230,7 @@ snapshots:
   '@tailwindcss/node@4.3.3':
     dependencies:
       '@jridgewell/remapping': 2.3.5
-      enhanced-resolve: 5.24.3
+      enhanced-resolve: 5.24.4
       jiti: 2.7.0
       lightningcss: 1.32.0
       magic-string: 0.30.21
@@ -3084,7 +3084,7 @@ snapshots:
 
   balanced-match@4.0.4: {}
 
-  baseline-browser-mapping@2.11.5: {}
+  baseline-browser-mapping@2.11.6: {}
 
   brace-expansion@5.0.8:
     dependencies:
@@ -3092,9 +3092,9 @@ snapshots:
 
   browserslist@4.28.7:
     dependencies:
-      baseline-browser-mapping: 2.11.5
+      baseline-browser-mapping: 2.11.6
       caniuse-lite: 1.0.30001806
-      electron-to-chromium: 1.5.397
+      electron-to-chromium: 1.5.398
       node-releases: 2.0.51
       update-browserslist-db: 1.2.3(browserslist@4.28.7)
 
@@ -3132,9 +3132,9 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  electron-to-chromium@1.5.397: {}
+  electron-to-chromium@1.5.398: {}
 
-  enhanced-resolve@5.24.3:
+  enhanced-resolve@5.24.4:
     dependencies:
       graceful-fs: 4.2.11
       tapable: 2.3.3

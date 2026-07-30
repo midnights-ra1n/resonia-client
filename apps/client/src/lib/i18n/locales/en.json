@@ -18,5 +18,14 @@
       "submitting": "Logging in...",
       "genericError": "An unknown error occurred."
     }
+  },
+  "nav": {
+    "home": "Home",
+    "stats": "Statistics",
+    "downloads": "Downloads",
+    "settings": "Settings"
+  },
+  "home": {
+    "greeting": "Good to see you"
   }
 }

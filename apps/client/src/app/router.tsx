@@ -1,0 +1,19 @@
+import { createBrowserRouter } from "react-router-dom";
+import { DownloadsPage } from "../features/downloads/DownloadsPage";
+import { HomePage } from "../features/home/HomePage";
+import { SettingsPage } from "../features/settings/SettingsPage";
+import { StatsPage } from "../features/stats/StatsPage";
+import { AppLayout } from "./layout/AppLayout";
+
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <HomePage /> },
+      { path: "stats", element: <StatsPage /> },
+      { path: "downloads", element: <DownloadsPage /> },
+      { path: "settings", element: <SettingsPage /> },
+    ],
+  },
+]);

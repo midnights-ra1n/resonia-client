@@ -18,5 +18,14 @@
       "submitting": "Connexion...",
       "genericError": "Une erreur inconnue est survenue."
     }
+  },
+  "nav": {
+    "home": "Accueil",
+    "stats": "Statistiques",
+    "downloads": "Téléchargements",
+    "settings": "Paramètres"
+  },
+  "home": {
+    "greeting": "Ravi de te revoir"
   }
 }

@@ -1,4 +1,5 @@
 import { generateSalt, generateToken } from "./auth";
+import { buildStreamUrl, type StreamUrlOptions } from "./stream";
 import type { SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
@@ -85,5 +86,20 @@ export class SubsonicClient {
   async ping(): Promise<boolean> {
     await this.request("ping");
     return true;
+  }
+
+  getStreamUrl(trackId: string, options: StreamUrlOptions = {}): string {
+    return buildStreamUrl(
+      {
+        baseUrl: this.url,
+        username: this.username,
+        token: this.token,
+        salt: this.salt,
+        clientName: this.clientName,
+        apiVersion: this.apiVersion,
+      },
+      trackId,
+      options,
+    );
   }
 }

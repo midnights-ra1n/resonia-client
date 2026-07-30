@@ -4,6 +4,9 @@ import App from "./App";
 import "./index.css";
 import { I18nProvider } from "./lib/i18n";
 
+/* Disable native right-click context menu */
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider>

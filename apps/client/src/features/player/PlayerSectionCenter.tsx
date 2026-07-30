@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
 import {
-  Play,
   Pause,
-  SkipForward,
-  SkipBack,
-  Shuffle,
+  Play,
   Repeat,
+  Shuffle,
+  SkipBack,
+  SkipForward,
 } from "lucide-react";
+import { useRef, useState } from "react";
 import { usePlayerStore } from "../../stores/playerStore";
 
 function formatTime(seconds: number): string {
@@ -38,17 +38,6 @@ export function PlayerSectionCenter() {
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
-  // Simuler la progression du temps quand on joue (sera remplacé par le vrai audio)
-  useEffect(() => {
-    if (!isPlaying || !currentTrack || isDragging) return;
-    const interval = setInterval(() => {
-      usePlayerStore.setState((state) => ({
-        currentTime: Math.min(state.currentTime + 1, state.currentTrack?.duration ?? 0),
-      }));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isPlaying, currentTrack, isDragging]);
-
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const displayTime = showTimeRemaining
@@ -75,11 +64,10 @@ export function PlayerSectionCenter() {
       <div className="flex items-center gap-6">
         <button
           onClick={toggleShuffle}
-          className={`transition-colors ${
-            isShuffle
+          className={`transition-colors ${isShuffle
               ? "text-green-400"
               : "text-neutral-400 hover:text-white"
-          }`}
+            }`}
           title="Shuffle"
         >
           <Shuffle size={18} />
@@ -115,11 +103,10 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={toggleRepeat}
-          className={`transition-colors ${
-            isRepeat
+          className={`transition-colors ${isRepeat
               ? "text-green-400"
               : "text-neutral-400 hover:text-white"
-          }`}
+            }`}
           title="Repeat"
         >
           <Repeat size={18} />

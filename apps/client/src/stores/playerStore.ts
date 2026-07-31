@@ -355,3 +355,4 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 });
 
 export { DEFAULT_COVER_URL };
+

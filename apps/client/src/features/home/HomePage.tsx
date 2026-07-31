@@ -48,7 +48,7 @@ export function HomePage() {
             {/* Carrousel */}
             <div
               ref={scrollRef}
-              className="flex gap-4 overflow-x-auto pb-3 scroll-smooth"
+              className="flex gap-4 overflow-x-auto pb-3 px-16 scroll-smooth"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               {albums.map((album) => (

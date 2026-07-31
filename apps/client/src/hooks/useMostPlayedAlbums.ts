@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AlbumSummary } from "@resonia/api-client";
-import { useServersStore } from "../../stores/serversStore";
-import { getClientForServer } from "../../lib/subsonic/getClientForServer";
+import { useServersStore } from "../stores/serversStore";
+import { getClientForServer } from "../lib/subsonic/getClientForServer";
 
 export function useMostPlayedAlbums() {
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);

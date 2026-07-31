@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
 import { usePlayerStore } from "../../stores/playerStore";
 
@@ -15,7 +16,10 @@ export function PlayerSectionRight() {
     toggleConnect,
   } = usePlayerStore();
 
+  const [isDragging, setIsDragging] = useState(false);
+
   const effectiveVolume = isMuted ? 0 : volume;
+  const volumePercent = Math.round(effectiveVolume * 100);
 
   return (
     <div className="flex items-center gap-3 h-full">
@@ -40,8 +44,19 @@ export function PlayerSectionRight() {
             step="0.01"
             value={effectiveVolume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
+            onPointerDown={() => setIsDragging(true)}
+            onPointerUp={() => setIsDragging(false)}
+            onPointerLeave={() => setIsDragging(false)}
             className="w-full h-1.5 bg-neutral-700 rounded-full appearance-none cursor-pointer accent-white"
           />
+          {isDragging && (
+            <div
+              className="absolute -top-8 transform -translate-x-1/2 bg-neutral-800 text-white text-xs px-2 py-1 rounded shadow pointer-events-none whitespace-nowrap"
+              style={{ left: `${effectiveVolume * 100}%` }}
+            >
+              {volumePercent}%
+            </div>
+          )}
         </div>
       </div>
 

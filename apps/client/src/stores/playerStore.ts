@@ -71,6 +71,7 @@ export interface PlayerState {
 
   showQueue: boolean;
   toggleQueue: () => void;
+  reorderQueue: (dragIndex: number, hoverIndex: number) => void;
   showLyrics: boolean;
   toggleLyrics: () => void;
   showConnect: boolean;
@@ -335,6 +336,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     showQueue: false,
     toggleQueue: () => set((state) => ({ showQueue: !state.showQueue })),
+    reorderQueue: (dragIndex, hoverIndex) =>
+      set((state) => {
+        const newQueue = [...state.queue];
+        const [removed] = newQueue.splice(dragIndex, 1);
+        newQueue.splice(hoverIndex, 0, removed);
+        let newQueueIndex = state.queueIndex;
+        if (dragIndex === state.queueIndex) {
+          newQueueIndex = hoverIndex;
+        } else if (dragIndex < state.queueIndex && hoverIndex >= state.queueIndex) {
+          newQueueIndex--;
+        } else if (dragIndex > state.queueIndex && hoverIndex <= state.queueIndex) {
+          newQueueIndex++;
+        }
+        return { queue: newQueue, queueIndex: newQueueIndex };
+      }),
     showLyrics: false,
     toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
     showConnect: false,

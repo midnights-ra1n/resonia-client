@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { PlayerBar } from "../../features/player/PlayerBar";
+import { QueuePanel } from "../../features/player/QueuePanel";
 import { useTranslation } from "../../lib/i18n";
 import { Sidebar } from "./Sidebar";
 
@@ -42,6 +43,8 @@ export function AppLayout() {
         </main>
         <PlayerBar />
       </div>
+      <QueuePanel />
     </div>
   );
 }
+

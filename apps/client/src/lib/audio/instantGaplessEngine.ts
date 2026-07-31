@@ -200,6 +200,13 @@ export class InstantGaplessEngine {
   scheduleNext(nextBuffer: AudioBuffer, nextTrim: SilenceTrim, onSwap: () => void) {
     if (!this.state) return;
 
+    // IMPORTANT : on annule toute planification précédente avant d'en créer une nouvelle.
+    // Sans ça, un second appel à scheduleNext() (re-render, timeupdate, etc.) laissait
+    // l'ancien AudioBufferSourceNode "next" orphelin : plus aucune référence ne pointait
+    // dessus, mais il restait planifié sur l'horloge de l'AudioContext et se lançait tout
+    // seul au moment prévu, sans que pause()/cancelScheduledNext() puisse l'arrêter.
+    this.cancelScheduledNext();
+
     const remaining = Math.max(this.duration - this.currentTime, 0);
     const startAt = this.context.currentTime + remaining;
     const nextLogicalDuration = Math.max(nextBuffer.duration - nextTrim.start - nextTrim.end, 0);
@@ -228,6 +235,10 @@ export class InstantGaplessEngine {
     trigger.onended = () => {
       if (this.nextTrigger !== trigger) return;
       this.nextTrigger = null;
+      // La source "next" devient la source courante : on retire la référence pour
+      // qu'un futur cancelScheduledNext()/pause() n'aille pas la stopper par erreur
+      // en la confondant avec une piste encore "en attente".
+      if (this.nextBufferSource === source) this.nextBufferSource = null;
 
       if (previousState.mode === "native") {
         this.nativeAudio.pause();

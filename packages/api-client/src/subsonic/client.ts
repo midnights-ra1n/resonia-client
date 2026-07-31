@@ -96,7 +96,18 @@ export class SubsonicClient {
     await this.request("scrobble", params);
   }
 
-  
+  async search3(
+    query: string,
+    options: { songCount?: number; albumCount?: number; artistCount?: number } = {},
+  ): Promise<SongDTO[]> {
+    const result = await this.request<{ searchResult3: { song?: SongDTO[] } }>("search3", {
+      query,
+      songCount: String(options.songCount ?? 500),
+      albumCount: String(options.albumCount ?? 0),
+      artistCount: String(options.artistCount ?? 0),
+    });
+    return result.searchResult3.song ?? [];
+  }
 
   getStreamUrl(trackId: string, options: StreamUrlOptions = {}): string {
     return buildStreamUrl(

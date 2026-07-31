@@ -32,11 +32,11 @@
     "playlists": "Playlists"
   },
   "home": {
-    "home": {
-      "greeting": "Ravi de te revoir",
-      "mostPlayedAlbums": "Albums les plus joués",
-      "noAlbums": "Aucun album à afficher pour le moment"
-    }
+    "greeting": "Bienvenue, {{username}} !",
+    "mostPlayedAlbums": "Albums les plus joués",
+    "noAlbums": "Aucun album à afficher pour le moment",
+    "mostPlayedSongs": "Titres les plus joués",
+    "noSongs": "Aucun titre à afficher pour le moment"
   },
   "search": {
     "placeholder": "Rechercher titres, artistes, albums...",

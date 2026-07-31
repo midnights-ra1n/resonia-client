@@ -1,39 +1,18 @@
+import { useMostPlayedAlbums } from "../../hooks/useMostPlayedAlbums";
 import { useTranslation } from "../../lib/i18n";
-// Fallback local hook: original './hooks/useMostPlayedAlbums' not found.
-// Provides a minimal implementation to avoid module resolution errors.
-import { useState, useEffect } from "react";
-
-function useMostPlayedAlbums() {
-  const [albums, setAlbums] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    // Minimal placeholder: no remote fetch, just simulate loaded empty state.
-    const t = setTimeout(() => {
-      if (mounted) {
-        setAlbums([]);
-        setLoading(false);
-      }
-    }, 0);
-
-    return () => {
-      mounted = false;
-      clearTimeout(t);
-    };
-  }, []);
-
-  return { albums, loading };
-}
+import { useServersStore } from "../../stores/serversStore";
 import { AlbumCard } from "./AlbumCard";
 
 export function HomePage() {
   const { t } = useTranslation();
   const { albums, loading } = useMostPlayedAlbums();
+  const { servers, activeServerId } = useServersStore();
+  const activeServer = servers.find((s) => s.id === activeServerId);
+  const username = activeServer?.username ?? "";
 
   return (
     <div className="p-8">
-      <h1 className="mb-6 text-2xl font-bold text-white">{t("home.greeting")}</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("home.greeting", { username })}</h1>
 
       <section>
         <h2 className="mb-4 text-xl font-semibold text-white">{t("home.mostPlayedAlbums")}</h2>
@@ -53,3 +32,4 @@ export function HomePage() {
     </div>
   );
 }
+

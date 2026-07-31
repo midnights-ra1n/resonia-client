@@ -44,3 +44,16 @@ export interface SongDTO {
 export interface AlbumWithSongsDTO extends AlbumSummary {
   song: SongDTO[];
 }
+
+export interface SongDTO {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  albumId?: string;
+  coverArt?: string;
+  duration: number;
+  track?: number;
+  playCount?: number;
+}
+

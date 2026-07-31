@@ -32,9 +32,11 @@
     "playlists": "Playlists"
   },
   "home": {
-    "greeting": "Good to see you",
+    "greeting": "Welcome back, {{username}}!",
     "mostPlayedAlbums": "Most played albums",
-    "noAlbums": "No albums to show yet"
+    "noAlbums": "No albums to show yet",
+    "mostPlayedSongs": "Most played songs",
+    "noSongs": "No songs to show yet"
   },
   "search": {
     "placeholder": "Search titles, artists, albums...",

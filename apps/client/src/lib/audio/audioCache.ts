@@ -59,7 +59,20 @@ async function enforceLimit(maxBytes: number = DEFAULT_MAX_BYTES): Promise<void>
   await writeMeta(remaining);
 }
 
-/** Retourne le buffer d'un titre : cache si présent, sinon téléchargement complet + mise en cache. */
+/** Object URL locale si le titre est déjà en cache (lecture instantanée), sinon null. */
+export async function getCachedTrackUrl(trackId: string, qualityId: string): Promise<string | null> {
+  if (!("caches" in window)) return null;
+  const key = cacheKeyFor(trackId, qualityId);
+  const cache = await caches.open(CACHE_NAME);
+  const response = await cache.match(syntheticRequestFor(key));
+  if (!response) return null;
+
+  await touchEntry(key);
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+/** Télécharge intégralement un titre (cache si déjà présent) et retourne son ArrayBuffer, pour décodage. */
 export async function loadTrackArrayBuffer(
   trackId: string,
   qualityId: string,

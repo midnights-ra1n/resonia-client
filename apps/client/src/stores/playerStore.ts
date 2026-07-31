@@ -1,15 +1,15 @@
 import { create } from "zustand";
-import { getSampleAccurateEngine } from "../lib/audio/sampleAccurateEngine";
-import { loadTrackArrayBuffer } from "../lib/audio/audioCache";
-import { detectEdgeSilence } from "../lib/audio/trimSilence";
+import { getCachedTrackUrl, loadTrackArrayBuffer } from "../lib/audio/audioCache";
+import { getInstantGaplessEngine } from "../lib/audio/instantGaplessEngine";
 import {
-  updateMediaSessionMetadata,
+  registerMediaSessionHandlers,
   setMediaSessionPlaybackState,
   setMediaSessionPositionState,
-  registerMediaSessionHandlers,
+  updateMediaSessionMetadata,
 } from "../lib/audio/mediaSession";
-import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { getQualityById } from "../lib/audio/qualityOptions";
+import { detectEdgeSilence } from "../lib/audio/trimSilence";
+import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { useServersStore } from "./serversStore";
 import { useSettingsStore } from "./settingsStore";
 
@@ -23,6 +23,7 @@ export interface Track {
 }
 
 const DEFAULT_COVER_URL = "/default-cover.svg";
+const PRELOAD_LEAD_SECONDS = 6;
 const SCROBBLE_MIN_DURATION = 30;
 
 function getActiveQualityId(): string {
@@ -81,11 +82,12 @@ export interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
-  const engine = getSampleAccurateEngine();
+  const engine = getInstantGaplessEngine();
 
   let scheduledNextKey: string | null = null;
   let scrobbledNowPlaying = false;
   let scrobbledSubmission = false;
+  let decodeToken = 0;
 
   function resetPlaybackFlags() {
     scheduledNextKey = null;
@@ -131,6 +133,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     onSeekTo: (time) => get().setCurrentTime(time),
   });
 
+  function upcomingTrack(): Track | null {
+    const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
+    if (isShuffle || queue.length < 2) return null;
+    if (isRepeat) return currentTrack;
+    return queue[queueIndex + 1] ?? null;
+  }
+
   async function scheduleGaplessNext() {
     const { queue, queueIndex, isShuffle, isRepeat } = get();
     if (isShuffle || queue.length < 2) return;
@@ -154,7 +163,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       if (scheduledNextKey !== key) return;
 
-      engine.scheduleGapless(audioBuffer, trim, () => {
+      engine.scheduleNext(audioBuffer, trim, () => {
         set({
           currentTrack: nextTrackData,
           queueIndex: isRepeat ? get().queueIndex : nextIndex,
@@ -170,38 +179,52 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     }
   }
 
+  async function refinePreciseTrim(track: Track, qualityId: string, streamUrl: string, token: number) {
+    try {
+      const arrayBuffer = await loadTrackArrayBuffer(track.id, qualityId, streamUrl);
+      const audioBuffer = await engine.decode(arrayBuffer);
+      if (token !== decodeToken) return; // le titre a changé entre-temps, résultat obsolète
+      const trim = detectEdgeSilence(audioBuffer);
+      engine.attachPreciseTrim(trim, audioBuffer.duration);
+    } catch (err) {
+      console.warn("[player] Décodage en arrière-plan échoué (trim précis indisponible)", err);
+    }
+  }
+
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
     const qualityId = getActiveQualityId();
-    const streamUrl = resolveStreamUrl(track);
-    if (!streamUrl) {
+
+    const cachedUrl = await getCachedTrackUrl(track.id, qualityId);
+    const instantUrl = cachedUrl ?? resolveStreamUrl(track);
+    if (!instantUrl) {
       console.warn("[player] Aucun serveur actif, lecture impossible");
       return;
     }
 
-    try {
-      const arrayBuffer = await loadTrackArrayBuffer(track.id, qualityId, streamUrl);
-      const audioBuffer = await engine.decode(arrayBuffer);
-      const trim = detectEdgeSilence(audioBuffer);
+    const index = queue.findIndex((t) => t.id === track.id);
+    resetPlaybackFlags();
+    decodeToken++;
+    const token = decodeToken;
 
-      const index = queue.findIndex((t) => t.id === track.id);
-      engine.play(audioBuffer, trim, offset);
-      resetPlaybackFlags();
+    engine.playInstant(instantUrl, offset);
 
-      set({
-        currentTrack: track,
-        queue,
-        queueIndex: index === -1 ? 0 : index,
-        currentTime: offset,
-        isPlaying: true,
-      });
+    set({
+      currentTrack: track,
+      queue,
+      queueIndex: index === -1 ? 0 : index,
+      currentTime: offset,
+      isPlaying: true,
+    });
 
-      updateMediaSessionMetadata(track);
-      setMediaSessionPlaybackState("playing");
+    updateMediaSessionMetadata(track);
+    setMediaSessionPlaybackState("playing");
 
-      scheduleGaplessNext();
-    } catch (err) {
-      console.error("[player] Impossible de charger le titre", err);
+    const networkStreamUrl = resolveStreamUrl(track);
+    if (networkStreamUrl) {
+      refinePreciseTrim(track, qualityId, networkStreamUrl, token);
     }
+
+    scheduleGaplessNext();
   }
 
   return {
@@ -212,7 +235,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     queueIndex: -1,
 
     playTrack: async (track, queueParam) => {
-      resetPlaybackFlags();
       await loadAndPlay(track, queueParam ?? [track], 0);
     },
 

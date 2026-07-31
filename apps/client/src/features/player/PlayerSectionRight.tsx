@@ -1,4 +1,4 @@
-import { Volume2, VolumeX, ListMusic, Mic2, Plug } from "lucide-react";
+import { ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
 import { usePlayerStore } from "../../stores/playerStore";
 
 export function PlayerSectionRight() {
@@ -40,7 +40,7 @@ export function PlayerSectionRight() {
             step="0.01"
             value={effectiveVolume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-full h-1 bg-neutral-700 rounded-full appearance-none cursor-pointer accent-white"
+            className="w-full h-1.5 bg-neutral-700 rounded-full appearance-none cursor-pointer accent-white"
           />
         </div>
       </div>
@@ -48,11 +48,10 @@ export function PlayerSectionRight() {
       {/* Queue */}
       <button
         onClick={toggleQueue}
-        className={`transition-colors ${
-          showQueue
-            ? "text-green-400"
-            : "text-neutral-400 hover:text-white"
-        }`}
+        className={`transition-colors ${showQueue
+          ? "text-green-400"
+          : "text-neutral-400 hover:text-white"
+          }`}
         title="Queue"
       >
         <ListMusic size={18} />
@@ -61,11 +60,10 @@ export function PlayerSectionRight() {
       {/* Lyrics */}
       <button
         onClick={toggleLyrics}
-        className={`transition-colors ${
-          showLyrics
-            ? "text-green-400"
-            : "text-neutral-400 hover:text-white"
-        }`}
+        className={`transition-colors ${showLyrics
+          ? "text-green-400"
+          : "text-neutral-400 hover:text-white"
+          }`}
         title="Lyrics"
       >
         <Mic2 size={18} />
@@ -74,11 +72,10 @@ export function PlayerSectionRight() {
       {/* Connect */}
       <button
         onClick={toggleConnect}
-        className={`transition-colors ${
-          showConnect
-            ? "text-green-400"
-            : "text-neutral-400 hover:text-white"
-        }`}
+        className={`transition-colors ${showConnect
+          ? "text-green-400"
+          : "text-neutral-400 hover:text-white"
+          }`}
         title="Connect"
       >
         <Plug size={18} />

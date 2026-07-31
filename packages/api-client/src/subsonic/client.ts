@@ -88,6 +88,13 @@ export class SubsonicClient {
     return true;
   }
 
+  async scrobble(trackId: string, options: { submission?: boolean; time?: number } = {}): Promise<void> {
+    const params: Record<string, string> = { id: trackId };
+    if (options.submission !== undefined) params.submission = String(options.submission);
+    if (options.time !== undefined) params.time = String(options.time);
+    await this.request("scrobble", params);
+  }
+
   getStreamUrl(trackId: string, options: StreamUrlOptions = {}): string {
     return buildStreamUrl(
       {

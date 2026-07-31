@@ -65,8 +65,8 @@ export function PlayerSectionCenter() {
         <button
           onClick={toggleShuffle}
           className={`transition-colors ${isShuffle
-              ? "text-green-400"
-              : "text-neutral-400 hover:text-white"
+            ? "text-green-400"
+            : "text-neutral-400 hover:text-white"
             }`}
           title="Shuffle"
         >
@@ -104,8 +104,8 @@ export function PlayerSectionCenter() {
         <button
           onClick={toggleRepeat}
           className={`transition-colors ${isRepeat
-              ? "text-green-400"
-              : "text-neutral-400 hover:text-white"
+            ? "text-green-400"
+            : "text-neutral-400 hover:text-white"
             }`}
           title="Repeat"
         >
@@ -121,7 +121,7 @@ export function PlayerSectionCenter() {
 
         <div
           ref={barRef}
-          className="relative flex-1 h-1 bg-neutral-700 rounded-full cursor-pointer group"
+          className="relative flex-1 h-1.5 bg-neutral-700 rounded-full cursor-pointer group"
           onClick={handleClickBar}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverProgress(null)}

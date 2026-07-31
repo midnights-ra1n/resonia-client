@@ -1,9 +1,8 @@
 import { create } from "zustand";
-import { loadTrackArrayBuffer } from "../lib/audio/audioCache";
-import { getQualityById } from "../lib/audio/qualityOptions";
-import { detectEdgeSilence } from "../lib/audio/trimSilence";
-import { getAudioEngine } from "../lib/audio/webAudioEngine";
+import { getHybridEngine, CROSSFADE_SECONDS } from "../lib/audio/hybridAudioEngine";
+import { getCachedTrackUrl, cacheTrackInBackground } from "../lib/audio/audioCache";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
+import { getQualityById } from "../lib/audio/qualityOptions";
 import { useServersStore } from "./serversStore";
 import { useSettingsStore } from "./settingsStore";
 
@@ -17,24 +16,36 @@ export interface Track {
 }
 
 const DEFAULT_COVER_URL = "/default-cover.svg";
-export type NetworkStatus = "online" | "reconnecting" | "interrupted";
+const PRELOAD_LEAD_SECONDS = 10;
+const SCROBBLE_MIN_DURATION = 30;
 
 function getActiveQualityId(): string {
   return useSettingsStore.getState().audioQualityId;
 }
 
-function resolveStreamUrl(track: Track): string | null {
+function getActiveClient() {
   const { servers, activeServerId } = useServersStore.getState();
-  const activeServer = servers.find((s) => s.id === activeServerId);
-  if (!activeServer) return null;
+  const server = servers.find((s) => s.id === activeServerId);
+  return server ? getClientForServer(server) : null;
+}
 
-  const client = getClientForServer(activeServer);
-  const quality = getQualityById(getActiveQualityId());
+async function resolvePlayableUrl(track: Track): Promise<string | null> {
+  const qualityId = getActiveQualityId();
 
-  return client.getStreamUrl(track.id, {
+  const cached = await getCachedTrackUrl(track.id, qualityId);
+  if (cached) return cached;
+
+  const client = getActiveClient();
+  if (!client) return null;
+
+  const quality = getQualityById(qualityId);
+  const streamUrl = client.getStreamUrl(track.id, {
     format: quality?.format,
     maxBitRate: quality?.maxBitRate,
   });
+
+  cacheTrackInBackground(track.id, qualityId, streamUrl);
+  return streamUrl;
 }
 
 export interface PlayerState {
@@ -73,147 +84,102 @@ export interface PlayerState {
 
   showTimeRemaining: boolean;
   toggleTimeDisplay: () => void;
-
-  networkStatus: NetworkStatus;
-  retryConnection: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
-  const engine = getAudioEngine();
+  const engine = getHybridEngine();
 
-  let lastKnownTime = 0;
-  let wasPlayingBeforeHide = false;
-  let lastHiddenAt = Date.now();
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let scheduledNextKey: string | null = null;
+  let preloadedForKey: string | null = null;
+  let crossfadeTriggeredForKey: string | null = null;
+  let scrobbledNowPlaying = false;
+  let scrobbledSubmission = false;
 
-  function clearReconnectTimer() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
+  function resetPlaybackFlags() {
+    preloadedForKey = null;
+    crossfadeTriggeredForKey = null;
+    scrobbledNowPlaying = false;
+    scrobbledSubmission = false;
   }
 
-  function tickProgress() {
-    if (get().currentTrack) {
-      set({ currentTime: engine.currentTime });
-    }
-    requestAnimationFrame(tickProgress);
+  function sendScrobble(track: Track, submission: boolean) {
+    const client = getActiveClient();
+    if (!client) return;
+    client.scrobble(track.id, { submission }).catch((err) => console.warn("[player] Scrobble échoué", err));
   }
-  requestAnimationFrame(tickProgress);
+
+  function upcomingTrack(): Track | null {
+    const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
+    if (isShuffle || queue.length < 2) return null;
+    if (isRepeat) return currentTrack;
+    return queue[queueIndex + 1] ?? null;
+  }
+
+  engine.onTimeUpdate(async (time, duration) => {
+    const { currentTrack } = get();
+    if (!currentTrack) return;
+
+    set({ currentTime: time });
+
+    if (!scrobbledNowPlaying && time > 1) {
+      scrobbledNowPlaying = true;
+      sendScrobble(currentTrack, false);
+    }
+
+    const threshold = Math.min(duration / 2, 240);
+    if (!scrobbledSubmission && duration >= SCROBBLE_MIN_DURATION && time >= threshold) {
+      scrobbledSubmission = true;
+      sendScrobble(currentTrack, true);
+    }
+
+    const remaining = duration - time;
+
+    if (remaining <= PRELOAD_LEAD_SECONDS && preloadedForKey !== currentTrack.id) {
+      const next = upcomingTrack();
+      if (next) {
+        const url = await resolvePlayableUrl(next);
+        if (url) {
+          engine.preload(url);
+          preloadedForKey = currentTrack.id;
+        }
+      }
+    }
+
+    if (remaining <= CROSSFADE_SECONDS + 0.05 && crossfadeTriggeredForKey !== currentTrack.id) {
+      const next = upcomingTrack();
+      if (next) {
+        crossfadeTriggeredForKey = currentTrack.id;
+        const { queueIndex, isRepeat } = get();
+        const nextIndex = isRepeat ? queueIndex : queueIndex + 1;
+
+        engine.crossfadeToPreloaded(() => {
+          resetPlaybackFlags();
+          set({ currentTrack: next, queueIndex: nextIndex, currentTime: 0 });
+        });
+      }
+    }
+  });
 
   engine.onEnded(() => get().nextTrack());
 
-  async function scheduleGaplessNext() {
-    const { queue, queueIndex, isShuffle, isRepeat } = get();
-    if (isShuffle || queue.length < 2) return;
-
-    const nextIndex = queueIndex + 1;
-    const nextTrackData = isRepeat ? get().currentTrack : queue[nextIndex];
-    if (!nextTrackData) return;
-
-    const qualityId = getActiveQualityId();
-    const key = `${nextTrackData.id}:${qualityId}`;
-    if (scheduledNextKey === key) return;
-    scheduledNextKey = key;
-
-    const streamUrl = resolveStreamUrl(nextTrackData);
-    if (!streamUrl) return;
-
-    try {
-      const arrayBuffer = await loadTrackArrayBuffer(nextTrackData.id, qualityId, streamUrl);
-      const audioBuffer = await engine.decode(arrayBuffer);
-      const trim = detectEdgeSilence(audioBuffer);
-
-      if (scheduledNextKey !== key) return;
-
-      engine.scheduleGapless(audioBuffer, trim, () => {
-        set({
-          currentTrack: nextTrackData,
-          queueIndex: isRepeat ? get().queueIndex : nextIndex,
-          currentTime: 0,
-        });
-        scheduledNextKey = null;
-        scheduleGaplessNext();
-      });
-    } catch (err) {
-      console.warn("[player] Pré-chargement gapless échoué", err);
-      scheduledNextKey = null;
-    }
-  }
-
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
-    const qualityId = getActiveQualityId();
-    const streamUrl = resolveStreamUrl(track);
-    if (!streamUrl) {
+    const url = await resolvePlayableUrl(track);
+    if (!url) {
       console.warn("[player] Aucun serveur actif, lecture impossible");
       return;
     }
 
-    try {
-      set({ networkStatus: "reconnecting" });
-      const arrayBuffer = await loadTrackArrayBuffer(track.id, qualityId, streamUrl);
-      const audioBuffer = await engine.decode(arrayBuffer);
-      const trim = detectEdgeSilence(audioBuffer);
+    const index = queue.findIndex((t) => t.id === track.id);
+    resetPlaybackFlags();
+    engine.playNew(url, offset);
 
-      const index = queue.findIndex((t) => t.id === track.id);
-      engine.play(audioBuffer, trim, offset);
-      scheduledNextKey = null;
-
-      set({
-        currentTrack: track,
-        queue,
-        queueIndex: index === -1 ? 0 : index,
-        currentTime: offset,
-        isPlaying: true,
-        networkStatus: "online",
-      });
-
-      scheduleGaplessNext();
-    } catch (err) {
-      console.error("[player] Impossible de charger le titre", err);
-      lastKnownTime = offset;
-      set({ networkStatus: "interrupted", isPlaying: false });
-      reconnectTimer = setTimeout(() => loadAndPlay(track, queue, lastKnownTime), 2000);
-    }
+    set({
+      currentTrack: track,
+      queue,
+      queueIndex: index === -1 ? 0 : index,
+      currentTime: offset,
+      isPlaying: true,
+    });
   }
-
-  function handleInterruption() {
-    const { currentTrack, queue } = get();
-    if (!currentTrack) return;
-    lastKnownTime = engine.currentTime;
-    engine.pause();
-    clearReconnectTimer();
-    set({ networkStatus: "interrupted", isPlaying: false });
-    reconnectTimer = setTimeout(() => loadAndPlay(currentTrack, queue, lastKnownTime), 2000);
-  }
-
-  window.addEventListener("offline", () => {
-    if (get().currentTrack && get().isPlaying) handleInterruption();
-  });
-  window.addEventListener("online", () => {
-    const { currentTrack, queue, networkStatus } = get();
-    if (networkStatus === "interrupted" && currentTrack) {
-      loadAndPlay(currentTrack, queue, lastKnownTime);
-    }
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      wasPlayingBeforeHide = get().isPlaying;
-      lastHiddenAt = Date.now();
-    } else {
-      const gap = Date.now() - lastHiddenAt;
-      const { currentTrack, queue } = get();
-
-      if (gap > 15000 && wasPlayingBeforeHide && currentTrack) {
-        lastKnownTime = engine.currentTime;
-        loadAndPlay(currentTrack, queue, lastKnownTime);
-      } else if (engine.context.state === "suspended") {
-        engine.context.resume();
-      }
-    }
-  });
 
   return {
     currentTrack: null,
@@ -223,21 +189,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     queueIndex: -1,
 
     playTrack: async (track, queueParam) => {
-      clearReconnectTimer();
-      scheduledNextKey = null;
       await loadAndPlay(track, queueParam ?? [track], 0);
     },
 
     isPlaying: false,
     togglePlay: () => {
-      const { currentTrack, networkStatus, isPlaying, queue } = get();
+      const { currentTrack, isPlaying } = get();
       if (!currentTrack) return;
-
-      if (networkStatus === "interrupted") {
-        loadAndPlay(currentTrack, queue, lastKnownTime);
-        return;
-      }
-
       if (isPlaying) {
         engine.pause();
         set({ isPlaying: false });
@@ -255,29 +213,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     currentTime: 0,
     setCurrentTime: (time) => {
       engine.seek(time);
-      scheduledNextKey = null;
       set({ currentTime: time });
-      scheduleGaplessNext();
     },
 
     isShuffle: false,
-    toggleShuffle: () =>
-      set((state) => {
-        scheduledNextKey = null;
-        return { isShuffle: !state.isShuffle };
-      }),
+    toggleShuffle: () => set((state) => ({ isShuffle: !state.isShuffle })),
     isRepeat: false,
-    toggleRepeat: () =>
-      set((state) => {
-        scheduledNextKey = null;
-        return { isRepeat: !state.isRepeat };
-      }),
+    toggleRepeat: () => set((state) => ({ isRepeat: !state.isRepeat })),
 
     nextTrack: () => {
       const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
       if (queue.length === 0) return;
-
-      clearReconnectTimer();
 
       if (isRepeat && currentTrack) {
         loadAndPlay(currentTrack, queue, 0);
@@ -296,7 +242,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       } else {
         nextIndex = queueIndex + 1;
         if (nextIndex >= queue.length) {
-          engine.stop();
+          engine.pause();
           set({ isPlaying: false });
           return;
         }
@@ -308,8 +254,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     prevTrack: () => {
       const { queue, queueIndex, currentTime } = get();
       if (queue.length === 0) return;
-
-      clearReconnectTimer();
 
       if (currentTime > 3) {
         get().setCurrentTime(0);
@@ -347,12 +291,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     showTimeRemaining: false,
     toggleTimeDisplay: () => set((state) => ({ showTimeRemaining: !state.showTimeRemaining })),
-
-    networkStatus: "online",
-    retryConnection: () => {
-      const { currentTrack, queue } = get();
-      if (currentTrack) loadAndPlay(currentTrack, queue, lastKnownTime);
-    },
   };
 });
 

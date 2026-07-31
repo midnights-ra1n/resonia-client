@@ -36,7 +36,6 @@ export function HomePage() {
           <p className="text-neutral-400">{t("home.noAlbums")}</p>
         ) : (
           <div className="group/carousel relative">
-            {/* Flèche gauche */}
             <button
               onClick={() => scroll("left")}
               className="absolute left-0 top-1/2 z-10 flex h-full w-16 -translate-y-1/2 items-center justify-center bg-gradient-to-r from-neutral-950 to-transparent opacity-0 transition-opacity group-hover/carousel:opacity-100"
@@ -45,10 +44,9 @@ export function HomePage() {
               <ChevronLeft className="h-8 w-8 text-white" />
             </button>
 
-            {/* Carrousel */}
             <div
               ref={scrollRef}
-              className="flex gap-4 overflow-x-auto pb-3 px-16 scroll-smooth"
+              className="flex gap-4 overflow-x-auto pb-3 pr-16 scroll-smooth"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               {albums.map((album) => (

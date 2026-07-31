@@ -56,8 +56,16 @@ export function Sidebar() {
           >
             <Plus size={18} />
           </button>
+
         </div>
       </div>
+
+      <div className="mt-auto space-y-1">
+        <label className="text-sm text-neutral-400">
+          resonia-client version
+        </label>
+      </div>
+
     </aside>
   );
 }

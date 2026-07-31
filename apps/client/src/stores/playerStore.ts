@@ -23,7 +23,6 @@ export interface Track {
 }
 
 const DEFAULT_COVER_URL = "/default-cover.svg";
-const PRELOAD_LEAD_SECONDS = 6;
 const SCROBBLE_MIN_DURATION = 30;
 
 function getActiveQualityId(): string {
@@ -133,13 +132,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     onSeekTo: (time) => get().setCurrentTime(time),
   });
 
-  function upcomingTrack(): Track | null {
-    const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
-    if (isShuffle || queue.length < 2) return null;
-    if (isRepeat) return currentTrack;
-    return queue[queueIndex + 1] ?? null;
-  }
-
   async function scheduleGaplessNext() {
     const { queue, queueIndex, isShuffle, isRepeat } = get();
     if (isShuffle || queue.length < 2) return;
@@ -183,7 +175,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     try {
       const arrayBuffer = await loadTrackArrayBuffer(track.id, qualityId, streamUrl);
       const audioBuffer = await engine.decode(arrayBuffer);
-      if (token !== decodeToken) return; // le titre a changé entre-temps, résultat obsolète
+      if (token !== decodeToken) return;
       const trim = detectEdgeSilence(audioBuffer);
       engine.attachPreciseTrim(trim, audioBuffer.duration);
     } catch (err) {
@@ -235,7 +227,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     queueIndex: -1,
 
     playTrack: async (track, queueParam) => {
-      await loadAndPlay(track, queueParam ?? [track], 0);
+      let queue = queueParam ?? [track];
+      if (get().isShuffle && queue.length > 1) {
+        const rest = queue.slice(1);
+        for (let i = rest.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rest[i], rest[j]] = [rest[j], rest[i]];
+        }
+        queue = [queue[0], ...rest];
+      }
+      const firstTrack = get().isShuffle ? queue[0] : track;
+      await loadAndPlay(firstTrack, queue, 0);
     },
 
     isPlaying: false,
@@ -281,7 +283,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       }),
 
     nextTrack: () => {
-      const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
+      const { queue, queueIndex, isRepeat, currentTrack } = get();
       if (queue.length === 0) return;
 
       if (isRepeat && currentTrack) {
@@ -289,23 +291,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         return;
       }
 
-      let nextIndex: number;
-      if (isShuffle) {
-        if (queue.length === 1) {
-          nextIndex = 0;
-        } else {
-          do {
-            nextIndex = Math.floor(Math.random() * queue.length);
-          } while (nextIndex === queueIndex);
-        }
-      } else {
-        nextIndex = queueIndex + 1;
-        if (nextIndex >= queue.length) {
-          engine.stop();
-          set({ isPlaying: false });
-          setMediaSessionPlaybackState("paused");
-          return;
-        }
+      const nextIndex = queueIndex + 1;
+      if (nextIndex >= queue.length) {
+        engine.stop();
+        set({ isPlaying: false });
+        setMediaSessionPlaybackState("paused");
+        return;
       }
 
       loadAndPlay(queue[nextIndex], queue, 0);

@@ -1,7 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
-import type { AlbumSummary, AlbumWithSongsDTO } from "./types";
+import type { AlbumSummary, AlbumWithSongsDTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;

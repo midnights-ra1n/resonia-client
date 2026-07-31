@@ -1,6 +1,13 @@
 import { create } from "zustand";
-import { getHybridEngine, CROSSFADE_SECONDS } from "../lib/audio/hybridAudioEngine";
-import { getCachedTrackUrl, cacheTrackInBackground } from "../lib/audio/audioCache";
+import { getSampleAccurateEngine } from "../lib/audio/sampleAccurateEngine";
+import { loadTrackArrayBuffer } from "../lib/audio/audioCache";
+import { detectEdgeSilence } from "../lib/audio/trimSilence";
+import {
+  updateMediaSessionMetadata,
+  setMediaSessionPlaybackState,
+  setMediaSessionPositionState,
+  registerMediaSessionHandlers,
+} from "../lib/audio/mediaSession";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { getQualityById } from "../lib/audio/qualityOptions";
 import { useServersStore } from "./serversStore";
@@ -16,7 +23,6 @@ export interface Track {
 }
 
 const DEFAULT_COVER_URL = "/default-cover.svg";
-const PRELOAD_LEAD_SECONDS = 10;
 const SCROBBLE_MIN_DURATION = 30;
 
 function getActiveQualityId(): string {
@@ -29,23 +35,11 @@ function getActiveClient() {
   return server ? getClientForServer(server) : null;
 }
 
-async function resolvePlayableUrl(track: Track): Promise<string | null> {
-  const qualityId = getActiveQualityId();
-
-  const cached = await getCachedTrackUrl(track.id, qualityId);
-  if (cached) return cached;
-
+function resolveStreamUrl(track: Track): string | null {
   const client = getActiveClient();
   if (!client) return null;
-
-  const quality = getQualityById(qualityId);
-  const streamUrl = client.getStreamUrl(track.id, {
-    format: quality?.format,
-    maxBitRate: quality?.maxBitRate,
-  });
-
-  cacheTrackInBackground(track.id, qualityId, streamUrl);
-  return streamUrl;
+  const quality = getQualityById(getActiveQualityId());
+  return client.getStreamUrl(track.id, { format: quality?.format, maxBitRate: quality?.maxBitRate });
 }
 
 export interface PlayerState {
@@ -87,16 +81,14 @@ export interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
-  const engine = getHybridEngine();
+  const engine = getSampleAccurateEngine();
 
-  let preloadedForKey: string | null = null;
-  let crossfadeTriggeredForKey: string | null = null;
+  let scheduledNextKey: string | null = null;
   let scrobbledNowPlaying = false;
   let scrobbledSubmission = false;
 
   function resetPlaybackFlags() {
-    preloadedForKey = null;
-    crossfadeTriggeredForKey = null;
+    scheduledNextKey = null;
     scrobbledNowPlaying = false;
     scrobbledSubmission = false;
   }
@@ -107,78 +99,109 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     client.scrobble(track.id, { submission }).catch((err) => console.warn("[player] Scrobble échoué", err));
   }
 
-  function upcomingTrack(): Track | null {
-    const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
-    if (isShuffle || queue.length < 2) return null;
-    if (isRepeat) return currentTrack;
-    return queue[queueIndex + 1] ?? null;
+  function tickProgress() {
+    const track = get().currentTrack;
+    if (track) {
+      const time = engine.currentTime;
+      const duration = engine.duration;
+      set({ currentTime: time });
+      setMediaSessionPositionState(duration, time);
+
+      if (!scrobbledNowPlaying && time > 1) {
+        scrobbledNowPlaying = true;
+        sendScrobble(track, false);
+      }
+      const threshold = Math.min(duration / 2, 240);
+      if (!scrobbledSubmission && duration >= SCROBBLE_MIN_DURATION && time >= threshold) {
+        scrobbledSubmission = true;
+        sendScrobble(track, true);
+      }
+    }
+    requestAnimationFrame(tickProgress);
   }
-
-  engine.onTimeUpdate(async (time, duration) => {
-    const { currentTrack } = get();
-    if (!currentTrack) return;
-
-    set({ currentTime: time });
-
-    if (!scrobbledNowPlaying && time > 1) {
-      scrobbledNowPlaying = true;
-      sendScrobble(currentTrack, false);
-    }
-
-    const threshold = Math.min(duration / 2, 240);
-    if (!scrobbledSubmission && duration >= SCROBBLE_MIN_DURATION && time >= threshold) {
-      scrobbledSubmission = true;
-      sendScrobble(currentTrack, true);
-    }
-
-    const remaining = duration - time;
-
-    if (remaining <= PRELOAD_LEAD_SECONDS && preloadedForKey !== currentTrack.id) {
-      const next = upcomingTrack();
-      if (next) {
-        const url = await resolvePlayableUrl(next);
-        if (url) {
-          engine.preload(url);
-          preloadedForKey = currentTrack.id;
-        }
-      }
-    }
-
-    if (remaining <= CROSSFADE_SECONDS + 0.05 && crossfadeTriggeredForKey !== currentTrack.id) {
-      const next = upcomingTrack();
-      if (next) {
-        crossfadeTriggeredForKey = currentTrack.id;
-        const { queueIndex, isRepeat } = get();
-        const nextIndex = isRepeat ? queueIndex : queueIndex + 1;
-
-        engine.crossfadeToPreloaded(() => {
-          resetPlaybackFlags();
-          set({ currentTrack: next, queueIndex: nextIndex, currentTime: 0 });
-        });
-      }
-    }
-  });
+  requestAnimationFrame(tickProgress);
 
   engine.onEnded(() => get().nextTrack());
 
+  registerMediaSessionHandlers({
+    onPlay: () => get().togglePlay(),
+    onPause: () => get().togglePlay(),
+    onNext: () => get().nextTrack(),
+    onPrevious: () => get().prevTrack(),
+    onSeekTo: (time) => get().setCurrentTime(time),
+  });
+
+  async function scheduleGaplessNext() {
+    const { queue, queueIndex, isShuffle, isRepeat } = get();
+    if (isShuffle || queue.length < 2) return;
+
+    const nextIndex = queueIndex + 1;
+    const nextTrackData = isRepeat ? get().currentTrack : queue[nextIndex];
+    if (!nextTrackData) return;
+
+    const qualityId = getActiveQualityId();
+    const key = `${nextTrackData.id}:${qualityId}`;
+    if (scheduledNextKey === key) return;
+    scheduledNextKey = key;
+
+    const streamUrl = resolveStreamUrl(nextTrackData);
+    if (!streamUrl) return;
+
+    try {
+      const arrayBuffer = await loadTrackArrayBuffer(nextTrackData.id, qualityId, streamUrl);
+      const audioBuffer = await engine.decode(arrayBuffer);
+      const trim = detectEdgeSilence(audioBuffer);
+
+      if (scheduledNextKey !== key) return;
+
+      engine.scheduleGapless(audioBuffer, trim, () => {
+        set({
+          currentTrack: nextTrackData,
+          queueIndex: isRepeat ? get().queueIndex : nextIndex,
+          currentTime: 0,
+        });
+        updateMediaSessionMetadata(nextTrackData);
+        resetPlaybackFlags();
+        scheduleGaplessNext();
+      });
+    } catch (err) {
+      console.warn("[player] Pré-chargement gapless échoué", err);
+      scheduledNextKey = null;
+    }
+  }
+
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
-    const url = await resolvePlayableUrl(track);
-    if (!url) {
+    const qualityId = getActiveQualityId();
+    const streamUrl = resolveStreamUrl(track);
+    if (!streamUrl) {
       console.warn("[player] Aucun serveur actif, lecture impossible");
       return;
     }
 
-    const index = queue.findIndex((t) => t.id === track.id);
-    resetPlaybackFlags();
-    engine.playNew(url, offset);
+    try {
+      const arrayBuffer = await loadTrackArrayBuffer(track.id, qualityId, streamUrl);
+      const audioBuffer = await engine.decode(arrayBuffer);
+      const trim = detectEdgeSilence(audioBuffer);
 
-    set({
-      currentTrack: track,
-      queue,
-      queueIndex: index === -1 ? 0 : index,
-      currentTime: offset,
-      isPlaying: true,
-    });
+      const index = queue.findIndex((t) => t.id === track.id);
+      engine.play(audioBuffer, trim, offset);
+      resetPlaybackFlags();
+
+      set({
+        currentTrack: track,
+        queue,
+        queueIndex: index === -1 ? 0 : index,
+        currentTime: offset,
+        isPlaying: true,
+      });
+
+      updateMediaSessionMetadata(track);
+      setMediaSessionPlaybackState("playing");
+
+      scheduleGaplessNext();
+    } catch (err) {
+      console.error("[player] Impossible de charger le titre", err);
+    }
   }
 
   return {
@@ -189,6 +212,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     queueIndex: -1,
 
     playTrack: async (track, queueParam) => {
+      resetPlaybackFlags();
       await loadAndPlay(track, queueParam ?? [track], 0);
     },
 
@@ -199,27 +223,40 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (isPlaying) {
         engine.pause();
         set({ isPlaying: false });
+        setMediaSessionPlaybackState("paused");
       } else {
         engine.resume();
         set({ isPlaying: true });
+        setMediaSessionPlaybackState("playing");
       }
     },
     setPlaying: (playing) => {
       if (playing) engine.resume();
       else engine.pause();
       set({ isPlaying: playing });
+      setMediaSessionPlaybackState(playing ? "playing" : "paused");
     },
 
     currentTime: 0,
     setCurrentTime: (time) => {
       engine.seek(time);
+      scheduledNextKey = null;
       set({ currentTime: time });
+      scheduleGaplessNext();
     },
 
     isShuffle: false,
-    toggleShuffle: () => set((state) => ({ isShuffle: !state.isShuffle })),
+    toggleShuffle: () =>
+      set((state) => {
+        scheduledNextKey = null;
+        return { isShuffle: !state.isShuffle };
+      }),
     isRepeat: false,
-    toggleRepeat: () => set((state) => ({ isRepeat: !state.isRepeat })),
+    toggleRepeat: () =>
+      set((state) => {
+        scheduledNextKey = null;
+        return { isRepeat: !state.isRepeat };
+      }),
 
     nextTrack: () => {
       const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
@@ -242,8 +279,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       } else {
         nextIndex = queueIndex + 1;
         if (nextIndex >= queue.length) {
-          engine.pause();
+          engine.stop();
           set({ isPlaying: false });
+          setMediaSessionPlaybackState("paused");
           return;
         }
       }

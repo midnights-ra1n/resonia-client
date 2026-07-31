@@ -40,10 +40,6 @@ export function PlayerSectionCenter() {
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  const displayTime = showTimeRemaining
-    ? Math.max(duration - currentTime, 0)
-    : currentTime;
-
   const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!barRef.current || !duration) return;
     const rect = barRef.current.getBoundingClientRect();
@@ -116,7 +112,7 @@ export function PlayerSectionCenter() {
       {/* Progress bar + time */}
       <div className="flex items-center gap-2 w-full">
         <span className="text-xs text-neutral-400 w-10 text-right tabular-nums select-none">
-          {formatTime(displayTime)}
+          {formatTime(currentTime)}
         </span>
 
         <div
@@ -155,10 +151,12 @@ export function PlayerSectionCenter() {
           className="text-xs text-neutral-400 w-10 tabular-nums select-none cursor-pointer hover:text-white"
           onClick={toggleTimeDisplay}
           title={
-            showTimeRemaining ? "Click for elapsed time" : "Click for remaining time"
+            showTimeRemaining ? "Click for total time" : "Click for remaining time"
           }
         >
-          {formatTime(duration)}
+          {showTimeRemaining
+            ? `-${formatTime(Math.max(duration - currentTime, 0))}`
+            : formatTime(duration)}
         </span>
       </div>
     </div>

@@ -59,49 +59,31 @@ async function enforceLimit(maxBytes: number = DEFAULT_MAX_BYTES): Promise<void>
   await writeMeta(remaining);
 }
 
-const inFlight = new Set<string>();
-
-/** Retourne une Object URL locale si le titre est déjà en cache, sinon null. */
-export async function getCachedTrackUrl(trackId: string, qualityId: string): Promise<string | null> {
-  if (!("caches" in window)) return null;
-
-  const key = cacheKeyFor(trackId, qualityId);
-  const cache = await caches.open(CACHE_NAME);
-  const response = await cache.match(syntheticRequestFor(key));
-  if (!response) return null;
-
-  await touchEntry(key);
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
-
-/** Télécharge et met en cache un titre en arrière-plan, sans bloquer la lecture. */
-export async function cacheTrackInBackground(
+/** Retourne le buffer d'un titre : cache si présent, sinon téléchargement complet + mise en cache. */
+export async function loadTrackArrayBuffer(
   trackId: string,
   qualityId: string,
   streamUrl: string,
-): Promise<void> {
-  if (!("caches" in window)) return;
-
+): Promise<ArrayBuffer> {
   const key = cacheKeyFor(trackId, qualityId);
-  if (inFlight.has(key)) return;
-
   const cache = await caches.open(CACHE_NAME);
-  const already = await cache.match(syntheticRequestFor(key));
-  if (already) return;
 
-  inFlight.add(key);
-  try {
-    const response = await fetch(streamUrl);
-    if (!response.ok || !response.body) return;
-
-    const blob = await response.clone().blob();
-    await cache.put(syntheticRequestFor(key), response);
-    await touchEntry(key, blob.size);
-    await enforceLimit();
-  } catch (err) {
-    console.warn(`[audioCache] Échec de mise en cache pour ${trackId}`, err);
-  } finally {
-    inFlight.delete(key);
+  const cached = await cache.match(syntheticRequestFor(key));
+  if (cached) {
+    await touchEntry(key);
+    return cached.arrayBuffer();
   }
+
+  const response = await fetch(streamUrl);
+  if (!response.ok || !response.body) {
+    throw new Error(`Échec du téléchargement (${response.status})`);
+  }
+
+  const buffer = await response.clone().arrayBuffer();
+
+  cache.put(syntheticRequestFor(key), response).then(() => {
+    touchEntry(key, buffer.byteLength).then(() => enforceLimit());
+  });
+
+  return buffer;
 }

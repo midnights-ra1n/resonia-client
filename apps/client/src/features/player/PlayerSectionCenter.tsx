@@ -34,8 +34,9 @@ export function PlayerSectionCenter() {
   } = usePlayerStore();
 
   const duration = currentTrack?.duration ?? 0;
-  const [isDragging, setIsDragging] = useState(false);
+
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -124,8 +125,8 @@ export function PlayerSectionCenter() {
           onMouseDown={() => setIsDragging(true)}
           onMouseUp={() => setIsDragging(false)}
         >
-          {/* Hover fill */}
-          {hoverProgress !== null && (
+          {/* Hover fill — only when hover is behind current progress */}
+          {hoverProgress !== null && hoverProgress < currentTime && (
             <div
               className="absolute top-0 left-0 h-full bg-neutral-500 rounded-full"
               style={{
@@ -143,7 +144,9 @@ export function PlayerSectionCenter() {
           {/* Thumb */}
           <div
             className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow"
-            style={{ left: `calc(${progress}% - 6px)` }}
+            style={{
+              left: `calc(${isDragging && hoverProgress !== null ? (hoverProgress / (duration || 1)) * 100 : progress}% - 6px)`,
+            }}
           />
         </div>
 

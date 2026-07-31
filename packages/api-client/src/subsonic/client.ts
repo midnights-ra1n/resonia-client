@@ -1,6 +1,7 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
 import type { SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumSummary, AlbumWithSongsDTO } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -95,6 +96,8 @@ export class SubsonicClient {
     await this.request("scrobble", params);
   }
 
+  
+
   getStreamUrl(trackId: string, options: StreamUrlOptions = {}): string {
     return buildStreamUrl(
       {
@@ -108,5 +111,36 @@ export class SubsonicClient {
       trackId,
       options,
     );
+  }
+
+  async getAlbumList2(
+    type: "frequent" | "recent" | "newest" | "random" | "highest",
+    size = 20,
+    offset = 0,
+  ): Promise<AlbumSummary[]> {
+    const result = await this.request<{ albumList2: { album?: AlbumSummary[] } }>("getAlbumList2", {
+      type,
+      size: String(size),
+      offset: String(offset),
+    });
+    return result.albumList2.album ?? [];
+  }
+
+  async getAlbum(albumId: string): Promise<AlbumWithSongsDTO> {
+    const result = await this.request<{ album: AlbumWithSongsDTO }>("getAlbum", { id: albumId });
+    return result.album;
+  }
+
+  getCoverArtUrl(coverArtId: string, size = 300): string {
+    const params = new URLSearchParams({
+      u: this.username,
+      t: this.token,
+      s: this.salt,
+      v: this.apiVersion,
+      c: this.clientName,
+      id: coverArtId,
+      size: String(size),
+    });
+    return `${this.url}/rest/getCoverArt?${params.toString()}`;
   }
 }

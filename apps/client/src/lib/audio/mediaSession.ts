@@ -9,8 +9,6 @@ function isSupported(): boolean {
   return typeof navigator !== "undefined" && "mediaSession" in navigator;
 }
 
-// ─── Metadata ───────────────────────────────────────────────────────────────
-
 export function updateMediaSessionMetadata(track: MediaSessionTrackInfo) {
   if (!isSupported()) return;
 
@@ -18,27 +16,26 @@ export function updateMediaSessionMetadata(track: MediaSessionTrackInfo) {
     title: track.title,
     artist: track.artist,
     album: track.album,
-    artwork: [
-      { src: track.coverUrl ?? "", sizes: "96x96", type: "image/jpeg" },
-      { src: track.coverUrl ?? "", sizes: "128x128", type: "image/jpeg" },
-      { src: track.coverUrl ?? "", sizes: "256x256", type: "image/jpeg" },
-      { src: track.coverUrl ?? "", sizes: "512x512", type: "image/jpeg" },
-      { src: track.coverUrl ?? "", sizes: "1024x1024", type: "image/jpeg" },
+    artwork: track.coverUrl
+      ? [
+        { src: track.coverUrl, sizes: "96x96", type: "image/jpeg" },
+        { src: track.coverUrl, sizes: "128x128", type: "image/jpeg" },
+        { src: track.coverUrl, sizes: "256x256", type: "image/jpeg" },
+        { src: track.coverUrl, sizes: "512x512", type: "image/jpeg" },
+        { src: track.coverUrl, sizes: "1024x1024", type: "image/jpeg" },
+      ]
+      : [],
   });
+}
 
 export function setMediaSessionPlaybackState(state: "playing" | "paused" | "none") {
   if (!isSupported()) return;
-  navigator.mediaSession.// ─── Position state (barre de progression + temps) ──────────────────────────
+  navigator.mediaSession.playbackState = state;
+}
 
 let _lastPositionState: { duration: number; position: number } | null = null;
 let _currentPosition: number = 0;
-const POSITION_UPDATE_THRESHOLD = 0.25; // secondes de tolérance avant mise à jourplaybackState = state;
-}
-
-// ─── Position state (barre de progression + temps) ──────────────────────────
-
-let _lastPositionState: { duration: number; position: number } | null = null;
-const POSITION_UPDATE_THRESHOLD = 0.25; // secondes de tolérance avant mise à jour
+const POSITION_UPDATE_THRESHOLD = 0.25;
 
 export function setMediaSessionPositionState(duration: number, position: number) {
   if (!isSupported() || !("setPositionState" in navigator.mediaSession)) return;
@@ -47,7 +44,6 @@ export function setMediaSessionPositionState(duration: number, position: number)
   const adjustedDuration = Math.max(duration, 0);
   const adjustedPosition = Math.min(Math.max(position, 0), adjustedDuration);
 
-  // Éviter les appels excessifs : ne mettre à jour que si le temps a suffisamment avancé
   if (
     _lastPositionState &&
     Math.abs(_lastPositionState.duration - adjustedDuration) < 0.1 &&
@@ -57,6 +53,7 @@ export function setMediaSessionPositionState(duration: number, position: number)
   }
 
   _lastPositionState = { duration: adjustedDuration, position: adjustedPosition };
+  _currentPosition = adjustedPosition;
 
   try {
     navigator.mediaSession.setPositionState({
@@ -65,15 +62,12 @@ export function setMediaSessionPositionState(duration: number, position: number)
       playbackRate: 1,
     });
   } catch {
-    // Peut lever si les valeurs sont transitoirement incohérentes (changement de piste)
   }
 }
 
 export function clearMediaSessionPositionState() {
   _lastPositionState = null;
 }
-
-// ─── Handlers ───────────────────────────────────────────────────────────────
 
 export interface MediaSessionHandlers {
   onPlay: () => void;
@@ -85,7 +79,7 @@ export interface MediaSessionHandlers {
   onSeekBackward?: () => void;
 }
 
-const SEEK_INTERVAL = 10; // secondes pour les boutons avance/recule rapide
+const SEEK_INTERVAL = 10;
 
 export function registerMediaSessionHandlers(handlers: MediaSessionHandlers) {
   if (!isSupported()) return;
@@ -95,38 +89,30 @@ export function registerMediaSessionHandlers(handlers: MediaSessionHandlers) {
   navigator.mediaSession.setActionHandler("nexttrack", handlers.onNext);
   navigator.mediaSession.setActionHandler("previoustrack", handlers.onPrevious);
 
-  // Saut direct à un timestamp (barre de progression glissante)
   navigator.mediaSession.setActionHandler("seekto", (details) => {
     if (details.seekTime !== undefined) {
       handlers.onSeekTo(details.seekTime);
     }
   });
 
-  // Saut relatif (boutons avance/recule rapide sur certains systèmes)
-  navigator.mediaSession.setActionHandler("seekforward", (details) => {
-    const offset = details.seekOffset ?? SEEK_INTERVAL;
-    handlers.onSeekTo(handlers.onSeekTo.__currentPosition__ + offset);
-  });
+  if (handlers.onSeekForward) {
+    navigator.mediaSession.setActionHandler("seekforward", (details) => {
+      const offset = details.seekOffset ?? SEEK_INTERVAL;
+      handlers.onSeekTo(_currentPosition + offset);
+    });
+  }
 
-  navigator.mediaSession.setActionHandler("seekbackward", (details) => {
-    const offset = details.seekOffset ?? SEEK_INTERVAL;
-    handlers.onSeekTo(handlers.onSeekTo.__currentPosition__ - offset);
-  });
-
-  // Stocker la position courante pour les sauts relatifs
-  handlers.onSeekTo.__currentPosition__ = 0;
-}
-
-export function updateCurrentPositionForSeek(currentTime: number) {
-  // Mettre à jour la position courante stockée pour les handlers seekforward/seekbackward
-  if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
-    // On utilise une propriété globale temporaire
-    (window as any).__mediaSessionCurrentPosition__ = currentTime;
+  if (handlers.onSeekBackward) {
+    navigator.mediaSession.setActionHandler("seekbackward", (details) => {
+      const offset = details.seekOffset ?? SEEK_INTERVAL;
+      handlers.onSeekTo(_currentPosition - offset);
+    });
   }
 }
 
-// ─── Reset / Cleanup ────────────────────────────────────────────────────────
-
+export function updateCurrentPositionForSeek(currentTime: number) {
+  _currentPosition = currentTime;
+}
 export function resetMediaSession() {
   if (!isSupported()) return;
 
@@ -142,8 +128,8 @@ export function resetMediaSession() {
     navigator.mediaSession.setActionHandler("seekforward", null);
     navigator.mediaSession.setActionHandler("seekbackward", null);
   } catch {
-    // Certains navigateurs ne supportent pas le null
   }
 
   clearMediaSessionPositionState();
+  _currentPosition = 0;
 }

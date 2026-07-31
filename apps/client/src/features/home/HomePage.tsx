@@ -1,18 +1,30 @@
 import { useTranslation } from "../../lib/i18n";
-import { useServersStore } from "../../stores/serversStore";
+import { useMostPlayedAlbums } from "./useMostPlayedAlbums";
+import { AlbumCard } from "./AlbumCard";
 
 export function HomePage() {
   const { t } = useTranslation();
-  const activeServer = useServersStore((state) =>
-    state.servers.find((s) => s.id === state.activeServerId)
-  );
+  const { albums, loading } = useMostPlayedAlbums();
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-white">
-        {t("home.greeting", { username: activeServer?.username ?? "" })}
-      </h1>
-      {/* upcoming: recent releases, playlists, top tracks */}
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("home.greeting")}</h1>
+
+      <section>
+        <h2 className="mb-4 text-xl font-semibold text-white">{t("home.mostPlayedAlbums")}</h2>
+
+        {loading ? (
+          <p className="text-neutral-400">{t("common.loading")}</p>
+        ) : albums.length === 0 ? (
+          <p className="text-neutral-400">{t("home.noAlbums")}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {albums.map((album) => (
+              <AlbumCard key={album.id} album={album} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

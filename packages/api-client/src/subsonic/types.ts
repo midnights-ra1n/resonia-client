@@ -17,3 +17,30 @@ export interface SubsonicResponseEnvelope<T = unknown> {
     error?: { code: number; message: string };
   } & T;
 }
+
+export interface AlbumSummary {
+  id: string;
+  name: string;
+  artist: string;
+  artistId?: string;
+  coverArt?: string;
+  songCount: number;
+  duration: number;
+  playCount?: number;
+  year?: number;
+}
+
+export interface SongDTO {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  albumId?: string;
+  coverArt?: string;
+  duration: number;
+  track?: number;
+}
+
+export interface AlbumWithSongsDTO extends AlbumSummary {
+  song: SongDTO[];
+}

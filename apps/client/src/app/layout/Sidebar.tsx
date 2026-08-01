@@ -1,7 +1,7 @@
 import { BarChart3, Disc, Download, Folder, Home, LayoutList, Library, Music, Settings, Star } from "lucide-react";
-import { NavLink, Link } from "react-router-dom";
-import { useTranslation } from "../../lib/i18n";
+import { Link, NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
+import { useTranslation } from "../../lib/i18n";
 
 const navLinks = [
   { to: "/", icon: Home, key: "nav.home" },
@@ -42,8 +42,8 @@ export function Sidebar() {
         </NavLink>
       ))}
 
-      {/* Spotify-like playlists section */}
-      <div className="mt-auto">
+      {/* Spotify-like playlists section - with scroll only for this section */}
+      <div className="mt-auto flex-1 overflow-y-auto">
         <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Playlists</h3>
         {loading ? (
           <div className="flex flex-col gap-1">

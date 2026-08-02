@@ -1,13 +1,8 @@
 import type { StoredServer } from "../../stores/serversStore";
 import { decryptPassword } from "../security/passwordVault";
 
-/**
- * ⚠️ Chemin à vérifier : ouvre les DevTools (onglet Réseau) sur ton instance Navidrome,
- * uploade une pochette de playlist manuellement depuis l'UI native, et confirme le path
- * exact de la requête (méthode, URL, nom du champ du fichier). Ajuste ci-dessous si besoin.
- */
-const ARTWORK_UPLOAD_PATH = (playlistId: string) => `/api/playlist/${playlistId}/artwork`;
-const ARTWORK_FILE_FIELD = "imageFile";
+const ARTWORK_UPLOAD_PATH = (playlistId: string) => `/api/playlist/${playlistId}/image`;
+const ARTWORK_FILE_FIELD = "image";
 
 async function nativeLogin(baseUrl: string, username: string, password: string): Promise<string> {
   const response = await fetch(`${baseUrl}/auth/login`, {
@@ -39,12 +34,14 @@ export async function uploadPlaylistArtwork(server: StoredServer, playlistId: st
   formData.append(ARTWORK_FILE_FIELD, file);
 
   const response = await fetch(`${server.url}${ARTWORK_UPLOAD_PATH(playlistId)}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${jwt}` },
+    method: "POST",
+    headers: { "x-nd-authorization": `Bearer ${jwt}` },
     body: formData,
   });
 
   if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error("[nativeApi] Échec upload, réponse:", body);
     throw new Error(`Échec de l'upload de la pochette (${response.status})`);
   }
 }

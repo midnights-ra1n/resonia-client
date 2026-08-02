@@ -1,20 +1,62 @@
-import type { AlbumSummary } from "@resonia/api-client/src/subsonic/types";
 import { useEffect, useState } from "react";
+import { useServersStore } from "../stores/serversStore";
+import { getClientForServer } from "../lib/subsonic/getClientForServer";
+import { useTranslation } from "../lib/i18n";
+
+export interface PlaylistItem {
+  id: string;
+  name: string;
+  songCount: number;
+  coverArt?: string; // URL déjà résolue, prête pour <img src>
+}
 
 export function usePlaylists() {
-  // L'API Subsonic/Navidrome n'a PAS d'endpoint pour les playlists.
-  // Il n'existe que des endpoints albums (`getAlbumList2`, `getAlbum`, etc.)
-  // On retourne toujours un tableau vide car il n'y a pas de support native pour les playlists.
-  const [playlists, setPlaylists] = useState<AlbumSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const servers = useServersStore((s) => s.servers);
+  const activeServerId = useServersStore((s) => s.activeServerId);
+  const { t } = useTranslation();
+
   useEffect(() => {
-    // Aucun appel API nécessaire — pas d'endpoint playlists dans Subsonic/Navidrome.
-    setPlaylists([]);
-    setLoading(false);
+    const server = servers.find((s) => s.id === activeServerId);
+    if (!server) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
     setError(null);
-  }, []);
+
+    const client = getClientForServer(server);
+
+    client
+      .getPlaylists()
+      .then((result) => {
+        if (cancelled) return;
+        setPlaylists(
+          result.map((p) => ({
+            id: p.id,
+            name: p.name,
+            songCount: p.songCount,
+            coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
+          })),
+        );
+      })
+      .catch((err) => {
+        console.error("[playlists] Échec du chargement", err);
+        if (!cancelled) setError(t("playlists.loadError"));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [servers, activeServerId, t]);
 
   return { playlists, loading, error };
 }

@@ -57,3 +57,13 @@ export interface SongDTO {
   playCount?: number;
 }
 
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  comment?: string;
+  owner?: string;
+  public?: boolean;
+  songCount: number;
+  duration: number;
+  coverArt?: string;
+}

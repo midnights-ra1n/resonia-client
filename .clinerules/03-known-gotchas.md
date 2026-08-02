@@ -83,7 +83,11 @@ retravaille le moteur audio, le cache, ou l'auth DOIT lire ce fichier en premier
   volontairement** par le mainteneur pour se concentrer sur le développement — elle
   sera traitée dans une discussion séparée. Ne pas générer de fichiers de doc formelle
   de sa propre initiative.
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> origin/development
 ## API native Navidrome (hors protocole Subsonic)
 
 Certaines fonctionnalités (ex: upload de pochette personnalisée de playlist) ne sont

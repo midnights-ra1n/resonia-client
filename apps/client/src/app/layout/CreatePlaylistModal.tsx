@@ -1,13 +1,13 @@
+import { ImagePlus, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { X, ImagePlus } from "lucide-react";
-import { useServersStore } from "../../stores/serversStore";
-import { getClientForServer } from "../../lib/subsonic/getClientForServer";
-import { uploadPlaylistArtwork } from "../../lib/navidrome/nativeApi";
 import { useTranslation } from "../../lib/i18n";
+import { uploadPlaylistArtwork } from "../../lib/navidrome/nativeApi";
+import { getClientForServer } from "../../lib/subsonic/getClientForServer";
+import { useServersStore } from "../../stores/serversStore";
 
 interface CreatePlaylistModalProps {
   onClose: () => void;
-  onCreated: () => void;
+  onCreated?: () => void;
 }
 
 export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalProps) {
@@ -56,7 +56,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
         }
       }
 
-      onCreated();
+      onCreated?.();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("playlists.createError"));

@@ -21,8 +21,10 @@ const navLinks = [
 export function Sidebar() {
   const { t } = useTranslation();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const { playlists } = usePlaylists();
-  const handlePlaylistCreated = () => {};
+  const { playlists, refreshPlaylists } = usePlaylists();
+  const handlePlaylistCreated = () => {
+    refreshPlaylists();
+  };
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4">

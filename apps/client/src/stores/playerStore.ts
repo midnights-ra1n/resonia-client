@@ -277,7 +277,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     toggleShuffle: () =>
       set((state) => {
         scheduledNextKey = null;
-        return { isShuffle: !state.isShuffle };
+        const nextShuffleState = !state.isShuffle;
+
+        if (nextShuffleState && state.queue.length > 2) {
+          // On mélange uniquement les titres à venir, jamais ceux déjà joués ni le titre en cours.
+          const played = state.queue.slice(0, state.queueIndex + 1);
+          const upcoming = [...state.queue.slice(state.queueIndex + 1)];
+
+          for (let i = upcoming.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [upcoming[i], upcoming[j]] = [upcoming[j], upcoming[i]];
+          }
+
+          return { isShuffle: nextShuffleState, queue: [...played, ...upcoming] };
+        }
+
+        return { isShuffle: nextShuffleState };
       }),
     isRepeat: false,
     toggleRepeat: () =>
@@ -294,13 +309,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         loadAndPlay(currentTrack, queue, 0);
         return;
       }
+      const nextIndex = queueIndex + 1;
 
-      let nextIndex: number;
-      if (isShuffle && queue.length > 1) {
-        // Vrai mode aléatoire : choisir une piste au hasard dans la queue
-        nextIndex = Math.floor(Math.random() * queue.length);
-      } else {
-        nextIndex = queueIndex + 1;
+      if (nextIndex >= queue.length) {
+        engine.stop();
+        set({ isPlaying: false });
+        setMediaSessionPlaybackState("paused");
+        return;
       }
 
       if (nextIndex >= queue.length && !isShuffle) {

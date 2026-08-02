@@ -49,20 +49,22 @@ export function Sidebar() {
         </NavLink>
       ))}
 
+      <div className="mb-2 mt-6 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Playlists</h3>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="text-neutral-400 transition hover:text-white"
+          title="Créer une playlist"
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+
       {/* Spotify-like playlists section - with scroll only for this section */}
-      <div className="mt-auto flex-1 overflow-y-auto">
-        <div className="mb-2 mt-6 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Playlists</h3>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="text-neutral-400 transition hover:text-white"
-            title="Créer une playlist"
-          >
-            <Plus size={18} />
-          </button>
-        </div>
+      <div className="mt-auto overflow-y-scroll">
+
         {/* Version label */}
-        <nav className="space-y-1">
+        <nav className="space-y-1 overflow-y-auto">
           {playlists.map((playlist) => (
             <PlaylistSidebarItem key={playlist.id} playlist={playlist} />
           ))}

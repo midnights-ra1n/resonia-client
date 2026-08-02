@@ -1,6 +1,6 @@
 import { GripVertical, X } from "lucide-react";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useState } from "react";
 
 const MAX_QUEUE_DISPLAY = 50;
 
@@ -11,66 +11,85 @@ function formatDuration(seconds: number): string {
 }
 
 export function QueuePanel() {
-  const { showQueue, toggleQueue, queue, queueIndex, reorderQueue } = usePlayerStore();
+  const { showQueue, toggleQueue } = usePlayerStore();
 
   if (!showQueue) return null;
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-80 bg-neutral-900 border-l border-neutral-800 z-50 flex flex-col shadow-2xl">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
-        <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
-          File d'attente
-        </h2>
-        <button
-          onClick={toggleQueue}
-          className="text-neutral-400 hover:text-white transition-colors"
-          title="Fermer"
-        >
+    // top-0 : reste sous un éventuel header futur (0 pour l'instant, ajuste si tu ajoutes une topbar)
+    // bottom-20 : s'arrête juste au-dessus de la PlayerBar (h-20 = 80px)
+    <div className="fixed right-0 top-0 bottom-20 z-40 flex w-80 flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl">
+      <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-4 py-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-white">File d'attente</h2>
+        <button onClick={toggleQueue} className="text-neutral-400 transition-colors hover:text-white" title="Fermer">
           <X size={18} />
         </button>
       </div>
 
-      {/* Queue List */}
       <QueueList />
     </div>
   );
 }
 
+type DropPosition = "before" | "after";
+
 function QueueList() {
   const { queue, queueIndex, reorderQueue } = usePlayerStore();
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const dragItemRef = useRef<number | null>(null);
+
+  const [dragLocalIndex, setDragLocalIndex] = useState<number | null>(null);
+  const [hoverLocalIndex, setHoverLocalIndex] = useState<number | null>(null);
+  const [dropPosition, setDropPosition] = useState<DropPosition>("before");
 
   const upcoming = queue.slice(queueIndex + 1, queueIndex + 1 + MAX_QUEUE_DISPLAY);
   const hasMore = queue.length > queueIndex + 1 + MAX_QUEUE_DISPLAY;
 
-  const handleDragStart = useCallback((index: number) => {
-    dragItemRef.current = index;
-    setDragIndex(index);
+  const handleDragStart = useCallback((localIndex: number) => {
+    setDragLocalIndex(localIndex);
   }, []);
 
-  const handleDragOver = useCallback(
-    (e: React.DragEvent, targetIndex: number) => {
+  const handleDragOverItem = useCallback(
+    (e: React.DragEvent, localIndex: number) => {
       e.preventDefault();
-      const sourceIndex = dragItemRef.current;
-      if (sourceIndex === null || sourceIndex === targetIndex) return;
-      reorderQueue(sourceIndex, targetIndex);
-      dragItemRef.current = targetIndex;
-      setDragIndex(targetIndex);
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isTopHalf = e.clientY < rect.top + rect.height / 2;
+      setHoverLocalIndex(localIndex);
+      setDropPosition(isTopHalf ? "before" : "after");
     },
-    [reorderQueue]
+    [],
   );
 
+  const handleDrop = useCallback(() => {
+    if (dragLocalIndex === null || hoverLocalIndex === null) {
+      setDragLocalIndex(null);
+      setHoverLocalIndex(null);
+      return;
+    }
+
+    // Conversion des index locaux (relatifs à "upcoming") en index absolus dans la vraie queue.
+    const baseOffset = queueIndex + 1;
+    const fromAbsolute = baseOffset + dragLocalIndex;
+
+    let toAbsolute = baseOffset + hoverLocalIndex + (dropPosition === "after" ? 1 : 0);
+    // Si on retire un élément avant la cible, la cible se décale d'un cran vers le haut.
+    if (fromAbsolute < toAbsolute) toAbsolute -= 1;
+
+    if (fromAbsolute !== toAbsolute) {
+      reorderQueue(fromAbsolute, toAbsolute);
+    }
+
+    setDragLocalIndex(null);
+    setHoverLocalIndex(null);
+  }, [dragLocalIndex, hoverLocalIndex, dropPosition, queueIndex, reorderQueue]);
+
   const handleDragEnd = useCallback(() => {
-    dragItemRef.current = null;
-    setDragIndex(null);
+    setDragLocalIndex(null);
+    setHoverLocalIndex(null);
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       {upcoming.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full text-neutral-500 gap-2 px-6 text-center">
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-neutral-500">
           <p className="text-sm">Aucune musique dans la file d'attente.</p>
         </div>
       ) : (
@@ -79,10 +98,12 @@ function QueueList() {
             <QueueItem
               key={`${track.id}-${i}`}
               track={track}
-              index={i}
-              isDragging={dragIndex === i}
+              localIndex={i}
+              isDragging={dragLocalIndex === i}
+              showIndicatorBefore={hoverLocalIndex === i && dropPosition === "before" && dragLocalIndex !== i}
+              showIndicatorAfter={hoverLocalIndex === i && dropPosition === "after" && dragLocalIndex !== i}
               onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
+              onDragOverItem={handleDragOverItem}
               onDragEnd={handleDragEnd}
             />
           ))}
@@ -100,57 +121,58 @@ function QueueList() {
 
 function QueueItem({
   track,
-  index,
+  localIndex,
   isDragging,
+  showIndicatorBefore,
+  showIndicatorAfter,
   onDragStart,
-  onDragOver,
+  onDragOverItem,
   onDragEnd,
 }: {
   track: Track;
-  index: number;
+  localIndex: number;
   isDragging: boolean;
-  onDragStart: (index: number) => void;
-  onDragOver: (e: React.DragEvent, index: number) => void;
+  showIndicatorBefore: boolean;
+  showIndicatorAfter: boolean;
+  onDragStart: (localIndex: number) => void;
+  onDragOverItem: (e: React.DragEvent, localIndex: number) => void;
   onDragEnd: () => void;
 }) {
   const coverUrl = track.coverUrl ?? "/default-cover.svg";
 
   return (
-    <li
-      draggable
-      onDragStart={() => onDragStart(index)}
-      onDragOver={(e) => onDragOver(e, index)}
-      onDragEnd={onDragEnd}
-      className={`group flex items-center gap-3 px-4 py-2 cursor-grab active:cursor-grabbing transition-colors ${
-        isDragging
-          ? "bg-neutral-800 opacity-60"
-          : "hover:bg-neutral-800/50"
-      }`}
-    >
-      {/* Drag handle */}
-      <div className="text-neutral-600 group-hover:text-neutral-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <GripVertical size={14} />
+    <li className="relative">
+      {showIndicatorBefore && (
+        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+      )}
+
+      <div
+        draggable
+        onDragStart={() => onDragStart(localIndex)}
+        onDragOver={(e) => onDragOverItem(e, localIndex)}
+        onDragEnd={onDragEnd}
+        className={`group flex cursor-grab items-center gap-3 px-4 py-2 transition-colors active:cursor-grabbing ${
+          isDragging ? "opacity-40" : "hover:bg-neutral-800/50"
+        }`}
+      >
+        <div className="shrink-0 text-neutral-600 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-neutral-400">
+          <GripVertical size={14} />
+        </div>
+
+        <img src={coverUrl} alt="" className="h-10 w-10 shrink-0 rounded object-cover" loading="lazy" />
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-white">{track.title}</p>
+          <p className="truncate text-xs text-neutral-400">{track.artist}</p>
+        </div>
+
+        {track.duration > 0 && (
+          <span className="shrink-0 text-xs text-neutral-500">{formatDuration(track.duration)}</span>
+        )}
       </div>
 
-      {/* Cover */}
-      <img
-        src={coverUrl}
-        alt=""
-        className="w-10 h-10 rounded shrink-0 object-cover"
-        loading="lazy"
-      />
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-white truncate">{track.title}</p>
-        <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
-      </div>
-
-      {/* Duration */}
-      {track.duration > 0 && (
-        <span className="text-xs text-neutral-500 shrink-0">
-          {formatDuration(track.duration)}
-        </span>
+      {showIndicatorAfter && (
+        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
       )}
     </li>
   );

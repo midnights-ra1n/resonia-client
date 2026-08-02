@@ -7,7 +7,8 @@ export interface PlaylistItem {
   id: string;
   name: string;
   songCount: number;
-  coverArt?: string; // URL déjà résolue, prête pour <img src>
+  coverArt?: string;
+  lastPlayedTrackIds?: Set<string>;
 }
 
 export function usePlaylists() {

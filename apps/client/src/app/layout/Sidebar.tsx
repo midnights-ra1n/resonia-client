@@ -2,6 +2,7 @@ import { BarChart3, Disc, Download, Folder, Home, LayoutList, Library, Music, Se
 import { Link, NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
 import { useTranslation } from "../../lib/i18n";
+import { PlaylistSidebarItem } from "./PlaylistSidebarItem";
 
 const navLinks = [
   { to: "/", icon: Home, key: "nav.home" },
@@ -45,51 +46,12 @@ export function Sidebar() {
       {/* Spotify-like playlists section - with scroll only for this section */}
       <div className="mt-auto flex-1 overflow-y-auto">
         <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Playlists</h3>
-        {loading ? (
-          <div className="flex flex-col gap-1">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-10 w-full bg-neutral-900 rounded-lg animate-pulse"></div>
-            ))}
-          </div>
-        ) : error ? (
-          <div className="text-sm text-red-400">{error}</div>
-        ) : playlists.length > 0 ? (
-          <nav className="space-y-1">
-            {playlists.map((playlist) => (
-              <Link
-                key={playlist.id}
-                to={`/playlists/${playlist.id}`}
-                className="group flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition hover:bg-neutral-900"
-              >
-                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
-                  {playlist.coverArt ? (
-                    <img
-                      src={playlist.coverArt}
-                      alt={playlist.name}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-neutral-600">
-                      <Library size={16} />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center rounded bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    <Music size={18} className="text-white" />
-                  </div>
-                </div>
-                <span className="truncate text-neutral-300 group-hover:text-white">{playlist.name}</span>
-              </Link>
-            ))}
-          </nav>
-        ) : (
-          <p className="text-sm text-neutral-500">Pas de playlists disponibles</p>
-        )}
-      </div>
-
-      {/* Version label */}
-      <div className="space-y-1">
-        <label className="text-sm text-neutral-400">resonia-client version</label>
+        {/* Version label */}
+        <nav className="space-y-1">
+          {playlists.map((playlist) => (
+            <PlaylistSidebarItem key={playlist.id} playlist={playlist} />
+          ))}
+        </nav>
       </div>
     </aside>
   );

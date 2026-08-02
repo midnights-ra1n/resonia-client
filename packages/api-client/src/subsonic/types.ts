@@ -67,3 +67,7 @@ export interface PlaylistSummary {
   duration: number;
   coverArt?: string;
 }
+
+export interface PlaylistWithSongsDTO extends PlaylistSummary {
+  entry: SongDTO[];
+}

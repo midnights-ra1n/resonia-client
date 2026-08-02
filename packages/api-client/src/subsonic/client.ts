@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumSummary, AlbumWithSongsDTO, PlaylistSummary, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumSummary, AlbumWithSongsDTO, PlaylistSummary, PlaylistWithSongsDTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -126,6 +126,11 @@ export class SubsonicClient {
   async getPlaylists(): Promise<PlaylistSummary[]> {
     const result = await this.request<{ playlists: { playlist?: PlaylistSummary[] } }>("getPlaylists");
     return result.playlists.playlist ?? [];
+  }
+
+  async getPlaylist(playlistId: string): Promise<PlaylistWithSongsDTO> {
+    const result = await this.request<{ playlist: PlaylistWithSongsDTO }>("getPlaylist", { id: playlistId });
+    return result.playlist;
   }
 
   async getAlbumList2(

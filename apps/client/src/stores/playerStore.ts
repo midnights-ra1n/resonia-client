@@ -230,15 +230,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     playTrack: async (track, queueParam) => {
       let queue = queueParam ?? [track];
       if (get().isShuffle && queue.length > 1) {
-        const rest = queue.slice(1);
-        for (let i = rest.length - 1; i > 0; i--) {
+        // Shuffle : mélange aléatoire complet - toute piste peut être jouée en premier
+        for (let i = queue.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [rest[i], rest[j]] = [rest[j], rest[i]];
+          [queue[i], queue[j]] = [queue[j], queue[i]];
         }
-        queue = [queue[0], ...rest];
       }
-      const firstTrack = get().isShuffle ? queue[0] : track;
-      await loadAndPlay(firstTrack, queue, 0);
+      await loadAndPlay(track, queue, 0);
     },
 
     isPlaying: false,

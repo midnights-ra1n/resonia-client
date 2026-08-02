@@ -47,6 +47,19 @@
     "creating": "Création...",
     "createError": "Échec de la création de la playlist"
   },
+  "album": {
+  "labelAlbum": "Album",
+  "trackCount": "{{count}} titres",
+  "durationHoursMinutes": "{{hours}} h {{minutes}} min",
+  "durationMinutes": "{{minutes}} min",
+  "play": "Lecture",
+  "shuffle": "Lecture aléatoire",
+  "columnTitle": "Titre",
+  "columnDuration": "Durée",
+  "notFound": "Album introuvable",
+  "moreFromArtist": "Plus de {{artist}}",
+  "similarAlbums": "Vous aimerez peut-être aussi"
+},
   "search": {
     "placeholder": "Rechercher titres, artistes, albums...",
     "noResults": "Aucun résultat",

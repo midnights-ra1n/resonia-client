@@ -28,6 +28,14 @@ export interface AlbumSummary {
   duration: number;
   playCount?: number;
   year?: number;
+  genre?: string;
+}
+
+export interface ArtistWithAlbumsDTO {
+  id: string;
+  name: string;
+  albumCount: number;
+  album?: AlbumSummary[];
 }
 
 export interface SongDTO {

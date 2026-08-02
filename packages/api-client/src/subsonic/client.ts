@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumSummary, AlbumWithSongsDTO, PlaylistSummary, PlaylistWithSongsDTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumSummary, AlbumWithSongsDTO, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -146,6 +146,20 @@ export class SubsonicClient {
     await this.request("updatePlaylist", params);
   }
 
+async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
+    const result = await this.request<{ artist: ArtistWithAlbumsDTO }>("getArtist", { id: artistId });
+    return result.artist;
+  }
+
+  async getAlbumsByGenre(genre: string, size = 20): Promise<AlbumSummary[]> {
+    const result = await this.request<{ albumList2: { album?: AlbumSummary[] } }>("getAlbumList2", {
+      type: "byGenre",
+      genre,
+      size: String(size),
+    });
+    return result.albumList2.album ?? [];
+  }
+
   async getAlbumList2(
     type: "frequent" | "recent" | "newest" | "random" | "highest",
     size = 20,
@@ -177,3 +191,4 @@ export class SubsonicClient {
     return `${this.url}/rest/getCoverArt?${params.toString()}`;
   }
 }
+

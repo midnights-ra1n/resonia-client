@@ -6,6 +6,8 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { StatsPage } from "../features/stats/StatsPage";
 import { AppLayout } from "./layout/AppLayout";
 
+import { AlbumPage } from "../features/album/AlbumPage";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -16,6 +18,7 @@ export const router = createBrowserRouter([
       { path: "downloads", element: <DownloadsPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "search", element: <SearchPage /> },
+      { path: "albums/:id", element: <AlbumPage /> },
     ],
   },
 ]);

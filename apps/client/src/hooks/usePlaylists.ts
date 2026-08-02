@@ -59,5 +59,34 @@ export function usePlaylists() {
     };
   }, [servers, activeServerId, t]);
 
-  return { playlists, loading, error };
+  const refreshPlaylists = async () => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const server = servers.find((s) => s.id === activeServerId);
+      if (!server) return;
+
+      const client = getClientForServer(server);
+
+      await client.getPlaylists().then((result) => {
+        if (cancelled) return;
+        setPlaylists(
+          result.map((p) => ({
+            id: p.id,
+            name: p.name,
+            songCount: p.songCount,
+            coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
+          })),
+        );
+      });
+    } catch (err) {
+      console.error("[playlists] Rafraîchissement échoué", err);
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  };
+
+  return { playlists, loading, error, refreshPlaylists };
 }

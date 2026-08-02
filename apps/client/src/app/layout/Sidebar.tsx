@@ -45,7 +45,7 @@ export function Sidebar() {
 
       {/* Spotify-like playlists section - with scroll only for this section */}
       <div className="mt-auto flex-1 overflow-y-auto">
-        <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Playlists</h3>
+        <h3 className="text-sm font-medium text-neutral-400 mb-2 mt-6 uppercase tracking-wider">Playlists</h3>
         {/* Version label */}
         <nav className="space-y-1">
           {playlists.map((playlist) => (

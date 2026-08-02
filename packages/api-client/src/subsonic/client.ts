@@ -133,6 +133,19 @@ export class SubsonicClient {
     return result.playlist;
   }
 
+  async createPlaylist(name: string): Promise<PlaylistSummary> {
+    const result = await this.request<{ playlist: PlaylistSummary }>("createPlaylist", { name });
+    return result.playlist;
+  }
+
+  async updatePlaylist(playlistId: string, options: { name?: string; comment?: string; public?: boolean }): Promise<void> {
+    const params: Record<string, string> = { playlistId };
+    if (options.name !== undefined) params.name = options.name;
+    if (options.comment !== undefined) params.comment = options.comment;
+    if (options.public !== undefined) params.public = String(options.public);
+    await this.request("updatePlaylist", params);
+  }
+
   async getAlbumList2(
     type: "frequent" | "recent" | "newest" | "random" | "highest",
     size = 20,

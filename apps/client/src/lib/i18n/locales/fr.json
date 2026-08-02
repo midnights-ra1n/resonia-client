@@ -38,6 +38,15 @@
     "mostPlayedSongs": "Titres les plus joués",
     "noSongs": "Aucun titre à afficher pour le moment"
   },
+  "playlists": {
+    "loadError": "Échec du chargement des playlists",
+    "createTitle": "Créer une playlist",
+    "nameLabel": "Nom",
+    "descriptionLabel": "Description",
+    "create": "Créer",
+    "creating": "Création...",
+    "createError": "Échec de la création de la playlist"
+  },
   "search": {
     "placeholder": "Rechercher titres, artistes, albums...",
     "noResults": "Aucun résultat",

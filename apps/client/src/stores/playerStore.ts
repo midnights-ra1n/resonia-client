@@ -287,7 +287,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       }),
 
     nextTrack: () => {
-      const { queue, queueIndex, isRepeat, currentTrack } = get();
+      const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
       if (queue.length === 0) return;
 
       if (isRepeat && currentTrack) {
@@ -295,8 +295,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         return;
       }
 
-      const nextIndex = queueIndex + 1;
-      if (nextIndex >= queue.length) {
+      let nextIndex: number;
+      if (isShuffle && queue.length > 1) {
+        // Vrai mode aléatoire : choisir une piste au hasard dans la queue
+        nextIndex = Math.floor(Math.random() * queue.length);
+      } else {
+        nextIndex = queueIndex + 1;
+      }
+
+      if (nextIndex >= queue.length && !isShuffle) {
         engine.stop();
         set({ isPlaying: false });
         setMediaSessionPlaybackState("paused");

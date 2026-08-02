@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useServersStore } from "../stores/serversStore";
-import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { useTranslation } from "../lib/i18n";
+import { getClientForServer } from "../lib/subsonic/getClientForServer";
+import { useServersStore } from "../stores/serversStore";
 
 export interface PlaylistItem {
   id: string;

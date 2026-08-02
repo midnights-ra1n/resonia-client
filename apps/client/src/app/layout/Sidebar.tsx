@@ -1,7 +1,9 @@
-import { BarChart3, Disc, Download, Folder, Home, LayoutList, Library, Music, Settings, Star } from "lucide-react";
-import { Link, NavLink } from "react-router-dom";
+import { BarChart3, Disc, Download, Folder, Home, LayoutList, Music, Plus, Settings, Star } from "lucide-react";
+import { useState } from "react";
+import { NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
 import { useTranslation } from "../../lib/i18n";
+import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { PlaylistSidebarItem } from "./PlaylistSidebarItem";
 
 const navLinks = [
@@ -18,7 +20,9 @@ const navLinks = [
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const { playlists, loading, error } = usePlaylists();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { playlists } = usePlaylists();
+  const handlePlaylistCreated = () => {};
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4">
@@ -45,7 +49,16 @@ export function Sidebar() {
 
       {/* Spotify-like playlists section - with scroll only for this section */}
       <div className="mt-auto flex-1 overflow-y-auto">
-        <h3 className="text-sm font-medium text-neutral-400 mb-2 mt-6 uppercase tracking-wider">Playlists</h3>
+        <div className="mb-2 mt-6 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Playlists</h3>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="text-neutral-400 transition hover:text-white"
+            title="Créer une playlist"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
         {/* Version label */}
         <nav className="space-y-1">
           {playlists.map((playlist) => (
@@ -53,6 +66,9 @@ export function Sidebar() {
           ))}
         </nav>
       </div>
+      {showCreateModal && (
+        <CreatePlaylistModal onClose={() => setShowCreateModal(false)} onCreated={handlePlaylistCreated} />
+      )}
     </aside>
   );
 }

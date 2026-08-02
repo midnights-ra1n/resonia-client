@@ -2,6 +2,7 @@ import { SubsonicClient } from "@resonia/api-client";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "../../lib/i18n";
 import { useServersStore } from "../../stores/serversStore";
+import { encryptPassword } from "../../lib/security/passwordVault";
 
 export function LoginPage() {
   const addServer = useServersStore((s) => s.addServer);
@@ -22,12 +23,15 @@ export function LoginPage() {
       const client = new SubsonicClient({ url: serverUrl, username, password });
       await client.ping();
 
+      const encryptedPassword = await encryptPassword(password);
+
       await addServer({
         id: crypto.randomUUID(),
         name: new URL(serverUrl).hostname,
         url: serverUrl,
         username,
         ...client.credentials,
+        encryptedPassword,
         createdAt: Date.now(),
       });
     } catch (err) {

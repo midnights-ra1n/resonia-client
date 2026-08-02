@@ -38,6 +38,15 @@
     "mostPlayedSongs": "Most played songs",
     "noSongs": "No songs to show yet"
   },
+  "playlists": {
+    "loadError": "Failed to load playlists",
+    "createTitle": "Create playlist",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "create": "Create",
+    "creating": "Creating...",
+    "createError": "Failed to create playlist"
+  },
   "search": {
     "placeholder": "Search titles, artists, albums...",
     "noResults": "No results",

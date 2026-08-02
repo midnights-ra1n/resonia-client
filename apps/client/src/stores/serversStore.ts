@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { storage } from "../lib/storage";
+import type { EncryptedPassword } from "../lib/security/passwordVault";
 
 export interface StoredServer {
   id: string;
@@ -8,6 +9,7 @@ export interface StoredServer {
   username: string;
   salt: string;
   token: string;
+  encryptedPassword?: EncryptedPassword;
   createdAt: number;
 }
 

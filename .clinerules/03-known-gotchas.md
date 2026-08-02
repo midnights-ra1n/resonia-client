@@ -83,3 +83,30 @@ retravaille le moteur audio, le cache, ou l'auth DOIT lire ce fichier en premier
   volontairement** par le mainteneur pour se concentrer sur le développement — elle
   sera traitée dans une discussion séparée. Ne pas générer de fichiers de doc formelle
   de sa propre initiative.
+  
+## API native Navidrome (hors protocole Subsonic)
+
+Certaines fonctionnalités (ex: upload de pochette personnalisée de playlist) ne sont
+**pas exposées via le protocole Subsonic** — elles nécessitent l'API native de Navidrome
+(celle utilisée par son interface web officielle), avec un système d'auth différent.
+
+- **Login natif** : `POST {baseUrl}/auth/login` avec `{ username, password }` en JSON
+  (mot de passe en clair requis — voir `lib/security/passwordVault.ts` pour le
+  chiffrement du mot de passe stocké côté client). Retourne
+  `{ token, subsonicSalt, subsonicToken, ... }`.
+- **En-tête d'authentification pour les requêtes natives protégées : `x-nd-authorization:
+  Bearer <token>`, PAS le standard `Authorization: Bearer <token>`.** Un `Authorization`
+  standard, même avec un JWT parfaitement valide, retourne `401 {"error":"Not
+  authenticated"}` — confirmé en testant en `curl` en dehors de tout navigateur, donc ce
+  n'est ni un souci CORS ni un souci de reverse proxy. Piège découvert en développement,
+  à ne pas re-deviner.
+- **Upload de pochette de playlist** : `POST {baseUrl}/api/playlist/{id}/image`
+  (`POST`, pas `PUT`/`PATCH`), en `multipart/form-data` avec le champ nommé **`image`**
+  (pas `imageFile`, `file`, ou `artwork`). Voir `lib/navidrome/nativeApi.ts`.
+- **Méthode pour découvrir un endpoint natif inconnu** : ouvrir l'interface web Navidrome
+  elle-même (`{baseUrl}/app/`), déclencher l'action manuellement, et inspecter la requête
+  réelle dans les DevTools (onglet Réseau → Headers + Payload/Form Data). Plus fiable que
+  de deviner à partir de la doc publique, qui ne documente pas ces routes internes en détail.
+- La lecture (affichage) des pochettes de playlist passe en revanche bien par l'endpoint
+  Subsonic standard `getCoverArt`, avec un `id` préfixé `pl-` (ex: `id=pl-<playlistId>`) —
+  donc lecture = Subsonic classique, écriture (upload) = API native.

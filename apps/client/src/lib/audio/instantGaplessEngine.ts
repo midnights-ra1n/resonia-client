@@ -56,11 +56,7 @@ export class InstantGaplessEngine {
 
     this.nativeAudio = new Audio();
     this.nativeAudio.preload = "auto";
-    // NB : pas de crossOrigin ici. On ne lit jamais les échantillons bruts du flux
-    // natif (aucun AnalyserNode / getChannelData dessus), donc le CORS n'est pas
-    // nécessaire pour la lecture. Le régler à "anonymous" sans en-têtes CORS
-    // parfaitement configurés côté serveur pouvait, sur Safari, couper le son
-    // entièrement au lieu de simplement bloquer la lecture des échantillons.
+    this.nativeAudio.crossOrigin = "anonymous";
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);

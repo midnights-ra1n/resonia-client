@@ -6,9 +6,8 @@ import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useTranslation } from "../../lib/i18n";
 import { useArtistAlbums } from "./useArtistAlbums";
-import { useSimilarAlbums } from "./useSimilarAlbums";
 import { AlbumCarousel } from "./AlbumCarousel";
-
+import { useSimilarAlbums } from "./useSimilarAlbums";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -38,7 +37,7 @@ export function AlbumPage() {
 
   // Hooks appelés inconditionnellement, AVANT tout early return.
   const artistId = album?.artistId;
-  const { albums: artistAlbums, loading: artistAlbumsLoading } = useArtistAlbums(
+  const { albums: _artistAlbums, loading: _artistAlbumsLoading } = useArtistAlbums(
     artistId,
     album?.id ?? "",
   );
@@ -46,14 +45,8 @@ export function AlbumPage() {
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
 
-  // Premier carrousel : albums de l'artiste (ex: Scooter)
-  const { albums: scotterAlbums, loading: scotterLoading } = useSimilarAlbums(
-    artistId,
-    album?.id ?? "",
-    "scotter",
-  );
 
-  // Deuxième carrousel : suggestions aléatoires
+  // Deuxième carrousel : suggestions aléatoires via search3
   const { albums: randomAlbums, loading: randomLoading } = useSimilarAlbums(
     artistId,
     album?.id ?? "",
@@ -194,19 +187,17 @@ export function AlbumPage() {
           );
         })}
 
-        {/* Carrousel albums de l'artiste */}
-        {!scotterLoading && (
+        {/* Carrousel "Plus de l'artiste" */}
+        {!_artistAlbumsLoading && (
           <div className="mt-10">
-            <h2 className="mb-4 text-xl font-semibold text-white">{t("album.moreFromArtist", { artist: album.artist })}</h2>
-            <AlbumCarousel title={""} albums={scotterAlbums} />
+            <AlbumCarousel title={t("album.moreFromArtist", { artist: album.artist })} albums={_artistAlbums} />
           </div>
         )}
 
         {/* Carrousel suggestions aléatoires */}
         {!randomLoading && (
           <div className="mt-10">
-            <h2 className="mb-4 text-xl font-semibold text-white">{t("album.similarAlbums")}</h2>
-            <AlbumCarousel title={""} albums={randomAlbums} />
+            <AlbumCarousel title={t("album.similarAlbums")} albums={randomAlbums} />
           </div>
         )}
       </div>

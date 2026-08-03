@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import type { AlbumSummary, ArtistWithAlbumsDTO } from "@resonia/api-client";
+import type { AlbumSummary } from "@resonia/api-client";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 
-type SimilarAlbumsTitle = "scotter" | "random" | undefined;
+type SimilarAlbumsTitle = "random" | undefined;
 
 export function useSimilarAlbums(
   artistId: string | undefined,
@@ -34,26 +34,10 @@ export function useSimilarAlbums(
       setLoading(true);
 
       try {
-        // Récupération des albums de l'artiste via getArtist
-        const artist = await getClientForServer(server).getArtist(artistId);
-        const artistAlbums: AlbumSummary[] = artist.album ?? [];
+        // Suggestions aléatoires via getAlbumList2 (type: random)
+        const randomAlbums: AlbumSummary[] = await getClientForServer(server).getAlbumList2("random", 20, 0);
 
-        let allAlbums: AlbumSummary[] = [];
-
-        // Si title === "scotter", on utilise directement les albums de l'artiste
-        if (title === "scotter") {
-          allAlbums = artistAlbums;
-        } else {
-          // Suggestions aléatoires via search3("") triés par playCount
-          const searchResult = await getClientForServer(server).search3("");
-          const popularAlbums: AlbumSummary[] = searchResult ?? [];
-
-          // On trie par playCount décroissant et on prend les 20 premiers (excluant l'album actuel)
-          allAlbums = popularAlbums
-            .filter((a) => a.id !== excludeAlbumId && a.playCount > 0)
-            .sort((a, b) => (b.playCount ?? 0) - (a.playCount ?? 0))
-            .slice(0, 20);
-        }
+        const allAlbums = randomAlbums.filter((a) => a.id !== excludeAlbumId).slice(0, 20);
 
         if (!cancelled) {
           setAlbums(allAlbums);

@@ -4,6 +4,8 @@ import type { AlbumSummary } from "@resonia/api-client";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
+import { Link } from "react-router-dom";
+
 
 interface AlbumCardProps {
   album: AlbumSummary;
@@ -46,7 +48,9 @@ export function AlbumCard({ album }: AlbumCardProps) {
   }
 
   return (
-    <div className="group relative w-full cursor-pointer rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800">
+      <Link
+    to={`/albums/${album.id}`}
+    className="group relative block w-full cursor-pointer rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800">
       <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
         {coverUrl ? (
           <img src={coverUrl} alt={album.name} className="h-full w-full object-cover" />
@@ -66,6 +70,6 @@ export function AlbumCard({ album }: AlbumCardProps) {
 
       <p className="truncate text-sm font-medium text-white">{album.name}</p>
       <p className="truncate text-xs text-neutral-400">{album.artist}</p>
-    </div>
+    </Link>
   );
 }

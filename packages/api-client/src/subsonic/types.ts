@@ -18,6 +18,10 @@ export interface SubsonicResponseEnvelope<T = unknown> {
   } & T;
 }
 
+export interface RecordLabel {
+  name: string;
+}
+
 export interface AlbumSummary {
   id: string;
   name: string;
@@ -29,6 +33,8 @@ export interface AlbumSummary {
   playCount?: number;
   year?: number;
   genre?: string;
+  copyright?: string;
+  recordLabels?: RecordLabel[];
 }
 
 export interface ArtistWithAlbumsDTO {
@@ -47,22 +53,13 @@ export interface SongDTO {
   coverArt?: string;
   duration: number;
   track?: number;
+  playCount?: number;
+  year?: number;
+  copyright?: string;
 }
 
 export interface AlbumWithSongsDTO extends AlbumSummary {
   song: SongDTO[];
-}
-
-export interface SongDTO {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  albumId?: string;
-  coverArt?: string;
-  duration: number;
-  track?: number;
-  playCount?: number;
 }
 
 export interface PlaylistSummary {

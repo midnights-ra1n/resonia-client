@@ -8,6 +8,8 @@ import { useTranslation } from "../../lib/i18n";
 import { useArtistAlbums } from "./useArtistAlbums";
 import { AlbumCarousel } from "./AlbumCarousel";
 import { useSimilarAlbums } from "./useSimilarAlbums";
+import { useEffect, useState } from "react";
+import { getNativeClientForServer } from "../../lib/subsonic/getNativeClientForServer";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -35,7 +37,6 @@ export function AlbumPage() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
 
-  // Hooks appelés inconditionnellement, AVANT tout early return.
   const artistId = album?.artistId;
   const { albums: _artistAlbums, loading: _artistAlbumsLoading } = useArtistAlbums(
     artistId,
@@ -46,12 +47,29 @@ export function AlbumPage() {
   const client = server ? getClientForServer(server) : null;
 
 
-  // Deuxième carrousel : suggestions aléatoires via search3
   const { albums: randomAlbums, loading: randomLoading } = useSimilarAlbums(
     artistId,
     album?.id ?? "",
     undefined,
   );
+
+  const [nativeCopyright, setNativeCopyright] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!album || !server) return;
+    let cancelled = false;
+
+    getNativeClientForServer(server)
+      .then((native) => native?.getAlbumCopyright(album.id))
+      .then((copyright) => {
+        if (!cancelled && copyright) setNativeCopyright(copyright);
+      })
+      .catch((err) => console.error("[album] Copyright natif indisponible", err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [album, server]);
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -78,6 +96,14 @@ export function AlbumPage() {
 
   const isThisAlbumCurrent = currentTrack !== null && album.song.some((s) => s.id === currentTrack.id);
   const isThisAlbumPlaying = isThisAlbumCurrent && isPlaying;
+
+  const extractAlbumCopyright = () => {
+  if (nativeCopyright) return nativeCopyright;
+  const year = album.year ?? firstSong?.year;
+  return year ? `© ${year}` : "";
+};
+
+  const albumCopyright = extractAlbumCopyright();
 
   function handlePlayAlbum() {
     if (isThisAlbumPlaying) {
@@ -186,6 +212,13 @@ export function AlbumPage() {
             </div>
           );
         })}
+
+        {/* Copyright */}
+        {albumCopyright && (
+          <div className="mt-4 text-xs text-neutral-500">
+            {albumCopyright}
+          </div>
+        )}
 
         {/* Carrousel "Plus de l'artiste" */}
         {!_artistAlbumsLoading && (

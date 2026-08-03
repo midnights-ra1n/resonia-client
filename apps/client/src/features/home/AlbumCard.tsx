@@ -4,8 +4,8 @@ import type { AlbumSummary } from "@resonia/api-client";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
+import { useCoverArt } from "../../hooks/useCoverArt";
 import { Link } from "react-router-dom";
-
 
 interface AlbumCardProps {
   album: AlbumSummary;
@@ -20,6 +20,7 @@ export function AlbumCard({ album }: AlbumCardProps) {
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
   const coverUrl = client && album.coverArt ? client.getCoverArtUrl(album.coverArt, 300) : undefined;
+  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, album.coverArt, 300, coverUrl);
 
   async function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -48,12 +49,13 @@ export function AlbumCard({ album }: AlbumCardProps) {
   }
 
   return (
-      <Link
-    to={`/albums/${album.id}`}
-    className="group relative block w-full cursor-pointer rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800">
+    <Link
+      to={`/albums/${album.id}`}
+      className="group relative block w-full cursor-pointer rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800"
+    >
       <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
-        {coverUrl ? (
-          <img src={coverUrl} alt={album.name} className="h-full w-full object-cover" />
+        {cachedCoverUrl ? (
+          <img src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}

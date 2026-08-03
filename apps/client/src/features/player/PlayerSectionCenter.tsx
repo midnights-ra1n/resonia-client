@@ -137,7 +137,7 @@ export function PlayerSectionCenter() {
 
           {/* Progress fill */}
           <div
-            className="absolute top-0 left-0 h-full bg-white rounded-full group-hover:bg-green-400 transition-colors"
+            className="absolute top-0 left-0 h-full bg-white rounded-full group-hover:bg-emerald-500 transition-colors"
             style={{ width: `${progress}%` }}
           />
 

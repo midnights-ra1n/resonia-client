@@ -302,25 +302,42 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     nextTrack: () => {
       const { queue, queueIndex, isShuffle, isRepeat, currentTrack } = get();
-      if (queue.length === 0) return;
 
+      // Cas : file vide (musique seule) ou fin de lecture sans répétition ni shuffle
+      if (!isRepeat && !isShuffle || queue.length === 0) {
+        engine.stop();
+        set({
+          currentTrack: null,
+          queueIndex: -1,
+          isPlaying: false,
+          currentTime: 0,
+        });
+        updateMediaSessionMetadata({ title: "—", artist: "—", album: "—" });
+        setMediaSessionPlaybackState("paused");
+        resetPlaybackFlags();
+        return;
+      }
+
+      // Mode répétition : rejouer la même piste
       if (isRepeat && currentTrack) {
         loadAndPlay(currentTrack, queue, 0);
         return;
       }
+
       const nextIndex = queueIndex + 1;
 
+      // Plus de pistes dans la queue à jouer
       if (nextIndex >= queue.length) {
         engine.stop();
-        set({ isPlaying: false });
+        set({
+          currentTrack: null,
+          queueIndex: -1,
+          isPlaying: false,
+          currentTime: 0,
+        });
+        updateMediaSessionMetadata({ title: "—", artist: "—", album: "—" });
         setMediaSessionPlaybackState("paused");
-        return;
-      }
-
-      if (nextIndex >= queue.length && !isShuffle) {
-        engine.stop();
-        set({ isPlaying: false });
-        setMediaSessionPlaybackState("paused");
+        resetPlaybackFlags();
         return;
       }
 

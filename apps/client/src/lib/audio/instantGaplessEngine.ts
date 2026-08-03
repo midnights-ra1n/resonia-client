@@ -14,16 +14,7 @@ interface EngineState {
 }
 
 const NO_TRIM: SilenceTrim = { start: 0, end: 0 };
-
-// Fondu très court appliqué au moment de la bascule gapless : masque un éventuel
-// décalage résiduel de quelques millisecondes sous forme de fondu inaudible plutôt
-// que d'une coupure sèche ou d'un clic.
 const SWAP_CROSSFADE = 0.012;
-
-// Instant (en secondes avant la bascule prévue) auquel on revérifie/recorrige la
-// planification gapless une dernière fois. Corrige la dérive entre l'horloge du
-// <audio> natif (streaming réseau, sujette au rebuffering) et celle, imperturbable,
-// de l'AudioContext — dérive nettement plus marquée sur Firefox que sur Chromium.
 const RESYNC_LEAD = 0.6;
 const RESYNC_TOLERANCE = 0.03;
 
@@ -65,11 +56,6 @@ export class InstantGaplessEngine {
     this.nativeAudio.addEventListener("waiting", this.handleStall);
     this.nativeAudio.addEventListener("stalled", this.handleStall);
     this.nativeAudio.addEventListener("playing", this.handleResumeAfterStall);
-
-    // Déblocage audio Safari / iOS : le premier resume() doit être synchrone avec
-    // un vrai geste utilisateur, sinon l'AudioContext peut rester "suspended"
-    // indéfiniment. Le <audio> a alors l'air de jouer (currentTime avance) mais
-    // aucun son ne sort, car tout transite par ce graphe Web Audio suspendu.
     this.installAutoplayUnlock();
   }
 
@@ -85,7 +71,7 @@ export class InstantGaplessEngine {
         src.buffer = buffer;
         src.connect(this.context.destination);
         src.start(0);
-      } catch { }
+      } catch { /* noop */ }
     };
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
     const handler = () => {
@@ -130,16 +116,16 @@ export class InstantGaplessEngine {
   private cancelScheduledNext() {
     if (this.nextTrigger) {
       this.nextTrigger.onended = null;
-      try { this.nextTrigger.stop(); } catch { }
+      try { this.nextTrigger.stop(); } catch { /* noop */ }
       this.nextTrigger = null;
     }
     if (this.nextBufferSource) {
       this.nextBufferSource.onended = null;
-      try { this.nextBufferSource.stop(); } catch { }
+      try { this.nextBufferSource.stop(); } catch { /* noop */ }
       this.nextBufferSource = null;
     }
     if (this.nextBufferGain) {
-      try { this.nextBufferGain.disconnect(); } catch { }
+      try { this.nextBufferGain.disconnect(); } catch { /* noop */ }
       this.nextBufferGain = null;
     }
     this.clearResyncTimer();
@@ -147,7 +133,7 @@ export class InstantGaplessEngine {
     this.stalledDuringSchedule = false;
   }
 
-  /** Démarrage instantané via streaming natif — aucune attente de téléchargement complet. */
+  /** Démarrage instantané via streaming natif - aucune attente de téléchargement complet. */
   playInstant(url: string, offset = 0) {
     // On ne place jamais d'`await` avant `.play()` : sur Safari, tout `await` avant
     // cet appel peut faire perdre l'activation utilisateur du geste en cours et
@@ -161,7 +147,7 @@ export class InstantGaplessEngine {
     this.nativeAudio.pause();
     if (this.state?.bufferSource) {
       this.state.bufferSource.onended = null;
-      try { this.state.bufferSource.stop(); } catch { }
+      try { this.state.bufferSource.stop(); } catch { /* noop */ }
     }
 
     const now = this.context.currentTime;
@@ -225,7 +211,7 @@ export class InstantGaplessEngine {
       this.nativeAudio.pause();
     } else if (this.state.bufferSource) {
       this.state.bufferSource.onended = null;
-      try { this.state.bufferSource.stop(); } catch { }
+      try { this.state.bufferSource.stop(); } catch { /* noop */ }
     }
   }
 
@@ -264,10 +250,10 @@ export class InstantGaplessEngine {
   private playBufferFrom(buffer: AudioBuffer, trim: SilenceTrim, offset: number) {
     if (this.state?.bufferSource) {
       this.state.bufferSource.onended = null;
-      try { this.state.bufferSource.stop(); } catch { }
+      try { this.state.bufferSource.stop(); } catch { /* noop */ }
     }
     if (this.state?.bufferGain) {
-      try { this.state.bufferGain.disconnect(); } catch { }
+      try { this.state.bufferGain.disconnect(); } catch { /* noop */ }
     }
 
     const logicalDuration = Math.max(buffer.duration - trim.start - trim.end, 0);
@@ -283,7 +269,7 @@ export class InstantGaplessEngine {
     source.start(0, rawOffset);
     try {
       source.stop(this.context.currentTime + Math.max(logicalDuration - offset, 0));
-    } catch { }
+    } catch { /* noop */ }
 
     source.onended = () => {
       if (this.state?.mode === "buffer" && this.state.bufferSource === source) {
@@ -330,16 +316,16 @@ export class InstantGaplessEngine {
 
     if (this.nextTrigger) {
       this.nextTrigger.onended = null;
-      try { this.nextTrigger.stop(); } catch { }
+      try { this.nextTrigger.stop(); } catch { /* noop */ }
       this.nextTrigger = null;
     }
     if (this.nextBufferSource) {
       this.nextBufferSource.onended = null;
-      try { this.nextBufferSource.stop(); } catch { }
+      try { this.nextBufferSource.stop(); } catch { /* noop */ }
       this.nextBufferSource = null;
     }
     if (this.nextBufferGain) {
-      try { this.nextBufferGain.disconnect(); } catch { }
+      try { this.nextBufferGain.disconnect(); } catch { /* noop */ }
       this.nextBufferGain = null;
     }
     this.clearResyncTimer();
@@ -361,7 +347,7 @@ export class InstantGaplessEngine {
     source.start(startAt, nextTrim.start);
     try {
       source.stop(startAt + nextLogicalDuration);
-    } catch { }
+    } catch { /* noop */ }
     this.nextBufferSource = source;
     this.nextBufferGain = gain;
 
@@ -400,9 +386,9 @@ export class InstantGaplessEngine {
         }, SWAP_CROSSFADE * 1000 + 30);
       } else if (previousState.bufferSource) {
         previousState.bufferSource.onended = null;
-        try { previousState.bufferSource.stop(); } catch { }
+        try { previousState.bufferSource.stop(); } catch { /* noop */ }
         if (previousState.bufferGain) {
-          try { previousState.bufferGain.disconnect(); } catch { }
+          try { previousState.bufferGain.disconnect(); } catch { /* noop */ }
         }
       }
 
@@ -452,10 +438,10 @@ export class InstantGaplessEngine {
     this.nativeGain.gain.setValueAtTime(1, this.context.currentTime);
     if (this.state?.bufferSource) {
       this.state.bufferSource.onended = null;
-      try { this.state.bufferSource.stop(); } catch { }
+      try { this.state.bufferSource.stop(); } catch { /* noop */ }
     }
     if (this.state?.bufferGain) {
-      try { this.state.bufferGain.disconnect(); } catch { }
+      try { this.state.bufferGain.disconnect(); } catch { /* noop */ }
     }
     this.state = null;
   }

@@ -31,6 +31,7 @@ export function AlbumPage() {
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const playTrack = usePlayerStore((s) => s.playTrack);
+  const playFromStart = usePlayerStore((s) => s.playFromStart);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -98,10 +99,10 @@ export function AlbumPage() {
   const isThisAlbumPlaying = isThisAlbumCurrent && isPlaying;
 
   const extractAlbumCopyright = () => {
-  if (nativeCopyright) return nativeCopyright;
-  const year = album.year ?? firstSong?.year;
-  return year ? `© ${year}` : "";
-};
+    if (nativeCopyright) return nativeCopyright;
+    const year = album.year ?? album.song[0]?.year;
+    return year ? `© ${year}` : "";
+  };
 
   const albumCopyright = extractAlbumCopyright();
 
@@ -111,7 +112,7 @@ export function AlbumPage() {
       return;
     }
     const queue = album!.song.map(toTrack);
-    if (queue.length > 0) playTrack(queue[0], queue);
+    if (queue.length > 0) playFromStart(queue);
   }
 
   function handleShuffleToggle() {
@@ -129,7 +130,6 @@ export function AlbumPage() {
 
   return (
     <div>
-      {/* Header dégradé */}
       <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
           {coverUrl ? (
@@ -151,7 +151,6 @@ export function AlbumPage() {
         </div>
       </div>
 
-      {/* Barre d'actions */}
       <div className="flex items-center gap-6 bg-neutral-900/40 px-8 py-6 mb-6">
         <button
           onClick={handlePlayAlbum}
@@ -174,7 +173,6 @@ export function AlbumPage() {
         </button>
       </div>
 
-      {/* Tracklist */}
       <div className="px-8 pb-12">
         <div className="grid grid-cols-[32px_1fr_auto] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
           <span className="text-center">#</span>
@@ -213,21 +211,18 @@ export function AlbumPage() {
           );
         })}
 
-        {/* Copyright */}
         {albumCopyright && (
           <div className="mt-4 text-xs text-neutral-500">
             {albumCopyright}
           </div>
         )}
 
-        {/* Carrousel "Plus de l'artiste" */}
         {!_artistAlbumsLoading && (
           <div className="mt-10">
             <AlbumCarousel title={t("album.moreFromArtist", { artist: album.artist })} albums={_artistAlbums} />
           </div>
         )}
 
-        {/* Carrousel suggestions aléatoires */}
         {!randomLoading && (
           <div className="mt-10">
             <AlbumCarousel title={t("album.similarAlbums")} albums={randomAlbums} />

@@ -29,3 +29,6 @@ pnpm-debug.log*
 
 # Sources
 feishin-development/
+
+# AI (i assume it)
+.clinerules

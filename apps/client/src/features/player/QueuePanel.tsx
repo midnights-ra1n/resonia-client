@@ -16,8 +16,6 @@ export function QueuePanel() {
   if (!showQueue) return null;
 
   return (
-    // top-0 : reste sous un éventuel header futur (0 pour l'instant, ajuste si tu ajoutes une topbar)
-    // bottom-20 : s'arrête juste au-dessus de la PlayerBar (h-20 = 80px)
     <div className="fixed right-0 top-0 bottom-20 z-40 flex w-80 flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl">
       <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-white">File d'attente</h2>
@@ -34,14 +32,15 @@ export function QueuePanel() {
 type DropPosition = "before" | "after";
 
 function QueueList() {
-  const { queue, queueIndex, reorderQueue } = usePlayerStore();
+  const { queue, playOrder, playOrderPosition, reorderQueue } = usePlayerStore();
 
   const [dragLocalIndex, setDragLocalIndex] = useState<number | null>(null);
   const [hoverLocalIndex, setHoverLocalIndex] = useState<number | null>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>("before");
 
-  const upcoming = queue.slice(queueIndex + 1, queueIndex + 1 + MAX_QUEUE_DISPLAY);
-  const hasMore = queue.length > queueIndex + 1 + MAX_QUEUE_DISPLAY;
+  const upcomingIndices = playOrder.slice(playOrderPosition + 1, playOrderPosition + 1 + MAX_QUEUE_DISPLAY);
+  const upcoming = upcomingIndices.map((queueIdx) => queue[queueIdx]).filter(Boolean);
+  const hasMore = playOrder.length > playOrderPosition + 1 + MAX_QUEUE_DISPLAY;
 
   const handleDragStart = useCallback((localIndex: number) => {
     setDragLocalIndex(localIndex);
@@ -65,12 +64,10 @@ function QueueList() {
       return;
     }
 
-    // Conversion des index locaux (relatifs à "upcoming") en index absolus dans la vraie queue.
-    const baseOffset = queueIndex + 1;
+    const baseOffset = playOrderPosition + 1;
     const fromAbsolute = baseOffset + dragLocalIndex;
 
     let toAbsolute = baseOffset + hoverLocalIndex + (dropPosition === "after" ? 1 : 0);
-    // Si on retire un élément avant la cible, la cible se décale d'un cran vers le haut.
     if (fromAbsolute < toAbsolute) toAbsolute -= 1;
 
     if (fromAbsolute !== toAbsolute) {
@@ -79,7 +76,7 @@ function QueueList() {
 
     setDragLocalIndex(null);
     setHoverLocalIndex(null);
-  }, [dragLocalIndex, hoverLocalIndex, dropPosition, queueIndex, reorderQueue]);
+  }, [dragLocalIndex, hoverLocalIndex, dropPosition, playOrderPosition, reorderQueue]);
 
   const handleDragEnd = useCallback(() => {
     setDragLocalIndex(null);
@@ -110,7 +107,7 @@ function QueueList() {
 
           {hasMore && (
             <li className="px-4 py-3 text-center text-xs text-neutral-500">
-              + {queue.length - (queueIndex + 1 + MAX_QUEUE_DISPLAY)} musique(s) de plus
+              + {playOrder.length - (playOrderPosition + 1 + MAX_QUEUE_DISPLAY)} musique(s) de plus
             </li>
           )}
         </ul>

@@ -36,10 +36,10 @@ export function AppLayout() {
           <form onSubmit={handleSubmit} className="flex items-center justify-center px-4 py-3 gap-2">
             {/* Boutons navigation à gauche de la barre de recherche */}
             <div className="flex items-center gap-1 pr-2">
-              <button onClick={handleGoBack} className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page précédente">
+              <button onClick={handleGoBack} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page précédente">
                 <ArrowLeft size={16} />
               </button>
-              <button onClick={handleGoForward} className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page suivante">
+              <button onClick={handleGoForward} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page suivante">
                 <ArrowRight size={16} />
               </button>
             </div>

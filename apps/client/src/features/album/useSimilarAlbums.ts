@@ -35,9 +35,9 @@ export function useSimilarAlbums(
 
       try {
         // Suggestions aléatoires via getAlbumList2 (type: random)
-        const randomAlbums: AlbumSummary[] = await getClientForServer(server).getAlbumList2("random", 20, 0);
+        const randomAlbums: AlbumSummary[] = await getClientForServer(server).getAlbumList2("random", 100, 0);
 
-        const allAlbums = randomAlbums.filter((a) => a.id !== excludeAlbumId).slice(0, 20);
+        const allAlbums = randomAlbums.filter((a) => a.id !== excludeAlbumId).slice(0, 100);
 
         if (!cancelled) {
           setAlbums(allAlbums);

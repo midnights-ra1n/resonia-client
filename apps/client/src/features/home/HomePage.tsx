@@ -28,42 +28,39 @@ export function HomePage() {
       <h1 className="mb-6 text-2xl font-bold text-white">{t("home.greeting", { username })}</h1>
 
       <section>
-        <h2 className="mb-4 text-xl font-semibold text-white">{t("home.mostPlayedAlbums")}</h2>
-
         {loading ? (
           <p className="text-neutral-400">{t("common.loading")}</p>
         ) : albums.length === 0 ? (
           <p className="text-neutral-400">{t("home.noAlbums")}</p>
         ) : (
           <div className="group/carousel relative">
-            <button
-              onClick={() => scroll("left")}
-              className="absolute left-0 top-1/2 z-10 flex h-full w-16 -translate-y-1/2 items-center justify-center bg-gradient-to-r from-neutral-950 to-transparent opacity-0 transition-opacity group-hover/carousel:opacity-100"
-              aria-label="Défiler à gauche"
-            >
-              <ChevronLeft className="h-8 w-8 text-white" />
-            </button>
+            <div className="flex w-full items-center justify-between gap-4 mb-4">
+              <h2 className="text-xl font-semibold text-white truncate">{t("home.mostPlayedAlbums")}</h2>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => scroll("left")}
+                  className="rounded-full bg-neutral-800 p-1.5 text-neutral-300 transition hover:bg-neutral-700 hover:text-white"
+                  aria-label="Défiler à gauche"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  onClick={() => scroll("right")}
+                  className="rounded-full bg-neutral-800 p-1.5 text-neutral-300 transition hover:bg-neutral-700 hover:text-white"
+                  aria-label="Défiler à droite"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
 
-            <div
-              ref={scrollRef}
-              className="flex gap-4 overflow-x-auto pb-3 pr-16 scroll-smooth"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
+            <div ref={scrollRef} className="flex gap-4 overflow-x-auto scroll-smooth pb-2 [scrollbar-width:none]">
               {albums.map((album) => (
-                <div key={album.id} className="w-[200px] shrink-0">
+                <div key={album.id} className="w-40 shrink-0">
                   <AlbumCard album={album} />
                 </div>
               ))}
             </div>
-
-            {/* Flèche droite */}
-            <button
-              onClick={() => scroll("right")}
-              className="absolute right-0 top-1/2 z-10 flex h-full w-16 -translate-y-1/2 items-center justify-center bg-gradient-to-l from-neutral-950 to-transparent opacity-0 transition-opacity group-hover/carousel:opacity-100"
-              aria-label="Défiler à droite"
-            >
-              <ChevronRight className="h-8 w-8 text-white" />
-            </button>
           </div>
         )}
       </section>

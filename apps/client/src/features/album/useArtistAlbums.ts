@@ -30,7 +30,7 @@ useEffect(() => {
       try {
         const result = await getClientForServer(server).getArtist(artistId);
         if (!cancelled) {
-          setAlbums((result.album ?? []).filter((a) => a.id !== excludeAlbumId).slice(0, 20));
+          setAlbums((result.album ?? []).filter((a) => a.id !== excludeAlbumId).slice(0, 100));
         }
       } catch (err) {
         console.error("[album] Échec du chargement des albums de l'artiste", err);

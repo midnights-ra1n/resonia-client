@@ -1,0 +1,6 @@
+# .claudeignore
+node_modules/
+.env
+*.log
+build/
+feishin-development

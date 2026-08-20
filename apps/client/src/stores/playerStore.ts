@@ -1,6 +1,9 @@
 import { create } from "zustand";
-import { getCachedTrackUrl, loadTrackArrayBuffer } from "../lib/audio/audioCache";
-import { getInstantGaplessEngine } from "../lib/audio/instantGaplessEngine";
+import { cacheStore } from "../lib/audio/cache/cacheStore";
+import { prefetchScheduler } from "../lib/audio/cache/prefetchScheduler";
+import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
+import { getGaplessEngine } from "../lib/audio/engine/gaplessEngine";
+import type { EngineState } from "../lib/audio/engine/types";
 import {
   registerMediaSessionHandlers,
   setMediaSessionPlaybackState,
@@ -8,7 +11,6 @@ import {
   updateMediaSessionMetadata,
 } from "../lib/audio/mediaSession";
 import { getQualityById } from "../lib/audio/qualityOptions";
-import { detectEdgeSilence } from "../lib/audio/trimSilence";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { useServersStore } from "./serversStore";
 import { useSettingsStore } from "./settingsStore";
@@ -25,6 +27,7 @@ export interface Track {
 
 const DEFAULT_COVER_URL = "/default-cover.svg";
 const SCROBBLE_MIN_DURATION = 30;
+const PREFETCH_COUNT = 3;
 
 function getActiveQualityId(): string {
   return useSettingsStore.getState().audioQualityId;
@@ -43,6 +46,24 @@ function resolveStreamUrl(track: Track): string | null {
   return client.getStreamUrl(track.id, { format: quality?.format, maxBitRate: quality?.maxBitRate });
 }
 
+interface PlayableTrack {
+  streamUrl: string;
+  qualityId: string;
+  format: "aac" | "opus" | "mp3";
+}
+
+/** "raw" (lossless) n'est pas encore supporté par la résolution de flux. */
+function resolvePlayableTrack(track: Track): PlayableTrack | null {
+  const streamUrl = resolveStreamUrl(track);
+  const quality = getQualityById(getActiveQualityId());
+  if (!streamUrl || !quality || quality.format === "raw") return null;
+  return { streamUrl, qualityId: quality.id, format: quality.format };
+}
+
+function decodedCacheKey(trackId: string, qualityId: string): string {
+  return `${trackId}:${qualityId}`;
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   setCurrentTrack: (track: Track | null) => void;
@@ -58,6 +79,11 @@ export interface PlayerState {
   isPlaying: boolean;
   togglePlay: () => void;
   setPlaying: (playing: boolean) => void;
+
+  /** État précis du moteur de lecture (loading/buffering/ready/playing/paused/ended/error),
+   *  exposé pour l'UI (ex: indicateur de chargement) — additif, `isPlaying` reste la
+   *  source de vérité utilisée par les composants existants. */
+  engineState: EngineState;
 
   currentTime: number;
   setCurrentTime: (time: number) => void;
@@ -87,12 +113,14 @@ export interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
-  const engine = getInstantGaplessEngine();
+  const engine = getGaplessEngine();
+  const decodedCache = new DecodedBufferCache();
 
-  let scheduledNextKey: string | null = null;
   let scrobbledNowPlaying = false;
   let scrobbledSubmission = false;
-  let decodeToken = 0;
+  // Empêche de replanifier la même cible gapless plusieurs fois (déclenchement répété
+  // du démarrage de lecture, changement de qualité, etc.).
+  let scheduledNextKey: string | null = null;
 
   function resetPlaybackFlags() {
     scheduledNextKey = null;
@@ -105,6 +133,174 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     if (!client) return;
     client.scrobble(track.id, { submission }).catch((err) => console.warn("[player] Scrobble échoué", err));
   }
+
+  /** Estime la taille totale du fichier à partir du débit réel de la qualité active,
+   *  pour répartir le budget de préchargement dégressif sur des tailles réalistes plutôt
+   *  qu'une estimation forfaitaire. `maxBitRate === 0` (lossless/raw) n'a pas de débit
+   *  fixe : on laisse le planificateur retomber sur son estimation par défaut. */
+  function estimateTrackBytes(track: Track): number | undefined {
+    const quality = getQualityById(getActiveQualityId());
+    if (!quality || quality.maxBitRate <= 0) return undefined;
+    return track.duration * ((quality.maxBitRate * 1000) / 8);
+  }
+
+  function refreshUpcomingPrefetch() {
+    const { queue, playOrder, playOrderPosition } = get();
+    const qualityId = getActiveQualityId();
+    prefetchScheduler.setQuality(qualityId);
+
+    const upcoming = [];
+    for (let i = 1; i <= PREFETCH_COUNT; i++) {
+      const pos = playOrderPosition + i;
+      const queueIndex = playOrder[pos];
+      if (queueIndex === undefined) break;
+      const track = queue[queueIndex];
+      const streamUrl = resolveStreamUrl(track);
+      if (streamUrl) upcoming.push({ trackId: track.id, streamUrl, estimatedTotalBytes: estimateTrackBytes(track) });
+    }
+    prefetchScheduler.setUpcoming(upcoming);
+  }
+
+  /** Démarre la mise en cache en tâche de fond de la piste en cours. Volontairement
+   *  déclenché une fois la lecture réellement démarrée — jamais au moment du clic : une
+   *  deuxième connexion réseau vers la même piste concurrencerait le flux de lecture et
+   *  retarderait le démarrage audible. */
+  function activateCurrentTrackCaching() {
+    const { currentTrack } = get();
+    if (!currentTrack) return;
+    const resolved = resolvePlayableTrack(currentTrack);
+    if (!resolved) return;
+
+    prefetchScheduler.setQuality(resolved.qualityId);
+    prefetchScheduler.setActive({ trackId: currentTrack.id, streamUrl: resolved.streamUrl });
+    cacheStore.request(currentTrack.id, resolved.qualityId, resolved.streamUrl, "active");
+  }
+
+  /** Attend que la piste (déjà demandée en cache "active") soit intégralement
+   *  téléchargée, puis en lit les octets. */
+  async function waitForActiveCached(trackId: string, qualityId: string): Promise<ArrayBuffer | null> {
+    const already = await cacheStore.isFullyCached(trackId, qualityId);
+    if (already) return cacheStore.readCachedFull(trackId, qualityId);
+    return new Promise((resolve) => {
+      const unsubscribe = cacheStore.onProgress(trackId, qualityId, (progress) => {
+        if (!progress.complete) return;
+        unsubscribe?.();
+        cacheStore.readCachedFull(trackId, qualityId).then(resolve);
+      });
+      if (!unsubscribe) resolve(null);
+    });
+  }
+
+  /** Décode (une fois en cache complet) la piste active en tâche de fond, puis fait
+   *  basculer le moteur du streaming natif vers un buffer sample-accurate — à partir de
+   *  là, la piste suivante peut être planifiée au sample près (voir scheduleGaplessNext). */
+  async function ensureActiveDecoded(track: Track, resolved: PlayableTrack) {
+    const key = decodedCacheKey(track.id, resolved.qualityId);
+    const cached = decodedCache.get(key);
+    if (cached) {
+      engine.attachDecodedActive(cached);
+      return;
+    }
+
+    const bytes = await waitForActiveCached(track.id, resolved.qualityId);
+    if (!bytes || bytes.byteLength === 0) return;
+    if (get().currentTrack?.id !== track.id) return; // la piste active a changé entre-temps
+
+    try {
+      const decoded = await engine.decodeAndTrim(bytes);
+      if (get().currentTrack?.id !== track.id) return;
+      decodedCache.set(key, decoded);
+      engine.attachDecodedActive(decoded);
+    } catch (err) {
+      console.warn("[player] Décodage de la piste active impossible, lecture native conservée", err);
+    }
+  }
+
+  /** Résout, télécharge (cache OPFS si présent, sinon réseau) et décode la piste
+   *  suivante, rogne son silence de bord, puis la fait PLANIFIER par le moteur sur
+   *  l'horloge de l'AudioContext (voir GaplessEngine.scheduleNext) — c'est cette
+   *  planification déterministe, pas une réaction à un événement, qui élimine toute
+   *  coupure à la transition. */
+  async function scheduleGaplessNext() {
+    const { queue, playOrder, playOrderPosition, isRepeat } = get();
+    if (queue.length < 2 || playOrder.length < 2) return;
+
+    const nextPos = playOrderPosition + 1;
+    const nextQueueIndex = isRepeat ? playOrder[playOrderPosition] : playOrder[nextPos];
+    if (nextQueueIndex === undefined) return;
+
+    const nextTrackData = queue[nextQueueIndex];
+    if (!nextTrackData) return;
+
+    const resolved = resolvePlayableTrack(nextTrackData);
+    if (!resolved) return;
+
+    const key = decodedCacheKey(nextTrackData.id, resolved.qualityId);
+    if (scheduledNextKey === key) return;
+    scheduledNextKey = key;
+
+    const commitSwap = () => {
+      scrobbledNowPlaying = false;
+      scrobbledSubmission = false;
+      scheduledNextKey = null;
+      set({
+        currentTrack: nextTrackData,
+        playOrderPosition: isRepeat ? get().playOrderPosition : nextPos,
+        queueIndex: nextQueueIndex,
+        currentTime: 0,
+      });
+      updateMediaSessionMetadata(nextTrackData);
+      setMediaSessionPlaybackState("playing");
+      refreshUpcomingPrefetch();
+      activateCurrentTrackCaching();
+      scheduleGaplessNext();
+    };
+
+    try {
+      let decoded = decodedCache.get(key);
+      if (!decoded) {
+        const cachedBytes = await cacheStore.readCachedFull(nextTrackData.id, resolved.qualityId);
+        const arrayBuffer =
+          cachedBytes && cachedBytes.byteLength > 0
+            ? cachedBytes
+            : await fetch(resolved.streamUrl).then((res) => {
+                if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
+                return res.arrayBuffer();
+              });
+
+        if (scheduledNextKey !== key) return; // une nouvelle cible a pris le dessus entre-temps
+        decoded = await engine.decodeAndTrim(arrayBuffer);
+        if (scheduledNextKey !== key) return;
+        decodedCache.set(key, decoded);
+      }
+
+      engine.scheduleNext(decoded.buffer, decoded.trim, commitSwap);
+    } catch (err) {
+      console.error(`[player] Préparation de la piste suivante ("${nextTrackData.title}") échouée — la transition retombera sur un rechargement réseau`, err);
+      if (scheduledNextKey === key) scheduledNextKey = null;
+    }
+  }
+
+  /** Appelé une fois la lecture réellement démarrée (natif "playing" ou démarrage direct
+   *  en mode buffer pour une piste déjà décodée) : lance les tâches de fond non
+   *  critiques, jamais avant. */
+  function onPlaybackStarted() {
+    refreshUpcomingPrefetch();
+    activateCurrentTrackCaching();
+    const track = get().currentTrack;
+    const resolved = track && resolvePlayableTrack(track);
+    if (track && resolved) ensureActiveDecoded(track, resolved);
+    scheduleGaplessNext();
+  }
+
+  engine.onNativePlaying = onPlaybackStarted;
+  engine.onNetworkPressure = (active) => (active ? prefetchScheduler.pause() : prefetchScheduler.resume());
+  engine.onStateChange((state) => set({ engineState: state }));
+
+  // Filet de sécurité uniquement : fin de queue (rien n'était planifié), ou la
+  // préparation gapless a échoué (réseau/décodage) et rien n'a été programmé sur
+  // l'horloge audio. Le chemin de succès est géré entièrement par commitSwap ci-dessus.
+  engine.onEnded(() => get().nextTrack());
 
   function tickProgress() {
     const track = get().currentTrack;
@@ -128,8 +324,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
   requestAnimationFrame(tickProgress);
 
-  engine.onEnded(() => get().nextTrack());
-
   registerMediaSessionHandlers({
     onPlay: () => get().togglePlay(),
     onPause: () => get().togglePlay(),
@@ -138,127 +332,63 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     onSeekTo: (time) => get().setCurrentTime(time),
   });
 
-    async function scheduleGaplessNext() {
-    const { queue, playOrder, playOrderPosition, isRepeat } = get();
-    if (queue.length < 2 || playOrder.length < 2) return;
-
-    const nextPos = playOrderPosition + 1;
-    const nextQueueIndex = isRepeat ? playOrder[playOrderPosition] : playOrder[nextPos];
-    if (nextQueueIndex === undefined) return;
-
-    const nextTrackData = queue[nextQueueIndex];
-    if (!nextTrackData) return;
-
-    const qualityId = getActiveQualityId();
-    const key = `${nextTrackData.id}:${qualityId}`;
-    if (scheduledNextKey === key) return;
-    scheduledNextKey = key;
-
-    const streamUrl = resolveStreamUrl(nextTrackData);
-    if (!streamUrl) return;
-
-    try {
-      const arrayBuffer = await loadTrackArrayBuffer(nextTrackData.id, qualityId, streamUrl);
-      const audioBuffer = await engine.decode(arrayBuffer);
-      const trim = detectEdgeSilence(audioBuffer);
-
-      if (scheduledNextKey !== key) return;
-
-      engine.scheduleNext(audioBuffer, trim, () => {
-        set({
-          currentTrack: nextTrackData,
-          playOrderPosition: isRepeat ? get().playOrderPosition : nextPos,
-          queueIndex: nextQueueIndex,
-          currentTime: 0,
-        });
-        updateMediaSessionMetadata(nextTrackData);
-        resetPlaybackFlags();
-        scheduleGaplessNext();
-      });
-    } catch (err) {
-      console.warn("[player] Pré-chargement gapless échoué", err);
-      scheduledNextKey = null;
-    }
-  }
-
-  async function refinePreciseTrim(track: Track, qualityId: string, streamUrl: string, token: number) {
-    try {
-      const arrayBuffer = await loadTrackArrayBuffer(track.id, qualityId, streamUrl);
-      const audioBuffer = await engine.decode(arrayBuffer);
-      if (token !== decodeToken) return;
-      const trim = detectEdgeSilence(audioBuffer);
-      engine.attachPreciseTrim(trim, audioBuffer.duration);
-    } catch (err) {
-      console.warn("[player] Décodage en arrière-plan échoué (trim précis indisponible)", err);
-    }
-  }
-
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
-  const qualityId = getActiveQualityId();
+    const resolved = resolvePlayableTrack(track);
+    if (!resolved) {
+      console.warn("[player] Impossible de résoudre le flux (serveur actif manquant ou qualité invalide)");
+      return;
+    }
 
-  const cachedUrl = await getCachedTrackUrl(track.id, qualityId);
-  const instantUrl = cachedUrl ?? resolveStreamUrl(track);
-  if (!instantUrl) {
-    console.warn("[player] Aucun serveur actif, lecture impossible");
-    return;
+    resetPlaybackFlags();
+
+    const key = decodedCacheKey(track.id, resolved.qualityId);
+    const decoded = decodedCache.get(key);
+    const cachedUrl = decoded ? null : await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format);
+    const instantUrl = cachedUrl ?? resolved.streamUrl;
+
+    engine.loadAndPlay(instantUrl, offset, decoded ?? undefined);
+
+    set({ currentTrack: track, queue, currentTime: offset, isPlaying: true });
+    updateMediaSessionMetadata(track);
+    setMediaSessionPlaybackState("playing");
+
+    // Une piste déjà décodée démarre directement en mode buffer : aucun événement natif
+    // "playing" ne se déclenchera pour signaler le démarrage effectif.
+    if (decoded) onPlaybackStarted();
   }
-
-  resetPlaybackFlags();
-  decodeToken++;
-  const token = decodeToken;
-
-  engine.playInstant(instantUrl, offset);
-
-  set({
-    currentTrack: track,
-    queue,
-    currentTime: offset,
-    isPlaying: true,
-  });
-
-  updateMediaSessionMetadata(track);
-  setMediaSessionPlaybackState("playing");
-
-  const networkStreamUrl = resolveStreamUrl(track);
-  if (networkStreamUrl) {
-    refinePreciseTrim(track, qualityId, networkStreamUrl, token);
-  }
-
-  scheduleGaplessNext();
-}
 
   return {
     currentTrack: null,
     setCurrentTrack: (track) => set({ currentTrack: track }),
 
     queue: [],
-      queueIndex: -1,
-      playOrder: [],
-      playOrderPosition: -1,
+    queueIndex: -1,
+    playOrder: [],
+    playOrderPosition: -1,
 
-      playTrack: async (track, queueParam) => {
-        const queue = queueParam ?? [track];
-        const { isShuffle } = get();
+    playTrack: async (track, queueParam) => {
+      const queue = queueParam ?? [track];
+      const { isShuffle } = get();
 
-        const clickedIndex = queue.findIndex((t) => t.id === track.id);
-        const anchor = clickedIndex === -1 ? 0 : clickedIndex;
+      const clickedIndex = queue.findIndex((t) => t.id === track.id);
+      const anchor = clickedIndex === -1 ? 0 : clickedIndex;
 
-        const playOrder = isShuffle ? shuffleIndices(queue.length, anchor) : linearOrder(queue.length);
-        const startPosition = isShuffle ? 0 : anchor;
+      const playOrder = isShuffle ? shuffleIndices(queue.length, anchor) : linearOrder(queue.length);
+      const startPosition = isShuffle ? 0 : anchor;
 
-        set({ queue, playOrder, playOrderPosition: startPosition, queueIndex: playOrder[startPosition] });
-        await loadAndPlay(queue[playOrder[startPosition]], queue, 0);
-      },
+      set({ queue, playOrder, playOrderPosition: startPosition, queueIndex: playOrder[startPosition] });
+      await loadAndPlay(queue[playOrder[startPosition]], queue, 0);
+    },
 
-      playFromStart: async (queue) => {
-        if (queue.length === 0) return;
-        const { isShuffle } = get();
+    playFromStart: async (queue) => {
+      if (queue.length === 0) return;
+      const { isShuffle } = get();
 
-        const playOrder = isShuffle ? shuffleIndices(queue.length) : linearOrder(queue.length);
+      const playOrder = isShuffle ? shuffleIndices(queue.length) : linearOrder(queue.length);
 
-        set({ queue, playOrder, playOrderPosition: 0, queueIndex: playOrder[0] });
-        await loadAndPlay(queue[playOrder[0]], queue, 0);
-      },
+      set({ queue, playOrder, playOrderPosition: 0, queueIndex: playOrder[0] });
+      await loadAndPlay(queue[playOrder[0]], queue, 0);
+    },
 
     isPlaying: false,
     togglePlay: () => {
@@ -281,17 +411,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       setMediaSessionPlaybackState(playing ? "playing" : "paused");
     },
 
+    engineState: "idle",
+
     currentTime: 0,
     setCurrentTime: (time) => {
+      // Le swap gapless est désormais planifié à l'avance (horloge exacte), pas déclenché
+      // en réaction à un événement : un seek à l'intérieur de la piste courante n'invalide
+      // donc pas la préparation de la piste suivante déjà programmée — engine.seek()
+      // l'annule et la replanifie lui-même proprement.
       engine.seek(time);
-      scheduledNextKey = null;
       set({ currentTime: time });
-      scheduleGaplessNext();
     },
 
     isShuffle: false,
     toggleShuffle: () => {
-      scheduledNextKey = null;
       const { isShuffle, queue, playOrder, playOrderPosition } = get();
       const nextShuffleState = !isShuffle;
 
@@ -313,14 +446,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           queueIndex: currentQueueIndex,
         });
       }
+      refreshUpcomingPrefetch();
+      scheduledNextKey = null;
+      scheduleGaplessNext();
     },
 
     isRepeat: false,
-    toggleRepeat: () =>
-      set((state) => {
-        scheduledNextKey = null;
-        return { isRepeat: !state.isRepeat };
-      }),
+    toggleRepeat: () => {
+      set((state) => ({ isRepeat: !state.isRepeat }));
+      // La cible visée par la planification gapless change selon isRepeat (rejoue la
+      // même piste vs avance normalement) — il faut refaire la planification.
+      scheduledNextKey = null;
+      scheduleGaplessNext();
+    },
 
     prevTrack: () => {
       const { queue, playOrder, playOrderPosition, currentTime } = get();
@@ -339,6 +477,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       const prevQueueIndex = playOrder[prevPos];
       set({ playOrderPosition: prevPos, queueIndex: prevQueueIndex });
+      prefetchScheduler.stop();
       loadAndPlay(queue[prevQueueIndex], queue, 0);
     },
 
@@ -347,6 +486,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       if (queue.length === 0 || playOrder.length === 0) {
         engine.stop();
+        prefetchScheduler.stop();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
         updateMediaSessionMetadata({ title: "—", artist: "—", album: "—" });
         setMediaSessionPlaybackState("paused");
@@ -362,6 +502,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const nextPos = playOrderPosition + 1;
       if (nextPos >= playOrder.length) {
         engine.stop();
+        prefetchScheduler.stop();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
         updateMediaSessionMetadata({ title: "—", artist: "—", album: "—" });
         setMediaSessionPlaybackState("paused");
@@ -371,6 +512,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       const nextQueueIndex = playOrder[nextPos];
       set({ playOrderPosition: nextPos, queueIndex: nextQueueIndex });
+      prefetchScheduler.stop();
       loadAndPlay(queue[nextQueueIndex], queue, 0);
     },
 
@@ -389,27 +531,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     showQueue: false,
     toggleQueue: () => set((state) => ({ showQueue: !state.showQueue })),
-    reorderQueue: (dragIndex, hoverIndex) =>
-    set((state) => {
-      const newPlayOrder = [...state.playOrder];
-      const [removed] = newPlayOrder.splice(dragIndex, 1);
-      newPlayOrder.splice(hoverIndex, 0, removed);
+    reorderQueue: (dragIndex, hoverIndex) => {
+      set((state) => {
+        const newPlayOrder = [...state.playOrder];
+        const [removed] = newPlayOrder.splice(dragIndex, 1);
+        newPlayOrder.splice(hoverIndex, 0, removed);
 
-      let newPlayOrderPosition = state.playOrderPosition;
-      if (dragIndex === state.playOrderPosition) {
-        newPlayOrderPosition = hoverIndex;
-      } else if (dragIndex < state.playOrderPosition && hoverIndex >= state.playOrderPosition) {
-        newPlayOrderPosition--;
-      } else if (dragIndex > state.playOrderPosition && hoverIndex <= state.playOrderPosition) {
-        newPlayOrderPosition++;
-      }
+        let newPlayOrderPosition = state.playOrderPosition;
+        if (dragIndex === state.playOrderPosition) {
+          newPlayOrderPosition = hoverIndex;
+        } else if (dragIndex < state.playOrderPosition && hoverIndex >= state.playOrderPosition) {
+          newPlayOrderPosition--;
+        } else if (dragIndex > state.playOrderPosition && hoverIndex <= state.playOrderPosition) {
+          newPlayOrderPosition++;
+        }
 
-      return {
-        playOrder: newPlayOrder,
-        playOrderPosition: newPlayOrderPosition,
-        queueIndex: newPlayOrder[newPlayOrderPosition],
-      };
-    }),
+        return {
+          playOrder: newPlayOrder,
+          playOrderPosition: newPlayOrderPosition,
+          queueIndex: newPlayOrder[newPlayOrderPosition],
+        };
+      });
+      // La piste suivante (position+1) a pu changer suite au réordonnancement : la
+      // planification gapless précédente, basée sur l'ancien ordre, doit être refaite.
+      refreshUpcomingPrefetch();
+      scheduledNextKey = null;
+      scheduleGaplessNext();
+    },
     showLyrics: false,
     toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
     showConnect: false,
@@ -421,4 +569,3 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 });
 
 export { DEFAULT_COVER_URL };
-

@@ -44,6 +44,19 @@ export interface ArtistWithAlbumsDTO {
   album?: AlbumSummary[];
 }
 
+export interface ArtistSummary {
+  id: string;
+  name: string;
+  coverArt?: string;
+  albumCount?: number;
+}
+
+export interface SearchResult3DTO {
+  song: SongDTO[];
+  album: AlbumSummary[];
+  artist: ArtistSummary[];
+}
+
 export interface SongDTO {
   id: string;
   title: string;

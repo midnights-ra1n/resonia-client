@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumSummary, AlbumWithSongsDTO, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumSummary, AlbumWithSongsDTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -98,14 +98,20 @@ export class SubsonicClient {
   async search3(
     query: string,
     options: { songCount?: number; albumCount?: number; artistCount?: number } = {},
-  ): Promise<SongDTO[]> {
-    const result = await this.request<{ searchResult3: { song?: SongDTO[] } }>("search3", {
+  ): Promise<SearchResult3DTO> {
+    const result = await this.request<{
+      searchResult3: { song?: SongDTO[]; album?: AlbumSummary[]; artist?: ArtistSummary[] };
+    }>("search3", {
       query,
       songCount: String(options.songCount ?? 500),
       albumCount: String(options.albumCount ?? 0),
       artistCount: String(options.artistCount ?? 0),
     });
-    return result.searchResult3.song ?? [];
+    return {
+      song: result.searchResult3.song ?? [],
+      album: result.searchResult3.album ?? [],
+      artist: result.searchResult3.artist ?? [],
+    };
   }
 
   getStreamUrl(trackId: string, options: StreamUrlOptions = {}): string {

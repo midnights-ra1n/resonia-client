@@ -1,4 +1,5 @@
 import { GripVertical, X } from "lucide-react";
+import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCallback, useState } from "react";
 
@@ -159,8 +160,18 @@ function QueueItem({
         <img src={coverUrl} alt="" className="h-10 w-10 shrink-0 rounded object-cover" loading="lazy" />
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-white">{track.title}</p>
-          <p className="truncate text-xs text-neutral-400">{track.artist}</p>
+          <MarqueeText
+            text={track.title}
+            to={track.albumId ? `/albums/${track.albumId}` : undefined}
+            onClick={(e) => e.stopPropagation()}
+            className="text-sm text-white hover:underline"
+          />
+          <MarqueeText
+            text={track.artist}
+            to={track.artistId ? `/artists/${track.artistId}` : undefined}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-neutral-400 hover:text-white hover:underline"
+          />
         </div>
 
         {track.duration > 0 && (

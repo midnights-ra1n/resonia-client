@@ -5,7 +5,8 @@ node_modules/
 # Build outputs
 dist/
 build/
-src-tauri/target/
+**/src-tauri/target/
+**/src-tauri/gen/schemas/
 
 # Env
 .env

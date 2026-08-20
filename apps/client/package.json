@@ -9,12 +9,17 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.36.1",
     "@resonia/api-client": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-http": "^2.5.2",
     "@tauri-apps/plugin-store": "^2.4.4",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",

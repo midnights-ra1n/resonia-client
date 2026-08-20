@@ -41,6 +41,7 @@ export interface ArtistWithAlbumsDTO {
   id: string;
   name: string;
   albumCount: number;
+  coverArt?: string;
   album?: AlbumSummary[];
 }
 
@@ -61,6 +62,7 @@ export interface SongDTO {
   id: string;
   title: string;
   artist: string;
+  artistId?: string;
   album: string;
   albumId?: string;
   coverArt?: string;

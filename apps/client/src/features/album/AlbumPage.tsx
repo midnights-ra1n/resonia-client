@@ -1,4 +1,5 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { MarqueeText } from "../../components/MarqueeText";
 import { Play, Pause, Shuffle } from "lucide-react";
 import { useAlbum } from "./useAlbum";
 import { useServersStore } from "../../stores/serversStore";
@@ -89,7 +90,9 @@ export function AlbumPage() {
       id: song.id,
       title: song.title,
       artist: song.artist,
+      artistId: song.artistId ?? album!.artistId,
       album: song.album,
+      albumId: album!.id,
       duration: song.duration,
       coverUrl: song.coverArt ? client!.getCoverArtUrl(song.coverArt, 300) : coverUrl,
     };
@@ -139,11 +142,19 @@ export function AlbumPage() {
           )}
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">{t("album.labelAlbum")}</p>
-          <h1 className="mt-2 truncate text-5xl font-black text-white">{album.name}</h1>
+          <h1 className="mt-2">
+            <MarqueeText text={album.name} className="text-5xl font-black text-white" />
+          </h1>
           <div className="mt-4 flex items-center gap-2 text-sm text-neutral-300">
-            <span className="font-semibold text-white">{album.artist}</span>
+            {album.artistId ? (
+              <Link to={`/artists/${album.artistId}`} className="font-semibold text-white hover:underline">
+                {album.artist}
+              </Link>
+            ) : (
+              <span className="font-semibold text-white">{album.artist}</span>
+            )}
             {album.year && <span>· {album.year}</span>}
             <span>· {t("album.trackCount", { count: album.songCount })}</span>
             <span>, {formatAlbumDuration(album.duration, t)}</span>
@@ -200,9 +211,17 @@ export function AlbumPage() {
               </div>
 
               <div className="min-w-0">
-                <p className={`truncate text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}>{song.title}</p>
+                <MarqueeText
+                  text={song.title}
+                  className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                />
                 {song.artist !== album.artist && (
-                  <p className="truncate text-xs text-neutral-400">{song.artist}</p>
+                  <MarqueeText
+                    text={song.artist}
+                    to={song.artistId ? `/artists/${song.artistId}` : undefined}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-neutral-400 hover:text-white hover:underline"
+                  />
                 )}
               </div>
 

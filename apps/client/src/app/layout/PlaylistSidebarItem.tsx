@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Library, Play, Pause } from "lucide-react";
+import { MarqueeText } from "../../components/MarqueeText";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
@@ -88,7 +89,9 @@ export function PlaylistSidebarItem({ playlist }: PlaylistSidebarItemProps) {
         </button>
       </div>
 
-      <span className="truncate text-neutral-300 group-hover:text-white">{playlist.name}</span>
+      <div className="min-w-0 flex-1">
+        <MarqueeText text={playlist.name} className="text-neutral-300 group-hover:text-white" />
+      </div>
     </Link>
   );
 }

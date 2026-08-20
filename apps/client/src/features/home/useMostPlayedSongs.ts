@@ -26,7 +26,7 @@ export function useMostPlayedSongs() {
       .search3("", { songCount: 500, albumCount: 0, artistCount: 0 })
       .then((results) => {
         if (cancelled) return;
-        const sorted = results
+        const sorted = results.song
           .filter((s) => (s.playCount ?? 0) > 0)
           .sort((a, b) => (b.playCount ?? 0) - (a.playCount ?? 0))
           .slice(0, TOP_SONGS_LIMIT);

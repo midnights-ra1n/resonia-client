@@ -58,6 +58,16 @@ interface PlayableTrack {
   format: "aac" | "opus" | "mp3";
 }
 
+/** Type MIME candidat pour un démarrage en streaming progressif (MediaSource) quand le
+ *  streaming natif direct échoue faute de support des Range HTTP côté serveur (voir
+ *  GaplessEngine.startNativeViaMediaSource). Le moteur vérifie lui-même la compatibilité
+ *  réelle via MediaSource.isTypeSupported avant de l'utiliser. */
+const MSE_MIME_TYPE: Record<PlayableTrack["format"], string> = {
+  aac: 'audio/mp4; codecs="mp4a.40.2"',
+  mp3: "audio/mpeg",
+  opus: 'audio/ogg; codecs="opus"',
+};
+
 /** "raw" (lossless) n'est pas encore supporté par la résolution de flux. */
 function resolvePlayableTrack(track: Track): PlayableTrack | null {
   const streamUrl = resolveStreamUrl(track);
@@ -315,6 +325,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   engine.onNetworkPressure = (active) => (active ? prefetchScheduler.pause() : prefetchScheduler.resume());
   engine.onStateChange((state) => set({ engineState: state }));
 
+  /** Repli quand le streaming natif est structurellement injouable (voir
+   *  GaplessEngine.onNativePlaybackUnsupported) : télécharge la piste en entier puis la
+   *  décode, et démarre directement en mode buffer — chemin déjà utilisé pour le
+   *  préchargement gapless, indépendant des requêtes Range HTTP. */
+  engine.onNativePlaybackUnsupported = async (offset) => {
+    const track = get().currentTrack;
+    if (!track) return;
+    const resolved = resolvePlayableTrack(track);
+    if (!resolved) return;
+
+    try {
+      const key = decodedCacheKey(track.id, resolved.qualityId);
+      let decoded = decodedCache.get(key);
+      if (!decoded) {
+        const arrayBuffer = await fetch(resolved.streamUrl).then((res) => {
+          if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
+          return res.arrayBuffer();
+        });
+        if (get().currentTrack?.id !== track.id) return;
+        decoded = await engine.decodeAndTrim(arrayBuffer);
+        if (get().currentTrack?.id !== track.id) return;
+        decodedCache.set(key, decoded);
+      }
+      engine.loadAndPlay(resolved.streamUrl, offset, decoded);
+      onPlaybackStarted();
+    } catch (err) {
+      engine.reportError("Lecture impossible : ce flux n'est pas compatible avec ce navigateur", err);
+    }
+  };
+
   // Filet de sécurité uniquement : fin de queue (rien n'était planifié), ou la
   // préparation gapless a échoué (réseau/décodage) et rien n'a été programmé sur
   // l'horloge audio. Le chemin de succès est géré entièrement par commitSwap ci-dessus.
@@ -363,8 +403,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     const decoded = decodedCache.get(key);
     const cachedUrl = decoded ? null : await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format);
     const instantUrl = cachedUrl ?? resolved.streamUrl;
+    // Un blob OPFS local n'a ni Range HTTP ni CORS à satisfaire : le repli MediaSource ne
+    // s'applique qu'au vrai flux réseau.
+    const mimeType = cachedUrl ? undefined : MSE_MIME_TYPE[resolved.format];
 
-    engine.loadAndPlay(instantUrl, offset, decoded ?? undefined);
+    engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
 
     set({ currentTrack: track, queue, currentTime: offset, isPlaying: true });
     updateMediaSessionMetadata(track);

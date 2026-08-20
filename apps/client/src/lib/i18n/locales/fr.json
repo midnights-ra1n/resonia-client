@@ -86,6 +86,9 @@
   },
   "settings": {
     "title": "Paramètres",
+    "general": "Général",
+    "language": "Langue",
+    "languageDescription": "Choisis la langue d'affichage de l'application.",
     "integrations": "Intégrations externes",
     "integrationsDescription": "Clé API optionnelle pour enrichir les pages artiste (titres populaires). Les photos d'artiste sont récupérées automatiquement via Apple Music, sans clé requise. Sans clé, Resonia utilise uniquement les données de ton serveur Navidrome.",
     "lastfmApiKey": "Clé API Last.fm",

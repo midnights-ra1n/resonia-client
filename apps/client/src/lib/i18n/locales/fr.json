@@ -63,6 +63,14 @@
   "search": {
     "placeholder": "Rechercher titres, artistes, albums...",
     "noResults": "Aucun résultat",
-    "title": "Résultats de recherche"
+    "title": "Résultats de recherche",
+    "prompt": "Recherchez des titres, artistes, albums ou playlists",
+    "resultsFor": "Résultats pour « {{query}} »",
+    "sectionSongs": "Titres",
+    "sectionArtists": "Artistes",
+    "sectionAlbums": "Albums",
+    "sectionPlaylists": "Playlists",
+    "artistLabel": "Artiste",
+    "playlistLabel": "Playlist"
   }
 }

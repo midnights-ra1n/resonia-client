@@ -1,16 +1,38 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useTranslation } from "../../lib/i18n";
 import { Sidebar } from "./Sidebar";
+
+const MIN_QUERY_LENGTH = 2;
 
 export function AppLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
+  const debouncedQuery = useDebouncedValue(query, 300);
+
+  // Synchronise le champ avec le paramètre "q" quand l'utilisateur arrive sur /search
+  // par un autre chemin que la saisie (lien, navigation retour...).
+  useEffect(() => {
+    if (location.pathname !== "/search") return;
+    setQuery(new URLSearchParams(location.search).get("q") ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Recherche "live" façon Spotify : dès 2 caractères, l'URL /search est mise à jour
+  // sans attendre la soumission du formulaire, sans empiler l'historique.
+  useEffect(() => {
+    const trimmed = debouncedQuery.trim();
+    if (trimmed.length >= MIN_QUERY_LENGTH) {
+      navigate(`/search?q=${encodeURIComponent(trimmed)}`, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

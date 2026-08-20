@@ -72,5 +72,24 @@
     "sectionPlaylists": "Playlists",
     "artistLabel": "Artist",
     "playlistLabel": "Playlist"
+  },
+  "artist": {
+    "notFound": "Artist not found",
+    "popularSongs": "Popular",
+    "popularSongsSourceLastfm": "via Last.fm",
+    "discography": "Discography",
+    "play": "Play",
+    "shuffle": "Shuffle play",
+    "albumCount": "{{count}} albums",
+    "showMore": "Show more",
+    "showLess": "Show less"
+  },
+  "settings": {
+    "title": "Settings",
+    "integrations": "External integrations",
+    "integrationsDescription": "Optional API key to enrich artist pages (popular tracks). Artist photos are fetched from Apple Music automatically, no key needed. Without a key, Resonia only uses data from your Navidrome server.",
+    "lastfmApiKey": "Last.fm API key",
+    "lastfmApiKeyDescription": "Used to show the artist's most popular tracks. Free key at last.fm/api/account/create",
+    "apiKeyPlaceholder": "Paste the API key here"
   }
 }

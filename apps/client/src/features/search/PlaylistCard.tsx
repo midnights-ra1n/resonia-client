@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Play } from "lucide-react";
 import type { PlaylistSummary } from "@resonia/api-client";
+import { MarqueeText } from "../../components/MarqueeText";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
@@ -34,7 +35,9 @@ export function PlaylistCard({ playlist }: PlaylistCardProps) {
         id: s.id,
         title: s.title,
         artist: s.artist,
+        artistId: s.artistId,
         album: s.album,
+        albumId: s.albumId,
         duration: s.duration,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : coverUrl,
       }));
@@ -65,7 +68,7 @@ export function PlaylistCard({ playlist }: PlaylistCardProps) {
         </button>
       </div>
 
-      <p className="truncate text-sm font-medium text-white">{playlist.name}</p>
+      <MarqueeText text={playlist.name} className="text-sm font-medium text-white" />
       <p className="truncate text-xs text-neutral-400">{t("search.playlistLabel")}</p>
     </div>
   );

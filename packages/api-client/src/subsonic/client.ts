@@ -157,6 +157,15 @@ async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
     return result.artist;
   }
 
+  /** Nécessite le nom de l'artiste (pas son id) : c'est ainsi que l'endpoint Subsonic est défini. */
+  async getTopSongs(artistName: string, count = 10): Promise<SongDTO[]> {
+    const result = await this.request<{ topSongs: { song?: SongDTO[] } }>("getTopSongs", {
+      artist: artistName,
+      count: String(count),
+    });
+    return result.topSongs.song ?? [];
+  }
+
   async getAlbumsByGenre(genre: string, size = 20): Promise<AlbumSummary[]> {
     const result = await this.request<{ albumList2: { album?: AlbumSummary[] } }>("getAlbumList2", {
       type: "byGenre",

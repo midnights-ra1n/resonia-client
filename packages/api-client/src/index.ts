@@ -3,3 +3,5 @@ export * from "./subsonic/client";
 export * from "./subsonic/stream";
 export * from "./subsonic/types";
 export * from "./navidrome/nativeClient";
+export * from "./apple/client";
+export * from "./lastfm/client";

@@ -1,5 +1,13 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "default",
+  "description": "Permissions par défaut de la fenêtre principale",
+  "windows": ["main"],
   "permissions": [
-    "store:default"
+    "store:default",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "https://music.apple.com/*" }]
+    }
   ]
 }

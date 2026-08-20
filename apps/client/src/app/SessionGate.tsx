@@ -3,6 +3,7 @@ import { LoginPage } from "../features/auth/LoginPage";
 import { useTranslation } from "../lib/i18n";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { useServersStore } from "../stores/serversStore";
+import { useSettingsStore } from "../stores/settingsStore";
 
 type SessionStatus = "checking" | "valid" | "invalid";
 
@@ -12,13 +13,15 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const removeServer = useServersStore((s) => s.removeServer);
+  const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const { t } = useTranslation();
 
   const [status, setStatus] = useState<SessionStatus>("checking");
 
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    hydrateSettings();
+  }, [hydrate, hydrateSettings]);
 
   useEffect(() => {
     if (!hydrated) return;

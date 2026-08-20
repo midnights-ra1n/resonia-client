@@ -1,5 +1,6 @@
 import { Play } from "lucide-react";
 import type { SongDTO } from "@resonia/api-client";
+import { MarqueeText } from "../../components/MarqueeText";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
@@ -35,7 +36,9 @@ export function TrackResultRow({ song, songs }: TrackResultRowProps) {
       id: s.id,
       title: s.title,
       artist: s.artist,
+      artistId: s.artistId,
       album: s.album,
+      albumId: s.albumId,
       duration: s.duration,
       coverUrl: client && s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : undefined,
     };
@@ -47,9 +50,12 @@ export function TrackResultRow({ song, songs }: TrackResultRowProps) {
   }
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={handlePlay}
-      className={`group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition hover:bg-neutral-800/80 ${
+      onKeyDown={(e) => e.key === "Enter" && handlePlay()}
+      className={`group flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition hover:bg-neutral-800/80 ${
         isCurrent ? "bg-neutral-800/60" : ""
       }`}
     >
@@ -65,13 +71,21 @@ export function TrackResultRow({ song, songs }: TrackResultRowProps) {
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm font-medium ${isCurrent && isPlaying ? "text-emerald-400" : "text-white"}`}>
-          {song.title}
-        </p>
-        <p className="truncate text-xs text-neutral-400">{song.artist}</p>
+        <MarqueeText
+          text={song.title}
+          to={song.albumId ? `/albums/${song.albumId}` : undefined}
+          onClick={(e) => e.stopPropagation()}
+          className={`text-sm font-medium hover:underline ${isCurrent && isPlaying ? "text-emerald-400" : "text-white"}`}
+        />
+        <MarqueeText
+          text={song.artist}
+          to={song.artistId ? `/artists/${song.artistId}` : undefined}
+          onClick={(e) => e.stopPropagation()}
+          className="text-xs text-neutral-400 hover:text-white hover:underline"
+        />
       </div>
 
       <span className="shrink-0 text-xs text-neutral-500">{formatDuration(song.duration)}</span>
-    </button>
+    </div>
   );
 }

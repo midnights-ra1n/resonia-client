@@ -86,6 +86,9 @@
   },
   "settings": {
     "title": "Settings",
+    "general": "General",
+    "language": "Language",
+    "languageDescription": "Choose the app's display language.",
     "integrations": "External integrations",
     "integrationsDescription": "Optional API key to enrich artist pages (popular tracks). Artist photos are fetched from Apple Music automatically, no key needed. Without a key, Resonia only uses data from your Navidrome server.",
     "lastfmApiKey": "Last.fm API key",

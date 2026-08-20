@@ -12,9 +12,13 @@ import {
 } from "../lib/audio/mediaSession";
 import { getQualityById } from "../lib/audio/qualityOptions";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
+import { storage } from "../lib/storage";
 import { useServersStore } from "./serversStore";
 import { useSettingsStore } from "./settingsStore";
 import { linearOrder, reshuffleUpcoming, shuffleIndices } from "../lib/audio/shuffle";
+
+const VOLUME_STORAGE_KEY = "resonia:settings:volume";
+const TIME_DISPLAY_STORAGE_KEY = "resonia:settings:showTimeRemaining";
 
 export interface Track {
   id: string;
@@ -295,6 +299,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     scheduleGaplessNext();
   }
 
+  // Hydratation asynchrone (localStorage web / store Tauri bureau) : le volume et le mode
+  // d'affichage du temps restent tels que l'utilisateur les a laissés d'une session à l'autre.
+  storage.get<number>(VOLUME_STORAGE_KEY).then((stored) => {
+    if (stored === null || !isFinite(stored) || stored < 0 || stored > 1) return;
+    engine.setVolume(stored);
+    set({ volume: stored, isMuted: stored === 0 });
+  });
+  storage.get<boolean>(TIME_DISPLAY_STORAGE_KEY).then((stored) => {
+    if (stored === null) return;
+    set({ showTimeRemaining: stored });
+  });
+
   engine.onNativePlaying = onPlaybackStarted;
   engine.onNetworkPressure = (active) => (active ? prefetchScheduler.pause() : prefetchScheduler.resume());
   engine.onStateChange((state) => set({ engineState: state }));
@@ -523,6 +539,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     setVolume: (volume) => {
       engine.setVolume(volume);
       set({ volume, isMuted: volume === 0 });
+      storage.set(VOLUME_STORAGE_KEY, volume);
     },
     toggleMute: () =>
       set((state) => {
@@ -566,7 +583,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     toggleConnect: () => set((state) => ({ showConnect: !state.showConnect })),
 
     showTimeRemaining: false,
-    toggleTimeDisplay: () => set((state) => ({ showTimeRemaining: !state.showTimeRemaining })),
+    toggleTimeDisplay: () =>
+      set((state) => {
+        const showTimeRemaining = !state.showTimeRemaining;
+        storage.set(TIME_DISPLAY_STORAGE_KEY, showTimeRemaining);
+        return { showTimeRemaining };
+      }),
   };
 });
 

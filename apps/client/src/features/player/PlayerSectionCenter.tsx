@@ -9,8 +9,12 @@ import {
 import { useRef, useState } from "react";
 import { usePlayerStore } from "../../stores/playerStore";
 
+// 0 est une valeur d'écoulement légitime (tout début de piste, y compris juste après un
+// enchaînement gapless) : seule une valeur non finie ou négative signifie "pas de piste".
+// Confondre "0 seconde écoulée" avec "durée inconnue" faisait clignoter "--:--" à chaque
+// changement de piste (le store remet currentTime à 0), ce qui ressemblait à une coupure.
 function formatTime(seconds: number): string {
-  if (seconds <= 0 || !isFinite(seconds)) return "--:--";
+  if (!isFinite(seconds) || seconds < 0) return "--:--";
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -113,7 +117,7 @@ export function PlayerSectionCenter() {
       {/* Progress bar + time */}
       <div className="flex items-center gap-2 w-full">
         <span className="text-xs text-neutral-400 w-10 text-right tabular-nums select-none">
-          {formatTime(currentTime)}
+          {currentTrack ? formatTime(currentTime) : "--:--"}
         </span>
 
         <div
@@ -157,9 +161,11 @@ export function PlayerSectionCenter() {
             showTimeRemaining ? "Click for total time" : "Click for remaining time"
           }
         >
-          {showTimeRemaining
-            ? `-${formatTime(Math.max(duration - currentTime, 0))}`
-            : formatTime(duration)}
+          {!currentTrack
+            ? "--:--"
+            : showTimeRemaining
+              ? `-${formatTime(Math.max(duration - currentTime, 0))}`
+              : formatTime(duration)}
         </span>
       </div>
     </div>

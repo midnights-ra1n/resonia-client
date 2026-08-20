@@ -6,6 +6,22 @@ import type { EngineError, EngineState, EngineStateListener } from "./types";
 // écart de timing : la planification elle-même est sample-accurate.
 const SWAP_FADE_SECONDS = 0.008;
 
+function describeMediaError(error: MediaError | null): string {
+  if (!error) return "Lecture audio impossible (erreur inconnue)";
+  switch (error.code) {
+    case MediaError.MEDIA_ERR_ABORTED:
+      return "Lecture interrompue";
+    case MediaError.MEDIA_ERR_NETWORK:
+      return "Échec réseau pendant le chargement du flux audio";
+    case MediaError.MEDIA_ERR_DECODE:
+      return "Flux audio corrompu ou impossible à décoder";
+    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return "Format ou source audio non supporté par ce navigateur";
+    default:
+      return `Lecture audio impossible (code ${error.code})`;
+  }
+}
+
 export interface DecodedTrack {
   buffer: AudioBuffer;
   trim: SilenceTrim;
@@ -64,6 +80,13 @@ export class GaplessEngine {
   private pendingNext: PendingNext | null = null;
   private onEndedCallback: (() => void) | null = null;
 
+  // Contexte du dernier appel loadAndPlay en streaming natif, uniquement pour permettre au
+  // handler "error" de retenter un démarrage progressif via MediaSource (voir
+  // startNativeViaMediaSource) sans que l'appelant ait à rejouer loadAndPlay lui-même.
+  private pendingStreamUrl: string | null = null;
+  private pendingMimeType: string | null = null;
+  private nativeFallbackAttempted = false;
+
   private _state: EngineState = "idle";
   private _error: EngineError | null = null;
   private stateListeners = new Set<EngineStateListener>();
@@ -72,6 +95,14 @@ export class GaplessEngine {
    *  l'état "playing" — le bon moment pour démarrer les tâches de fond (cache, décodage,
    *  préchargement) sans concurrencer le tout début de la lecture au clic. */
   onNativePlaying: (() => void) | null = null;
+
+  /** Prévient l'appelant que le streaming natif est structurellement injouable pour cette
+   *  piste (ex: Safari refuse tout flux dont le serveur répond `Accept-Ranges: none` à sa
+   *  sonde `Range` initiale — comportement WebKit propre, indépendant d'un vrai problème
+   *  réseau/codec). L'appelant est responsable de relancer la lecture via un chemin qui ne
+   *  dépend pas des ranges HTTP (fetch complet + decodeAudioData, déjà utilisé pour le
+   *  préchargement gapless) en repassant par `loadAndPlay(url, offset, decoded)`. */
+  onNativePlaybackUnsupported: ((offset: number) => void) | null = null;
 
   /** Prévient l'appelant d'une pression réseau (stall/seek en cours) pour qu'il suspende
    *  son propre préchargement en tâche de fond, et de son relâchement pour le reprendre.
@@ -111,11 +142,72 @@ export class GaplessEngine {
         this.onNetworkPressure?.(false);
         this.setState("playing");
         this.onNativePlaying?.();
+        // Sur Safari, l'élément <audio> peut atteindre "playing" (currentTime avance, aucune
+        // erreur) alors que l'AudioContext est resté suspendu — puisque tout l'audio passe
+        // par le graphe WebAudio (createMediaElementSource), le résultat est un silence total
+        // sans aucun signal d'échec. On revérifie donc ici, avec réessais, indépendamment de
+        // l'unlock au premier geste.
+        this.resumeContextWithRetry();
       }
     });
     this.nativeAudio.addEventListener("ended", () => this.handleNativeEnded());
+    // Sans ce listener, un échec de chargement (CORS refusé, codec non supporté par
+    // WebKit/Safari — ex: Opus — flux réseau invalide) laisse l'élément <audio> planté
+    // silencieusement en l'état "loading" : aucune erreur ne remonte nulle part ailleurs.
+    this.nativeAudio.addEventListener("error", () => {
+      if (this.trackState?.mode !== "native") return;
+      const mediaError = this.nativeAudio.error;
+      const offset = this.trackState.pauseOffset;
+
+      if (mediaError?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        // Priorité au streaming progressif via MediaSource : évite d'attendre le
+        // téléchargement complet du fichier avant de démarrer. Limité au démarrage à froid
+        // (offset 0) — un reprise/seek après échec retombe directement sur le repli complet,
+        // plus simple à positionner précisément dans un buffer déjà entièrement décodé.
+        if (
+          !this.nativeFallbackAttempted &&
+          offset === 0 &&
+          this.pendingStreamUrl &&
+          this.pendingMimeType &&
+          typeof MediaSource !== "undefined" &&
+          MediaSource.isTypeSupported(this.pendingMimeType)
+        ) {
+          this.nativeFallbackAttempted = true;
+          this.startNativeViaMediaSource(this.pendingStreamUrl, this.pendingMimeType);
+          return;
+        }
+        if (this.onNativePlaybackUnsupported) {
+          this.onNativePlaybackUnsupported(offset);
+          return;
+        }
+      }
+      this.reportError(describeMediaError(mediaError), mediaError);
+    });
 
     this.installAutoplayUnlock();
+  }
+
+  /** Relance context.resume() avec réessais (délais croissants) tant que le contexte reste
+   *  "suspended" — nécessaire sur Safari où une seule tentative "fire-and-forget" peut ne
+   *  jamais aboutir (ex: activation du geste jugée insuffisante par WebKit) sans qu'aucune
+   *  erreur ne soit levée nulle part. Ne fait rien si le contexte tourne déjà. */
+  private resumeContextWithRetry(attempt = 0) {
+    if (this.context.state !== "suspended") return;
+    const delays = [0, 150, 500, 1500];
+    const delay = delays[attempt] ?? delays[delays.length - 1];
+    window.setTimeout(() => {
+      if (this.context.state !== "suspended") return;
+      this.context
+        .resume()
+        .then(() => {
+          if (this.context.state === "suspended" && attempt < delays.length - 1) {
+            this.resumeContextWithRetry(attempt + 1);
+          }
+        })
+        .catch(() => {
+          if (attempt < delays.length - 1) this.resumeContextWithRetry(attempt + 1);
+        });
+    }, delay);
   }
 
   private installAutoplayUnlock() {
@@ -190,12 +282,17 @@ export class GaplessEngine {
   /** Démarre la lecture d'une piste. Si `decoded` est fourni (piste déjà préparée, ex:
    *  retour arrière sur une piste déjà décodée), démarre directement en mode buffer,
    *  sample-accurate dès la première image. Sinon démarre en streaming natif pour une
-   *  réponse instantanée au clic. */
-  loadAndPlay(url: string, offset = 0, decoded?: DecodedTrack) {
-    if (this.context.state === "suspended") this.context.resume().catch(() => {});
+   *  réponse instantanée au clic. `mimeType`, si fourni, permet un repli en streaming
+   *  progressif (MediaSource) si ce streaming natif échoue (voir handler "error" ci-dessus)
+   *  — sans lui, l'appelant ne peut recevoir que le repli `onNativePlaybackUnsupported`. */
+  loadAndPlay(url: string, offset = 0, decoded?: DecodedTrack, mimeType?: string) {
+    if (this.context.state === "suspended") this.resumeContextWithRetry();
     this.discardPending();
     this.teardownCurrent();
     this.setState("loading");
+    this.nativeFallbackAttempted = false;
+    this.pendingStreamUrl = url;
+    this.pendingMimeType = mimeType ?? null;
 
     if (decoded) {
       this.startBufferAt(decoded.buffer, decoded.trim, offset);
@@ -219,6 +316,82 @@ export class GaplessEngine {
     });
 
     this.trackState = { mode: "native", contextStartTime: now, pauseOffset: offset, isPaused: false };
+  }
+
+  /** Repli quand le streaming natif direct échoue avec MEDIA_ERR_SRC_NOT_SUPPORTED (typ.
+   *  Safari + serveur `Accept-Ranges: none` sur un flux transcodé à la volée) : au lieu
+   *  d'attendre le téléchargement intégral du fichier avant de pouvoir jouer quoi que ce
+   *  soit, on alimente un SourceBuffer au fil de l'eau depuis un fetch() classique — qui,
+   *  lui, ne dépend d'aucun support de Range côté serveur. `.play()` est appelé de façon
+   *  synchrone juste après l'assignation du src (comme dans loadAndPlay), donc dans le même
+   *  contexte d'activation que l'appel initial ; seule l'alimentation du buffer est async. */
+  private startNativeViaMediaSource(url: string, mimeType: string) {
+    const mediaSource = new MediaSource();
+    const objectUrl = URL.createObjectURL(mediaSource);
+
+    mediaSource.addEventListener(
+      "sourceopen",
+      () => {
+        URL.revokeObjectURL(objectUrl);
+        let sourceBuffer: SourceBuffer;
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer(mimeType);
+        } catch (err) {
+          this.reportError("Flux progressif non supporté par ce navigateur", err);
+          return;
+        }
+
+        fetch(url)
+          .then((res) => {
+            if (!res.ok || !res.body) throw new Error(`Échec du téléchargement (${res.status})`);
+            const reader = res.body.getReader();
+
+            const appendChunk = (chunk: Uint8Array): Promise<void> =>
+              new Promise((resolve, reject) => {
+                const onUpdateEnd = () => {
+                  sourceBuffer.removeEventListener("updateend", onUpdateEnd);
+                  resolve();
+                };
+                sourceBuffer.addEventListener("updateend", onUpdateEnd);
+                try {
+                  sourceBuffer.appendBuffer(chunk as BufferSource);
+                } catch (err) {
+                  sourceBuffer.removeEventListener("updateend", onUpdateEnd);
+                  reject(err);
+                }
+              });
+
+            const pump = (): Promise<void> =>
+              reader.read().then(({ done, value }) => {
+                if (done) {
+                  if (mediaSource.readyState === "open") mediaSource.endOfStream();
+                  return;
+                }
+                return appendChunk(value).then(pump);
+              });
+
+            return pump();
+          })
+          .catch((err) => this.reportError("Flux progressif interrompu", err));
+      },
+      { once: true },
+    );
+
+    this.nativeAudio.pause();
+    const now = this.context.currentTime;
+    this.nativeGain.gain.cancelScheduledValues(now);
+    this.nativeGain.gain.setValueAtTime(1, now);
+
+    this.nativeAudio.src = objectUrl;
+    this.nativeAudio.currentTime = 0;
+    this.nativeAudio.play().catch((err) => {
+      this.context
+        .resume()
+        .then(() => this.nativeAudio.play().catch((e) => this.reportError("Lecture progressive impossible après reprise du contexte audio", e)))
+        .catch(() => this.reportError("Lecture progressive impossible", err));
+    });
+
+    this.trackState = { mode: "native", contextStartTime: now, pauseOffset: 0, isPaused: false };
   }
 
   /** Bascule la piste active du streaming natif vers un AudioBufferSourceNode dès que son
@@ -261,7 +434,7 @@ export class GaplessEngine {
 
   resume() {
     if (!this.trackState || !this.isTrackStatePaused(this.trackState)) return;
-    if (this.context.state === "suspended") this.context.resume().catch(() => {});
+    if (this.context.state === "suspended") this.resumeContextWithRetry();
     if (this.trackState.mode === "native") {
       this.trackState.isPaused = false;
       this.nativeAudio.play().catch((err) => this.reportError("Reprise de lecture impossible", err));

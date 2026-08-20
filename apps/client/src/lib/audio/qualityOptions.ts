@@ -41,8 +41,25 @@ export const AUDIO_QUALITIES: AudioQuality[] = [
 
 export const DEFAULT_QUALITY_ID = "aac-256";
 
+const FORMAT_MIME: Partial<Record<AudioQuality["format"], string>> = {
+  aac: 'audio/mp4; codecs="mp4a.40.2"',
+  mp3: "audio/mpeg",
+  opus: 'audio/ogg; codecs="opus"',
+};
+
+/** Vérifie le décodage réel plutôt que de supposer qu'un format est disponible partout sur
+ *  une même plateforme logique : le bureau Tauri utilise WKWebView sur macOS (aucun support
+ *  Opus natif) mais Chromium/WebKitGTK ailleurs — un simple `platforms: ["desktop"]` ne peut
+ *  pas distinguer les deux et laisserait Opus sélectionnable là où il ne joue pas du tout. */
+function isFormatPlayable(format: AudioQuality["format"]): boolean {
+  if (format === "raw") return true;
+  const mime = FORMAT_MIME[format];
+  if (!mime || typeof Audio === "undefined") return true;
+  return new Audio().canPlayType(mime) !== "";
+}
+
 export function getAvailableQualities(platform: Platform): AudioQuality[] {
-  return AUDIO_QUALITIES.filter((q) => q.platforms.includes(platform));
+  return AUDIO_QUALITIES.filter((q) => q.platforms.includes(platform) && isFormatPlayable(q.format));
 }
 
 export function getQualityById(id: string): AudioQuality | undefined {

@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @import "./assets/fonts/fonts.css";
 
+/*
+ * html/body doivent rester non-scrollables et de la couleur du thème : sans ça, dès que le
+ * contenu interne (déjà scrollable via overflow-y-auto) dépasse d'un pixel la fenêtre, ou lors
+ * du "rubber-band bounce" natif de WebKit, c'est le fond blanc par défaut du document qui
+ * apparaît (bande blanche en bas, flash blanc pendant les transitions de route).
+ */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background-color: #0a0a0a;
+}
+
 body {
   font-family: "Roboto", sans-serif;
   user-select: none;

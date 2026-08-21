@@ -53,7 +53,7 @@ export function AppLayout() {
   return (
     <div className="flex h-screen bg-neutral-950">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800">
           <form onSubmit={handleSubmit} className="flex items-center justify-center px-4 py-3 gap-2">
             {/* Boutons navigation à gauche de la barre de recherche */}
@@ -78,7 +78,7 @@ export function AppLayout() {
           </form>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto">
           <Outlet />
         </main>
         <PlayerBar />

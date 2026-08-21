@@ -263,7 +263,19 @@ export class GaplessEngine {
   }
 
   setVolume(v: number) {
-    this.masterGain.gain.value = v;
+    const clamped = Math.min(1, Math.max(0, v));
+    const now = this.context.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(clamped, now);
+    // WebKit n'applique pas l'automation d'un GainNode situé en aval d'un
+    // MediaElementAudioSourceNode : tant que la piste est en streaming natif (<audio>), le
+    // graphe ci-dessus est donc inopérant sur Safari — le son reste à son niveau d'origine
+    // quelle que soit la valeur de masterGain, sauf au strict minimum où WebKit rend bien un
+    // vrai silence. On pilote donc en plus le volume natif de l'élément lui-même, qui lui est
+    // toujours respecté par WebKit ; sur les navigateurs conformes (Chrome/Firefox), le volume
+    // de l'élément est ignoré une fois routé vers Web Audio, donc ceci n'a aucun effet double.
+    this.nativeAudio.volume = clamped;
+    this.nativeAudio.muted = clamped <= 0;
   }
 
   // ---- décodage ----

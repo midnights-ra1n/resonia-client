@@ -27,7 +27,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4">
+    <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4 min-h-0">
       {/* Logo */}
       <div className="flex justify-center items-center gap-4 py-4">
         <img src="/favicon.svg" alt="Resonia" className="w-16" />
@@ -61,7 +61,7 @@ export function Sidebar() {
       </div>
 
       {/* Spotify-like playlists section - with scroll only for this section */}
-      <div className="mt-auto overflow-y-scroll">
+      <div className="mt-auto min-h-0 overflow-y-auto">
 
         {/* Version label */}
         <nav className="space-y-1 overflow-y-auto">

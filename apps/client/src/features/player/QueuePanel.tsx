@@ -85,7 +85,7 @@ function QueueList() {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+    <div className="flex-1 min-h-0 overflow-y-auto" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       {upcoming.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-neutral-500">
           <p className="text-sm">Aucune musique dans la file d'attente.</p>

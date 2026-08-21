@@ -2,27 +2,26 @@ import { cacheStore } from "./cacheStore";
 import { cacheKeyFor } from "./types";
 import { debugLog } from "../debug/audioDebugLogger";
 
-const PREFETCH_PERCENTAGES = [0.5, 0.3, 0.2];
-const FALLBACK_TRACK_SIZE_ESTIMATE = 10 * 1024 * 1024;
+const PREFETCH_COUNT = 3;
 
 export interface UpcomingTrack {
   trackId: string;
   streamUrl: string;
-  estimatedTotalBytes?: number;
 }
 
 interface QueueSlot {
   trackId: string;
   streamUrl: string;
   priority: "active" | "prefetch";
-  budgetBytes?: number; // undefined = illimité (créneau actif)
 }
 
-/** File de priorité unifiée : la piste active (illimitée, protégée de l'éviction) passe
- *  toujours en premier, suivie des 3 pistes suivantes avec un budget dégressif. Le
- *  téléchargement reste séquentiel par priorité (jamais plusieurs connexions en
- *  parallèle) : la bande passante ne doit jamais être partagée entre la piste écoutée
- *  et le préchargement tant qu'elle n'est pas entièrement en cache. */
+/** File de priorité unifiée : la piste active passe toujours en premier, suivie des 3
+ *  pistes suivantes — toutes téléchargées intégralement (pas de budget partiel) pour que
+ *  le passage à la piste suivante tape directement dans le cache disque plutôt que de
+ *  retomber sur un nouveau fetch réseau. Le téléchargement reste séquentiel par priorité
+ *  (jamais plusieurs connexions en parallèle) : la bande passante ne doit jamais être
+ *  partagée entre la piste écoutée et le préchargement tant qu'elle n'est pas
+ *  entièrement en cache. */
 class PrefetchScheduler {
   private qualityId = "aac-256";
   private slots: QueueSlot[] = [];
@@ -56,11 +55,10 @@ class PrefetchScheduler {
 
   setUpcoming(tracks: UpcomingTrack[]) {
     const active = this.activeSlot;
-    const upcoming: QueueSlot[] = tracks.slice(0, PREFETCH_PERCENTAGES.length).map((t, i) => ({
+    const upcoming: QueueSlot[] = tracks.slice(0, PREFETCH_COUNT).map((t) => ({
       trackId: t.trackId,
       streamUrl: t.streamUrl,
       priority: "prefetch",
-      budgetBytes: Math.floor((t.estimatedTotalBytes ?? FALLBACK_TRACK_SIZE_ESTIMATE) * PREFETCH_PERCENTAGES[i]),
     }));
     this.slots = active ? [active, ...upcoming] : upcoming;
     this.cursor = 0;
@@ -106,8 +104,8 @@ class PrefetchScheduler {
         continue;
       }
 
-      debugLog("prefetch:request", { trackId: slot.trackId, position: this.cursor, priority: slot.priority, budgetBytes: slot.budgetBytes });
-      const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority, slot.budgetBytes);
+      debugLog("prefetch:request", { trackId: slot.trackId, position: this.cursor, priority: slot.priority });
+      const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority);
 
       await this.waitForTaskSettled(task);
       if (!this.paused) this.cursor++; // ne pas avancer le curseur si interrompu en cours de route

@@ -6,6 +6,9 @@ import { opfsDelete, opfsReadAll } from "./opfsStore";
 const META_KEY = "resonia:cache:meta";
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 Go
 
+const SIZE_NOTIFY_THROTTLE_MS = 300;
+const META_PERSIST_THROTTLE_MS = 1000;
+
 class CacheStore {
   private tasks = new Map<string, TrackDownloader>();
   private metaCache: Map<string, CacheEntryMeta> | null = null;
@@ -14,13 +17,33 @@ class CacheStore {
   // dans cet ensemble, même si elles deviennent la moins récemment utilisées.
   private protectedKeys = new Set<string>();
   private maxBytes = DEFAULT_MAX_BYTES;
+  private sizeListeners = new Set<(bytes: number) => void>();
+  private sizeNotifyTimer: number | null = null;
+  private metaWriteTimer: number | null = null;
 
   setMaxBytes(bytes: number) {
     this.maxBytes = bytes;
+    this.enforceLimit();
   }
 
   setProtectedKeys(keys: string[]) {
     this.protectedKeys = new Set(keys);
+  }
+
+  /** S'abonne aux variations de la taille totale du cache (téléchargement, éviction, purge).
+   *  Le callback est throttled : au plus un appel toutes les `SIZE_NOTIFY_THROTTLE_MS`. */
+  onSizeChange(cb: (bytes: number) => void): () => void {
+    this.sizeListeners.add(cb);
+    return () => this.sizeListeners.delete(cb);
+  }
+
+  private scheduleSizeNotify() {
+    if (this.sizeListeners.size === 0 || this.sizeNotifyTimer !== null) return;
+    this.sizeNotifyTimer = window.setTimeout(async () => {
+      this.sizeNotifyTimer = null;
+      const bytes = await this.currentCacheSize();
+      this.sizeListeners.forEach((cb) => cb(bytes));
+    }, SIZE_NOTIFY_THROTTLE_MS);
   }
 
   private async loadMeta(): Promise<Map<string, CacheEntryMeta>> {
@@ -36,9 +59,25 @@ class CacheStore {
     return this.metaLoad;
   }
 
-  private async persistMeta() {
+  /** Planifie l'écriture des métadonnées vers `storage` (throttled) — appelée à chaque
+   *  chunk téléchargé (~24-32 fois par piste). `this.metaCache` est déjà à jour en
+   *  mémoire à l'appel : tout ce qui lit l'état du cache (currentCacheSize, enforceLimit,
+   *  isFullyCached...) reste donc exact immédiatement. Sérialiser tout le tableau et
+   *  l'envoyer en IPC à `storage.set` sur CHAQUE chunk gelait l'UI plusieurs fois par
+   *  piste ; un throttle ramène ça à ~1 appel/seconde en téléchargement continu. */
+  private persistMeta() {
     if (!this.metaCache) return;
-    await storage.set(META_KEY, Array.from(this.metaCache.values()));
+    this.scheduleSizeNotify();
+    if (this.metaWriteTimer !== null) return;
+    this.metaWriteTimer = window.setTimeout(() => {
+      this.metaWriteTimer = null;
+      this.flushMetaToDisk();
+    }, META_PERSIST_THROTTLE_MS);
+  }
+
+  private flushMetaToDisk(): Promise<void> {
+    if (!this.metaCache) return Promise.resolve();
+    return storage.set(META_KEY, Array.from(this.metaCache.values()));
   }
 
   private async touch(key: string, patch: Partial<CacheEntryMeta>) {
@@ -51,7 +90,7 @@ class CacheStore {
       lastAccessedAt: Date.now(),
     };
     meta.set(key, { ...existing, ...patch, lastAccessedAt: Date.now() });
-    await this.persistMeta();
+    this.persistMeta();
   }
 
   /** Récupère (ou crée) le downloader pour une clé donnée. Un seul writer OPFS par fichier. */
@@ -61,12 +100,15 @@ class CacheStore {
     if (!task) {
       task = new TrackDownloader(key, streamUrl);
       task.onProgress((progress) => {
+        // enforceLimit() à chaque chunk (pas seulement en fin de téléchargement) : si le
+        // cache est déjà plein pendant qu'on écrit une nouvelle piste, les entrées les plus
+        // anciennes (non protégées) sont évincées au fil de l'eau plutôt qu'en une seule
+        // fois à la complétion, pour ne jamais dépasser durablement `maxBytes`.
         this.touch(key, {
           bytesCached: progress.bytesCached,
           totalBytes: progress.totalBytes,
           complete: progress.complete,
-        });
-        if (progress.complete) this.enforceLimit();
+        }).then(() => this.enforceLimit());
       });
       this.tasks.set(key, task);
     }
@@ -141,7 +183,7 @@ class CacheStore {
       meta.delete(entry.key);
       currentTotal -= entry.bytesCached;
     }
-    await this.persistMeta();
+    this.persistMeta();
   }
 
   async currentCacheSize(): Promise<number> {
@@ -157,7 +199,12 @@ class CacheStore {
     }
     this.tasks.clear();
     this.metaCache = new Map();
-    await this.persistMeta();
+    if (this.metaWriteTimer !== null) {
+      window.clearTimeout(this.metaWriteTimer);
+      this.metaWriteTimer = null;
+    }
+    await this.flushMetaToDisk();
+    this.scheduleSizeNotify();
   }
 }
 

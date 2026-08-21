@@ -93,6 +93,15 @@
     "integrationsDescription": "Clé API optionnelle pour enrichir les pages artiste (titres populaires). Les photos d'artiste sont récupérées automatiquement via Apple Music, sans clé requise. Sans clé, Resonia utilise uniquement les données de ton serveur Navidrome.",
     "lastfmApiKey": "Clé API Last.fm",
     "lastfmApiKeyDescription": "Utilisée pour afficher les titres les plus populaires de l'artiste. Clé gratuite sur last.fm/api/account/create",
-    "apiKeyPlaceholder": "Coller la clé API ici"
+    "apiKeyPlaceholder": "Coller la clé API ici",
+    "cache": "Cache",
+    "cacheDescription": "Les musiques et pochettes lues sont conservées sur ton disque pour éviter de tout retélécharger.",
+    "cacheSize": "Espace utilisé",
+    "cacheLimit": "Limite de cache",
+    "cacheLimitDescription": "Taille maximale du cache local. Les pistes les moins récemment jouées sont supprimées automatiquement au-delà.",
+    "cacheClear": "Vider le cache",
+    "cacheClearing": "Suppression...",
+    "unitGb": "Go",
+    "unitMb": "Mo"
   }
 }

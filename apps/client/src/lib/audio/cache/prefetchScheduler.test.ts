@@ -48,16 +48,16 @@ describe("prefetchScheduler — ordre de priorité et budget dégressif", () => 
     vi.resetModules();
   });
 
-  it("télécharge la piste active en premier (illimitée), puis les 3 suivantes avec un budget dégressif 50/30/20%", async () => {
+  it("télécharge la piste active en premier, puis les 3 suivantes, toutes intégralement (pas de budget partiel)", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     prefetchScheduler.setQuality("aac-256");
 
     prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
     await flush();
     prefetchScheduler.setUpcoming([
-      { trackId: "next1", streamUrl: "https://x/1", estimatedTotalBytes: 1000 },
-      { trackId: "next2", streamUrl: "https://x/2", estimatedTotalBytes: 1000 },
-      { trackId: "next3", streamUrl: "https://x/3", estimatedTotalBytes: 1000 },
+      { trackId: "next1", streamUrl: "https://x/1" },
+      { trackId: "next2", streamUrl: "https://x/2" },
+      { trackId: "next3", streamUrl: "https://x/3" },
     ]);
     await flush();
 
@@ -65,15 +65,15 @@ describe("prefetchScheduler — ordre de priorité et budget dégressif", () => 
     tasks.get("active")?.complete();
     await flush();
 
-    expect(requestedOrder[1]).toEqual({ trackId: "next1", priority: "prefetch", budgetBytes: 500 });
+    expect(requestedOrder[1]).toEqual({ trackId: "next1", priority: "prefetch", budgetBytes: undefined });
     tasks.get("next1")?.complete();
     await flush();
 
-    expect(requestedOrder[2]).toEqual({ trackId: "next2", priority: "prefetch", budgetBytes: 300 });
+    expect(requestedOrder[2]).toEqual({ trackId: "next2", priority: "prefetch", budgetBytes: undefined });
     tasks.get("next2")?.complete();
     await flush();
 
-    expect(requestedOrder[3]).toEqual({ trackId: "next3", priority: "prefetch", budgetBytes: 200 });
+    expect(requestedOrder[3]).toEqual({ trackId: "next3", priority: "prefetch", budgetBytes: undefined });
   });
 
   it("protège la piste active et toute la fenêtre de préchargement de l'éviction", async () => {

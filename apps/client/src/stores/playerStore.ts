@@ -138,26 +138,37 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   // du démarrage de lecture, changement de qualité, etc.).
   let scheduledNextKey: string | null = null;
 
+  // Débounce des seeks (barre de progression) : un clic isolé applique le seek quasi
+  // immédiatement, mais une rafale de clics très rapprochés (l'utilisateur "glisse" en
+  // cliquant plusieurs fois) ne doit faire atterrir qu'UN seul seek — celui du dernier
+  // clic — sur le moteur. Sans ça, plusieurs seeks natifs qui se chevauchent (chacun
+  // interrompant la mise en mémoire tampon du précédent) pouvaient faire atterrir la
+  // lecture avant/après le point réellement cliqué. `pendingSeekTime` sert aussi à
+  // suspendre tickProgress() : sans ça, sa lecture de engine.currentTime à chaque frame
+  // écraserait la position optimiste affichée avant même que le seek débouncé parte.
+  const SEEK_DEBOUNCE_MS = 80;
+  let seekDebounceTimer: number | null = null;
+  let pendingSeekTime: number | null = null;
+
+  function clearPendingSeek() {
+    if (seekDebounceTimer !== null) {
+      window.clearTimeout(seekDebounceTimer);
+      seekDebounceTimer = null;
+    }
+    pendingSeekTime = null;
+  }
+
   function resetPlaybackFlags() {
     scheduledNextKey = null;
     scrobbledNowPlaying = false;
     scrobbledSubmission = false;
+    clearPendingSeek();
   }
 
   function sendScrobble(track: Track, submission: boolean) {
     const client = getActiveClient();
     if (!client) return;
     client.scrobble(track.id, { submission }).catch((err) => console.warn("[player] Scrobble échoué", err));
-  }
-
-  /** Estime la taille totale du fichier à partir du débit réel de la qualité active,
-   *  pour répartir le budget de préchargement dégressif sur des tailles réalistes plutôt
-   *  qu'une estimation forfaitaire. `maxBitRate === 0` (lossless/raw) n'a pas de débit
-   *  fixe : on laisse le planificateur retomber sur son estimation par défaut. */
-  function estimateTrackBytes(track: Track): number | undefined {
-    const quality = getQualityById(getActiveQualityId());
-    if (!quality || quality.maxBitRate <= 0) return undefined;
-    return track.duration * ((quality.maxBitRate * 1000) / 8);
   }
 
   function refreshUpcomingPrefetch() {
@@ -172,7 +183,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (queueIndex === undefined) break;
       const track = queue[queueIndex];
       const streamUrl = resolveStreamUrl(track);
-      if (streamUrl) upcoming.push({ trackId: track.id, streamUrl, estimatedTotalBytes: estimateTrackBytes(track) });
+      if (streamUrl) upcoming.push({ trackId: track.id, streamUrl });
     }
     prefetchScheduler.setUpcoming(upcoming);
   }
@@ -259,6 +270,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       scrobbledNowPlaying = false;
       scrobbledSubmission = false;
       scheduledNextKey = null;
+      clearPendingSeek();
       set({
         currentTrack: nextTrackData,
         playOrderPosition: isRepeat ? get().playOrderPosition : nextPos,
@@ -362,7 +374,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
   function tickProgress() {
     const track = get().currentTrack;
-    if (track) {
+    // Un seek est débounced (voir setCurrentTime) : tant qu'il n'est pas encore parti sur
+    // le moteur, ne pas resynchroniser currentTime depuis engine.currentTime (position
+    // pré-seek) — ça écraserait la position optimiste affichée au clic.
+    if (track && pendingSeekTime === null) {
       const time = engine.currentTime;
       const duration = engine.duration;
       set({ currentTime: time });
@@ -480,8 +495,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       // en réaction à un événement : un seek à l'intérieur de la piste courante n'invalide
       // donc pas la préparation de la piste suivante déjà programmée — engine.seek()
       // l'annule et la replanifie lui-même proprement.
-      engine.seek(time);
+      //
+      // Le seek réel sur le moteur est débounced (voir SEEK_DEBOUNCE_MS) : la position
+      // affichée, elle, suit le clic instantanément pour rester réactive.
+      pendingSeekTime = time;
       set({ currentTime: time });
+      if (seekDebounceTimer !== null) window.clearTimeout(seekDebounceTimer);
+      seekDebounceTimer = window.setTimeout(() => {
+        seekDebounceTimer = null;
+        const target = pendingSeekTime;
+        pendingSeekTime = null;
+        if (target !== null) engine.seek(target);
+      }, SEEK_DEBOUNCE_MS);
     },
 
     isShuffle: false,

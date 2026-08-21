@@ -1,52 +1,50 @@
+import { createBlobStore, type BlobWriter } from "../../storage/blobStore";
+import { getPlatform } from "../../platform";
+
 const ROOT_DIR = "resonia-audio-cache";
 
-async function getRootDir(): Promise<FileSystemDirectoryHandle> {
-  const opfsRoot = await navigator.storage.getDirectory();
-  return opfsRoot.getDirectoryHandle(ROOT_DIR, { create: true });
-}
+const store = createBlobStore(ROOT_DIR);
 
-async function getFileHandle(key: string, create = false): Promise<FileSystemFileHandle | null> {
-  const dir = await getRootDir();
+/** Demande le stockage persistant (une seule fois, au démarrage) — web uniquement : sur
+ *  desktop le cache écrit directement sur disque via le plugin Tauri `fs` (voir
+ *  storage/blobStore/tauriFsBlobStore.ts) et n'est plus soumis au quota "best-effort" du
+ *  navigateur. Côté web, sans cette demande, certains navigateurs allouent un quota très
+ *  réduit à OPFS/Cache Storage tant qu'aucun historique de navigation ne justifie
+ *  l'heuristique habituelle — le cache semble alors plafonner à quelques Mo. */
+export async function requestPersistentStorage(): Promise<void> {
+  if (getPlatform() === "desktop" || !("storage" in navigator)) return;
   try {
-    return await dir.getFileHandle(safeName(key), { create });
-  } catch {
-    return null;
+    if ("persist" in navigator.storage) {
+      const granted = await navigator.storage.persist();
+      console.info(`[cache] Stockage persistant ${granted ? "accordé" : "refusé"} par le navigateur`);
+    }
+    if ("estimate" in navigator.storage) {
+      const { usage, quota } = await navigator.storage.estimate();
+      console.info(`[cache] Quota de stockage : ${formatMb(usage)} Mo utilisés sur ${formatMb(quota)} Mo`);
+    }
+  } catch (err) {
+    console.warn("[cache] Impossible de vérifier/demander le quota de stockage", err);
   }
 }
 
-// OPFS interdit ':' et autres caractères réservés dans certains environnements.
-function safeName(key: string): string {
-  return key.replace(/[:/\\]/g, "_");
+function formatMb(bytes: number | undefined): string {
+  return bytes === undefined ? "?" : (bytes / (1024 * 1024)).toFixed(1);
 }
 
-export async function opfsFileSize(key: string): Promise<number> {
-  const handle = await getFileHandle(key);
-  if (!handle) return 0;
-  const file = await handle.getFile();
-  return file.size;
+export function opfsFileSize(key: string): Promise<number> {
+  return store.fileSize(key);
 }
 
-/** Écrit un chunk à une position donnée. Le writable doit être créé une fois par
- *  session de téléchargement et fermé explicitement à la fin. */
-export async function createOpfsWriter(key: string): Promise<FileSystemWritableFileStream> {
-  const handle = await getFileHandle(key, true);
-  if (!handle) throw new Error(`Impossible de créer le fichier de cache pour ${key}`);
-  return handle.createWritable({ keepExistingData: true });
+/** Le writer doit être créé une fois par session de téléchargement et fermé
+ *  explicitement à la fin. */
+export function createOpfsWriter(key: string): Promise<BlobWriter> {
+  return store.createWriter(key);
 }
 
-export async function opfsReadAll(key: string): Promise<ArrayBuffer | null> {
-  const handle = await getFileHandle(key);
-  if (!handle) return null;
-  const file = await handle.getFile();
-  if (file.size === 0) return null;
-  return file.arrayBuffer();
+export function opfsReadAll(key: string): Promise<ArrayBuffer | null> {
+  return store.readAll(key);
 }
 
-export async function opfsDelete(key: string): Promise<void> {
-  const dir = await getRootDir();
-  try {
-    await dir.removeEntry(safeName(key));
-  } catch {
-    /* déjà absent, rien à faire */
-  }
+export function opfsDelete(key: string): Promise<void> {
+  return store.deleteFile(key);
 }

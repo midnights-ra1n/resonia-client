@@ -1,6 +1,7 @@
 import { EndOfStreamError, fetchRange } from "./rangeFetcher";
 import { createOpfsWriter, opfsFileSize } from "./opfsStore";
 import type { DownloadPriority, ProgressListener } from "./types";
+import type { BlobWriter } from "../../storage/blobStore";
 import { debugLog } from "../debug/audioDebugLogger";
 
 export interface ChunkEvent {
@@ -62,7 +63,9 @@ export class TrackDownloader {
   }
 
   setPriority(priority: DownloadPriority, budgetBytes?: number) {
-    this.budgetBytes = priority === "active" ? null : (budgetBytes ?? 0);
+    // budgetBytes omis = illimité (téléchargement complet), qu'il s'agisse de la piste
+    // active ou d'un créneau de préchargement — seul un budget explicite le plafonne.
+    this.budgetBytes = priority === "active" || budgetBytes === undefined ? null : budgetBytes;
   }
 
   /** Arrête le téléchargement en cours sans perdre les octets déjà écrits (reprise possible). */
@@ -84,10 +87,19 @@ export class TrackDownloader {
     this.running = true;
     this.lastError = null;
 
-    this.bytesCached = await opfsFileSize(this.key);
-    const writer = await createOpfsWriter(this.key);
-
+    // L'ouverture OPFS elle-même doit être dans le try : si elle échoue (permission,
+    // support partiel du navigateur/webview...), `running` doit repasser à `false` dans le
+    // finally, sinon cette piste reste bloquée "en cours" pour toujours et plus aucun octet
+    // n'est jamais mis en cache pour elle (ni retry possible).
+    let writer: BlobWriter | null = null;
     try {
+      this.bytesCached = await opfsFileSize(this.key);
+      writer = await createOpfsWriter(this.key);
+      // .seek() une fois puis des write(data) séquentiels : support plus large/fiable
+      // (notamment WebKit) que la forme composite { type: "write", position, data }
+      // pour un flux qui n'a de toute façon jamais besoin d'écritures aléatoires.
+      await writer.seek(this.bytesCached);
+
       while (this.running) {
         if (this.isBudgetExhausted) {
           debugLog("download:budget-exhausted", { key: this.key, bytesCached: this.bytesCached, budgetBytes: this.budgetBytes });
@@ -98,7 +110,7 @@ export class TrackDownloader {
         if (this.totalBytes === -1) this.totalBytes = chunk.totalBytes;
 
         const rangeStart = this.bytesCached;
-        await writer.write({ type: "write", position: rangeStart, data: chunk.data });
+        await writer.write(chunk.data);
         this.bytesCached += chunk.data.byteLength;
 
         this.chunkListeners.forEach((cb) => cb({ data: chunk.data, rangeStart }));
@@ -120,10 +132,13 @@ export class TrackDownloader {
         this.emit();
       } else if ((err as Error).name !== "AbortError") {
         this.lastError = err as Error;
-        console.warn(`[cache] Téléchargement interrompu pour ${this.key}`, err);
+        console.warn(
+          `[cache] Téléchargement interrompu pour ${this.key} (${(err as Error).name}: ${(err as Error).message}) — ${this.bytesCached} octets déjà écrits`,
+          err,
+        );
       }
     } finally {
-      await writer.close();
+      if (writer) await writer.close();
       this.running = false;
     }
   }

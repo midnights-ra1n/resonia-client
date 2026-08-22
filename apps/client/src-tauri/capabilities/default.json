@@ -1,13 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
-  "description": "Permissions par défaut de la fenêtre principale",
+  "description": "Permissions par défaut de la fenêtre principale. Le joker http(s)://*/* du scope http:default est nécessaire pour l'URL personnalisable de l'API de pochettes animées (Paramètres) : elle peut pointer vers une instance auto-hébergée de m8tec/apple-music-animated-artworks sur une IP locale en http:// (ex. http://192.168.30.2:6767/), et la portée du plugin http est figée à la compilation — impossible de la restreindre dynamiquement à l'URL choisie à l'exécution.",
   "windows": ["main"],
   "permissions": [
     "store:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://music.apple.com/*" }]
+      "allow": [
+        { "url": "https://music.apple.com/*" },
+        { "url": "https://artwork.m8tec.top/*" },
+        { "url": "https://mvod.itunes.apple.com/*" },
+        { "url": "http://*/*" },
+        { "url": "https://*/*" }
+      ]
     },
     "fs:allow-appcache-read-recursive",
     "fs:allow-appcache-write-recursive"

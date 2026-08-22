@@ -2,23 +2,19 @@ import { storage } from "../storage";
 import { createBlobStore } from "../storage/blobStore";
 import { isTauri } from "../platform";
 
-const ROOT_DIR = "resonia-cover-cache";
-const META_KEY = "resonia:coverCache:meta";
-const DEFAULT_MAX_BYTES = 100 * 1024 * 1024; // 100 Mb
+const ROOT_DIR = "resonia-animated-cover-cache";
+const META_KEY = "resonia:animatedCoverCache:meta";
+const DEFAULT_MAX_BYTES = 150 * 1024 * 1024; // 150 Mb
 const SIZE_NOTIFY_THROTTLE_MS = 300;
 
-// Même backend que le cache audio (voir cacheStore/opfsStore) : OPFS sur le web, vrai
-// système de fichiers via le plugin Tauri `fs` sur desktop. Un seul cache, une seule
-// famille de stockage, plus robuste que l'ancienne Cache Storage API dont le quota suit
-// les mêmes limites "best-effort" qu'OPFS sur les webviews desktop.
+// Même famille de stockage que coverCache/cacheStore (OPFS web, fs Tauri sur bureau) : un cache
+// séparé de celui des pochettes statiques, car les pochettes animées (vidéo mp4) pèsent nettement
+// plus lourd à l'unité et méritent leur propre budget/éviction LRU indépendants.
 const store = createBlobStore(ROOT_DIR);
 
-// Le cache de pochettes partage le même budget que le cache audio (voir settingsStore) :
-// c'est un seul cache, une seule limite. `setCoverCacheMaxBytes` reçoit la part qui lui
-// est réservée sur ce budget total.
 let maxBytes = DEFAULT_MAX_BYTES;
 
-export function setCoverCacheMaxBytes(bytes: number): void {
+export function setAnimatedCoverCacheMaxBytes(bytes: number): void {
   maxBytes = bytes;
   enforceLimit();
 }
@@ -30,13 +26,13 @@ function scheduleSizeNotify() {
   if (sizeListeners.size === 0 || sizeNotifyTimer !== null) return;
   sizeNotifyTimer = window.setTimeout(async () => {
     sizeNotifyTimer = null;
-    const bytes = await currentCoverCacheSize();
+    const bytes = await currentAnimatedCoverCacheSize();
     sizeListeners.forEach((cb) => cb(bytes));
   }, SIZE_NOTIFY_THROTTLE_MS);
 }
 
-/** S'abonne aux variations de la taille du cache de pochettes (throttled, voir cacheStore). */
-export function onCoverCacheSizeChange(cb: (bytes: number) => void): () => void {
+/** S'abonne aux variations de la taille du cache de pochettes animées (throttled). */
+export function onAnimatedCoverCacheSizeChange(cb: (bytes: number) => void): () => void {
   sizeListeners.add(cb);
   return () => sizeListeners.delete(cb);
 }
@@ -48,21 +44,8 @@ interface CacheEntryMeta {
   lastAccessedAt: number;
 }
 
-function cacheKeyFor(serverId: string, coverArtId: string, size: number): string {
-  return `${serverId}:${coverArtId}:${size}`;
-}
-
-/** Certains hôtes distants (ex. music.apple.com pour le scraping HTML) ne renvoient pas
- *  d'en-tête CORS pour notre origine ; côté bureau, on passe donc par le client HTTP natif
- *  de Tauri, non soumis à la politique CORS du navigateur, pour fiabiliser le
- *  téléchargement quel que soit l'hôte (les CDN d'artwork type mzstatic envoient bien un
- *  en-tête CORS ouvert, mais ne pas en dépendre reste plus robuste). */
-async function fetchForCache(url: string): Promise<Response> {
-  if (isTauri()) {
-    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    return tauriFetch(url);
-  }
-  return fetch(url);
+function cacheKeyFor(albumKey: string): string {
+  return albumKey;
 }
 
 async function readMeta(): Promise<CacheEntryMeta[]> {
@@ -82,7 +65,7 @@ async function touchEntry(key: string, size?: number, contentType?: string): Pro
     if (size !== undefined) existing.size = size;
     if (contentType !== undefined) existing.contentType = contentType;
   } else {
-    meta.push({ key, size: size ?? 0, contentType: contentType ?? "application/octet-stream", lastAccessedAt: Date.now() });
+    meta.push({ key, size: size ?? 0, contentType: contentType ?? "video/mp4", lastAccessedAt: Date.now() });
   }
   await writeMeta(meta);
 }
@@ -116,32 +99,34 @@ async function readCachedCover(key: string): Promise<{ blob: Blob; contentType: 
   return { blob: new Blob([bytes], { type: entry.contentType }), contentType: entry.contentType };
 }
 
-/** Object URL locale si la pochette est déjà en cache, sinon null (pas d'appel réseau ici). */
-export async function getCachedCoverUrl(
-  serverId: string,
-  coverArtId: string,
-  size: number,
-): Promise<string | null> {
-  const key = cacheKeyFor(serverId, coverArtId, size);
+/** Voir coverCache.ts : certains hôtes (ici le CDN Apple mvod.itunes.apple.com) sont accessibles
+ *  sans en-tête CORS explicite selon le contexte ; passer par le client HTTP natif de Tauri côté
+ *  bureau évite d'en dépendre. */
+async function fetchForCache(url: string): Promise<Response> {
+  if (isTauri()) {
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch(url);
+  }
+  return fetch(url);
+}
+
+/** Object URL locale si la pochette animée est déjà en cache, sinon null (pas d'appel réseau). */
+export async function getCachedAnimatedCoverUrl(albumKey: string): Promise<string | null> {
+  const key = cacheKeyFor(albumKey);
   try {
     const cached = await readCachedCover(key);
     if (!cached) return null;
     await touchEntry(key);
     return URL.createObjectURL(cached.blob);
   } catch (err) {
-    console.warn(`[coverCache] Lecture du cache impossible pour ${key}`, err);
+    console.warn(`[animatedCoverCache] Lecture du cache impossible pour ${key}`, err);
     return null;
   }
 }
 
-/** Télécharge la pochette (cache si absente) et retourne une Object URL prête à afficher. */
-export async function loadAndCacheCover(
-  serverId: string,
-  coverArtId: string,
-  size: number,
-  fetchUrl: string,
-): Promise<string> {
-  const key = cacheKeyFor(serverId, coverArtId, size);
+/** Télécharge la pochette animée (cache si absente) et retourne une Object URL prête à afficher. */
+export async function loadAndCacheAnimatedCover(albumKey: string, videoUrl: string): Promise<string> {
+  const key = cacheKeyFor(albumKey);
 
   try {
     const cached = await readCachedCover(key);
@@ -150,16 +135,16 @@ export async function loadAndCacheCover(
       return URL.createObjectURL(cached.blob);
     }
   } catch (err) {
-    console.warn(`[coverCache] Lecture du cache impossible pour ${key}`, err);
+    console.warn(`[animatedCoverCache] Lecture du cache impossible pour ${key}`, err);
   }
 
-  const response = await fetchForCache(fetchUrl);
-  if (!response.ok || !response.body) {
-    throw new Error(`Échec du téléchargement de la pochette (${response.status})`);
+  const response = await fetchForCache(videoUrl);
+  if (!response.ok) {
+    throw new Error(`Échec du téléchargement de la pochette animée (${response.status})`);
   }
 
   const blob = await response.blob();
-  const contentType = blob.type || response.headers.get("content-type") || "application/octet-stream";
+  const contentType = blob.type || response.headers.get("content-type") || "video/mp4";
 
   (async () => {
     try {
@@ -170,19 +155,19 @@ export async function loadAndCacheCover(
       await touchEntry(key, blob.size, contentType);
       await enforceLimit();
     } catch (err) {
-      console.warn(`[coverCache] Écriture du cache impossible pour ${key}`, err);
+      console.warn(`[animatedCoverCache] Écriture du cache impossible pour ${key}`, err);
     }
   })();
 
   return URL.createObjectURL(blob);
 }
 
-export async function currentCoverCacheSize(): Promise<number> {
+export async function currentAnimatedCoverCacheSize(): Promise<number> {
   const meta = await readMeta();
   return meta.reduce((sum, e) => sum + e.size, 0);
 }
 
-export async function clearCoverCache(): Promise<void> {
+export async function clearAnimatedCoverCache(): Promise<void> {
   const meta = await readMeta();
   for (const entry of meta) {
     await store.deleteFile(entry.key);

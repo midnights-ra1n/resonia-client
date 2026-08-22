@@ -15,6 +15,11 @@ interface MarqueeTextProps {
   to?: string;
   className?: string;
   onClick?: (e: React.MouseEvent) => void;
+  /** Désactive le drag natif du navigateur sur le lien (les <a> sont draggables par
+   *  défaut) — nécessaire quand ce texte vit dans une ligne glissable au drag-and-drop
+   *  HTML5 : sans ça, un drag démarré sur ce texte est capté par le navigateur au lieu de
+   *  déclencher le onDragStart du conteneur parent. */
+  draggable?: boolean;
 }
 
 /** Texte tronqué par défaut ; si (et seulement si) il déborde réellement de son conteneur,
@@ -22,7 +27,7 @@ interface MarqueeTextProps {
  *  révéler la fin du texte, pause de 3s, puis retour vers la droite jusqu'au début — et ainsi
  *  de suite. La zone cliquable/survolable reste toujours limitée à la largeur réelle du texte
  *  affiché (jamais visuellement coupée), jamais à celle du conteneur parent. */
-export function MarqueeText({ text, to, className = "", onClick }: MarqueeTextProps) {
+export function MarqueeText({ text, to, className = "", onClick, draggable }: MarqueeTextProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
   const [overflowDistance, setOverflowDistance] = useState(0);
@@ -83,7 +88,14 @@ export function MarqueeText({ text, to, className = "", onClick }: MarqueeTextPr
       </span>
 
       {to ? (
-        <Link to={to} onClick={onClick} onTransitionEnd={handleTransitionEnd} className={tagClassName} style={tagStyle}>
+        <Link
+          to={to}
+          onClick={onClick}
+          onTransitionEnd={handleTransitionEnd}
+          className={tagClassName}
+          style={tagStyle}
+          draggable={draggable}
+        >
           {text}
         </Link>
       ) : (

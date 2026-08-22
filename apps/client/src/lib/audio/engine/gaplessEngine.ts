@@ -280,8 +280,13 @@ export class GaplessEngine {
 
   // ---- décodage ----
 
+  /** `decodeAudioData` détache le buffer qu'on lui passe (transfert de propriété) : on ne
+   *  le recopie plus défensivement avant l'appel — tous les appelants (voir
+   *  `decodeAndTrim`) passent un buffer fraîchement lu/téléchargé, jamais réutilisé
+   *  ensuite, donc rien ne dépend de son intégrité après ce point. Un memcpy synchrone de
+   *  plusieurs Mo à chaque transition de piste était une cause de micro-freeze de l'UI. */
   async decode(arrayBuffer: ArrayBuffer): Promise<AudioBuffer> {
-    return this.context.decodeAudioData(arrayBuffer.slice(0));
+    return this.context.decodeAudioData(arrayBuffer);
   }
 
   async decodeAndTrim(arrayBuffer: ArrayBuffer): Promise<DecodedTrack> {

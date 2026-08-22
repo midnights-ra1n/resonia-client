@@ -119,6 +119,7 @@ export interface PlayerState {
   showQueue: boolean;
   toggleQueue: () => void;
   reorderQueue: (dragIndex: number, hoverIndex: number) => void;
+  addToQueue: (tracks: Track | Track[], position?: "next" | "end") => void;
   showLyrics: boolean;
   toggleLyrics: () => void;
   showConnect: boolean;
@@ -468,8 +469,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     isPlaying: false,
     togglePlay: () => {
-      const { currentTrack, isPlaying } = get();
-      if (!currentTrack) return;
+      const { currentTrack, isPlaying, queue } = get();
+      if (!currentTrack) {
+        // Rien n'est chargé (pas juste en pause) : démarre la piste suivante de la file
+        // d'attente, s'il y en a une.
+        if (queue.length > 0) get().nextTrack();
+        return;
+      }
       if (isPlaying) {
         engine.pause();
         set({ isPlaying: false });
@@ -641,6 +647,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       });
       // La piste suivante (position+1) a pu changer suite au réordonnancement : la
       // planification gapless précédente, basée sur l'ancien ordre, doit être refaite.
+      refreshUpcomingPrefetch();
+      scheduledNextKey = null;
+      scheduleGaplessNext();
+    },
+    addToQueue: (tracks, position = "end") => {
+      const list = Array.isArray(tracks) ? tracks : [tracks];
+      if (list.length === 0) return;
+
+      set((state) => {
+        const newQueue = [...state.queue, ...list];
+        const newIndices = list.map((_, i) => state.queue.length + i);
+
+        let newPlayOrder: number[];
+        if (position === "next" && state.playOrder.length > 0) {
+          const insertAt = state.playOrderPosition + 1;
+          newPlayOrder = [...state.playOrder.slice(0, insertAt), ...newIndices, ...state.playOrder.slice(insertAt)];
+        } else {
+          newPlayOrder = [...state.playOrder, ...newIndices];
+        }
+
+        return { queue: newQueue, playOrder: newPlayOrder };
+      });
+
+      // Insertion en fin de file ou "next" : dans les deux cas la fenêtre de préchargement
+      // (les PREFETCH_COUNT prochaines pistes) a pu changer — même traitement que reorderQueue.
       refreshUpcomingPrefetch();
       scheduledNextKey = null;
       scheduleGaplessNext();

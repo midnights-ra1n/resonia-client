@@ -72,5 +72,9 @@ export function useSearch(query: string) {
     };
   }, [query, servers, activeServerId]);
 
-  return { results, loading };
+  function removePlaylistLocally(playlistId: string) {
+    setResults((prev) => ({ ...prev, playlists: prev.playlists.filter((p) => p.id !== playlistId) }));
+  }
+
+  return { results, loading, removePlaylistLocally };
 }

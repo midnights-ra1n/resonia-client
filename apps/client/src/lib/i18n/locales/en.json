@@ -45,7 +45,36 @@
     "descriptionLabel": "Description",
     "create": "Create",
     "creating": "Creating...",
-    "createError": "Failed to create playlist"
+    "createError": "Failed to create playlist",
+    "renameTitle": "Rename playlist",
+    "renaming": "Renaming...",
+    "renameError": "Failed to rename playlist",
+    "deleteTitle": "Delete playlist",
+    "deleteConfirm": "Are you sure you want to delete \"{{name}}\"? This can't be undone.",
+    "notFound": "Playlist not found"
+  },
+  "playlist": {
+    "label": "Playlist",
+    "trackCount": "{{count}} songs",
+    "songCountLabel": "Songs",
+    "play": "Play",
+    "owner": "Owner",
+    "columnTitle": "Title",
+    "columnDuration": "Duration"
+  },
+  "contextMenu": {
+    "addToQueue": "Add to queue",
+    "addToPlaylist": "Add to playlist",
+    "newPlaylist": "New playlist",
+    "getInfo": "Get info",
+    "goToAlbum": "Go to album",
+    "goToArtist": "Go to artist",
+    "play": "Play",
+    "rename": "Rename",
+    "delete": "Delete",
+    "noPlaylists": "No playlists yet",
+    "loadingPlaylists": "Loading...",
+    "addToPlaylistError": "Failed to add to playlist"
   },
   "album": {
   "labelAlbum": "Album",
@@ -58,7 +87,8 @@
   "columnDuration": "Duration",
   "notFound": "Album not found",
   "moreFromArtist": "More from {{artist}}",
-  "similarAlbums": "You might also like"
+  "similarAlbums": "You might also like",
+  "yearLabel": "Year"
 },
   "search": {
     "placeholder": "Search titles, artists, albums...",
@@ -77,6 +107,7 @@
     "notFound": "Artist not found",
     "popularSongs": "Popular",
     "popularSongsSourceLastfm": "via Last.fm",
+    "popularSongsLastfmError": "Last.fm unavailable ({{error}})",
     "discography": "Discography",
     "play": "Play",
     "shuffle": "Shuffle play",
@@ -94,6 +125,16 @@
     "lastfmApiKey": "Last.fm API key",
     "lastfmApiKeyDescription": "Used to show the artist's most popular tracks. Free key at last.fm/api/account/create",
     "apiKeyPlaceholder": "Paste the API key here",
+    "animatedArtworkBaseUrl": "Animated cover API URL",
+    "animatedArtworkBaseUrlDescription": "Used to fetch animated album covers (Apple Music). Leave empty to use the default instance (artwork.m8tec.top); set a custom URL if it's down.",
+    "animatedArtworkBaseUrlPlaceholder": "https://artwork.m8tec.top",
+    "animatedArtworkBaseUrlInvalid": "Enter a valid http:// or https:// URL.",
+    "animatedArtworkStatusOk": "Instance reachable",
+    "animatedArtworkStatusError": "Instance unreachable",
+    "animatedArtworkStatusChecking": "Checking...",
+    "animatedArtworkForceRefresh": "Force refresh",
+    "animatedArtworkForceRefreshing": "Refreshing...",
+    "animatedArtworkForceRefreshDescription": "Clears Resonia's own cache (search results and already-downloaded covers) so every album re-requests its animated cover from the instance on next view. This can't force the instance itself to redo its own server-side cache: if the cover is still wrong afterwards, the problem is in the instance's cache (its administrator needs to clear it).",
     "cache": "Cache",
     "cacheDescription": "Played tracks and covers are kept on disk to avoid re-downloading everything.",
     "cacheSize": "Space used",

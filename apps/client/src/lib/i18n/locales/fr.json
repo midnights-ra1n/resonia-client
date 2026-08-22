@@ -45,7 +45,36 @@
     "descriptionLabel": "Description",
     "create": "Créer",
     "creating": "Création...",
-    "createError": "Échec de la création de la playlist"
+    "createError": "Échec de la création de la playlist",
+    "renameTitle": "Renommer la playlist",
+    "renaming": "Renommage...",
+    "renameError": "Échec du renommage de la playlist",
+    "deleteTitle": "Supprimer la playlist",
+    "deleteConfirm": "Es-tu sûr de vouloir supprimer « {{name}} » ? Cette action est irréversible.",
+    "notFound": "Playlist introuvable"
+  },
+  "playlist": {
+    "label": "Playlist",
+    "trackCount": "{{count}} titres",
+    "songCountLabel": "Titres",
+    "play": "Lecture",
+    "owner": "Propriétaire",
+    "columnTitle": "Titre",
+    "columnDuration": "Durée"
+  },
+  "contextMenu": {
+    "addToQueue": "Ajouter à la file d'attente",
+    "addToPlaylist": "Ajouter à une playlist",
+    "newPlaylist": "Nouvelle playlist",
+    "getInfo": "Obtenir les informations",
+    "goToAlbum": "Aller à l'album",
+    "goToArtist": "Aller à l'artiste",
+    "play": "Lecture",
+    "rename": "Renommer",
+    "delete": "Supprimer",
+    "noPlaylists": "Aucune playlist pour le moment",
+    "loadingPlaylists": "Chargement...",
+    "addToPlaylistError": "Échec de l'ajout à la playlist"
   },
   "album": {
   "labelAlbum": "Album",
@@ -58,7 +87,8 @@
   "columnDuration": "Durée",
   "notFound": "Album introuvable",
   "moreFromArtist": "Plus de {{artist}}",
-  "similarAlbums": "Vous aimerez peut-être aussi"
+  "similarAlbums": "Vous aimerez peut-être aussi",
+  "yearLabel": "Année"
 },
   "search": {
     "placeholder": "Rechercher titres, artistes, albums...",
@@ -77,6 +107,7 @@
     "notFound": "Artiste introuvable",
     "popularSongs": "Titres populaires",
     "popularSongsSourceLastfm": "via Last.fm",
+    "popularSongsLastfmError": "Last.fm indisponible ({{error}})",
     "discography": "Discographie",
     "play": "Lecture",
     "shuffle": "Lecture aléatoire",
@@ -94,6 +125,16 @@
     "lastfmApiKey": "Clé API Last.fm",
     "lastfmApiKeyDescription": "Utilisée pour afficher les titres les plus populaires de l'artiste. Clé gratuite sur last.fm/api/account/create",
     "apiKeyPlaceholder": "Coller la clé API ici",
+    "animatedArtworkBaseUrl": "URL de l'API des pochettes animées",
+    "animatedArtworkBaseUrlDescription": "Utilisée pour récupérer les pochettes d'album animées (Apple Music). Laisser vide pour utiliser l'instance par défaut (artwork.m8tec.top) ; renseigner une URL personnalisée si elle est hors service.",
+    "animatedArtworkBaseUrlPlaceholder": "https://artwork.m8tec.top",
+    "animatedArtworkBaseUrlInvalid": "Renseigne une URL http:// ou https:// valide.",
+    "animatedArtworkStatusOk": "Instance joignable",
+    "animatedArtworkStatusError": "Instance injoignable",
+    "animatedArtworkStatusChecking": "Vérification...",
+    "animatedArtworkForceRefresh": "Forcer le rafraîchissement",
+    "animatedArtworkForceRefreshing": "Rafraîchissement...",
+    "animatedArtworkForceRefreshDescription": "Vide le cache de Resonia (résultats de recherche et pochettes déjà téléchargées) pour que chaque album redemande sa pochette animée à l'instance au prochain affichage. Ne peut pas forcer l'instance elle-même à refaire son propre cache serveur : si la pochette reste incorrecte après ça, le problème vient du cache de l'instance (à vider par son administrateur).",
     "cache": "Cache",
     "cacheDescription": "Les musiques et pochettes lues sont conservées sur ton disque pour éviter de tout retélécharger.",
     "cacheSize": "Espace utilisé",

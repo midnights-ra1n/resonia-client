@@ -16,7 +16,7 @@ export function SearchPage() {
   const query = searchParams.get("q") ?? "";
   const trimmed = query.trim();
 
-  const { results, loading } = useSearch(trimmed);
+  const { results, loading, removePlaylistLocally } = useSearch(trimmed);
   const hasQuery = trimmed.length >= MIN_QUERY_LENGTH;
   const hasResults =
     results.songs.length > 0 || results.albums.length > 0 || results.artists.length > 0 || results.playlists.length > 0;
@@ -63,7 +63,11 @@ export function SearchPage() {
           {results.playlists.length > 0 && (
             <ResultSection title={t("search.sectionPlaylists")}>
               {results.playlists.map((playlist) => (
-                <PlaylistCard key={playlist.id} playlist={playlist} />
+                <PlaylistCard
+                  key={playlist.id}
+                  playlist={playlist}
+                  onDeleted={() => removePlaylistLocally(playlist.id)}
+                />
               ))}
             </ResultSection>
           )}

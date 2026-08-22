@@ -66,7 +66,7 @@ export function Sidebar() {
         {/* Version label */}
         <nav className="space-y-1 overflow-y-auto">
           {playlists.map((playlist) => (
-            <PlaylistSidebarItem key={playlist.id} playlist={playlist} />
+            <PlaylistSidebarItem key={playlist.id} playlist={playlist} onChanged={refreshPlaylists} />
           ))}
         </nav>
       </div>

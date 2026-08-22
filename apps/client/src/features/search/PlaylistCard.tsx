@@ -2,6 +2,12 @@ import { useState } from "react";
 import { Play } from "lucide-react";
 import type { PlaylistSummary } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
+import { InfoModal } from "../../components/InfoModal";
+import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
+import { ContextMenu } from "../../components/menu/ContextMenu";
+import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuItems";
+import { useContextMenu } from "../../components/menu/useContextMenu";
+import { RenamePlaylistModal } from "../../app/layout/RenamePlaylistModal";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
@@ -10,14 +16,21 @@ import { useTranslation } from "../../lib/i18n";
 
 interface PlaylistCardProps {
   playlist: PlaylistSummary;
+  onDeleted?: () => void;
 }
 
-export function PlaylistCard({ playlist }: PlaylistCardProps) {
+export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const playFromStart = usePlayerStore((s) => s.playFromStart);
+  const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const menu = useContextMenu();
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
@@ -49,11 +62,16 @@ export function PlaylistCard({ playlist }: PlaylistCardProps) {
     }
   }
 
+  const name = displayName ?? playlist.name;
+
   return (
-    <div className="group relative w-40 shrink-0 rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800">
+    <div
+      className="group relative w-40 shrink-0 rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800"
+      onContextMenu={menu.handleContextMenu}
+    >
       <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" />
+          <img src={cachedCoverUrl} alt={name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}
@@ -68,8 +86,58 @@ export function PlaylistCard({ playlist }: PlaylistCardProps) {
         </button>
       </div>
 
-      <MarqueeText text={playlist.name} className="text-sm font-medium text-white" />
+      <MarqueeText text={name} className="text-sm font-medium text-white" />
       <p className="truncate text-xs text-neutral-400">{t("search.playlistLabel")}</p>
+
+      {menu.open && client && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={menu.close}
+          items={buildPlaylistMenuItems({
+            playlist: { id: playlist.id, name, coverArt: playlist.coverArt },
+            client,
+            t,
+            playFromStart,
+            addToQueue,
+            onOpenInfo: () => setInfoOpen(true),
+            onRename: () => setRenameOpen(true),
+            onDelete: () => setDeleteOpen(true),
+          })}
+        />
+      )}
+
+      {infoOpen && (
+        <InfoModal
+          title={name}
+          coverUrl={cachedCoverUrl ?? undefined}
+          onClose={() => setInfoOpen(false)}
+          rows={[{ label: t("playlist.songCountLabel"), value: String(playlist.songCount) }]}
+        />
+      )}
+
+      {renameOpen && client && (
+        <RenamePlaylistModal
+          playlistId={playlist.id}
+          currentName={name}
+          client={client}
+          onClose={() => setRenameOpen(false)}
+          onRenamed={setDisplayName}
+        />
+      )}
+
+      {deleteOpen && client && (
+        <ConfirmDeleteModal
+          title={t("playlists.deleteTitle")}
+          message={t("playlists.deleteConfirm", { name })}
+          confirmLabel={t("contextMenu.delete")}
+          onCancel={() => setDeleteOpen(false)}
+          onConfirm={async () => {
+            await client.deletePlaylist(playlist.id);
+            onDeleted?.();
+          }}
+        />
+      )}
     </div>
   );
 }

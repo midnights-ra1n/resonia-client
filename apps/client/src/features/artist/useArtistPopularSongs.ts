@@ -18,6 +18,11 @@ export function useArtistPopularSongs(artistName: string | undefined) {
   const [songs, setSongs] = useState<SongDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<PopularSongsSource>("local");
+  // Erreur Last.fm spécifique (clé invalide, requête réseau échouée...), distincte d'un
+  // simple repli "aucun des titres Last.fm n'est présent sur ce serveur" (matched.length
+  // === 0, pas une erreur) — sans ça l'échec était uniquement loggé en console, invisible
+  // dans un build desktop packagé sans DevTools, donc indiscernable d'une clé "ignorée".
+  const [lastfmError, setLastfmError] = useState<string | null>(null);
 
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
@@ -37,11 +42,12 @@ export function useArtistPopularSongs(artistName: string | undefined) {
 
     let cancelled = false;
     setLoading(true);
+    setLastfmError(null);
     const client = getClientForServer(server);
 
     async function loadFromLastfm(): Promise<SongDTO[]> {
       const [ranked, local] = await Promise.all([
-        getLastfmTopTracks(artistName!, lastfmApiKey, LASTFM_CANDIDATES_LIMIT),
+        getLastfmTopTracks(artistName!, lastfmApiKey.trim(), LASTFM_CANDIDATES_LIMIT),
         client.search3(artistName!, { songCount: LOCAL_SEARCH_SONG_COUNT, albumCount: 0, artistCount: 0 }),
       ]);
 
@@ -65,19 +71,27 @@ export function useArtistPopularSongs(artistName: string | undefined) {
 
     async function run() {
       try {
-        if (lastfmApiKey) {
-          const matched = await loadFromLastfm();
-          if (matched.length > 0) {
-            if (!cancelled) {
-              setSongs(matched);
-              setSource("lastfm");
+        if (lastfmApiKey.trim()) {
+          try {
+            const matched = await loadFromLastfm();
+            if (matched.length > 0) {
+              if (!cancelled) {
+                setSongs(matched);
+                setSource("lastfm");
+              }
+              return;
             }
-            return;
+          } catch (err) {
+            // Erreur Last.fm (clé invalide, réseau...) : on la garde pour l'affichage, mais
+            // on ne fait pas échouer tout le chargement — repli sur les stats locales.
+            console.error("[artist] Échec de la récupération Last.fm", err);
+            if (!cancelled) setLastfmError(err instanceof Error ? err.message : String(err));
           }
         }
 
         // Repli : statistiques d'écoute locales Navidrome (pas de clé Last.fm configurée,
-        // ou aucun des titres les plus populaires selon Last.fm n'est présent sur ce serveur).
+        // échec Last.fm, ou aucun des titres les plus populaires selon Last.fm n'est présent
+        // sur ce serveur).
         const result = await client.getTopSongs(artistName!, SONGS_LIMIT);
         if (!cancelled) {
           setSongs(result);
@@ -98,5 +112,5 @@ export function useArtistPopularSongs(artistName: string | undefined) {
     };
   }, [artistName, servers, activeServerId, lastfmApiKey]);
 
-  return { songs, loading, source };
+  return { songs, loading, source, lastfmError };
 }

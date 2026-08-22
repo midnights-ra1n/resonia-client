@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { MarqueeText } from "../../components/MarqueeText";
 import { Play, Pause, Shuffle } from "lucide-react";
 import { useAlbum } from "./useAlbum";
@@ -9,8 +9,13 @@ import { useTranslation } from "../../lib/i18n";
 import { useArtistAlbums } from "./useArtistAlbums";
 import { AlbumCarousel } from "./AlbumCarousel";
 import { useSimilarAlbums } from "./useSimilarAlbums";
+import { useAnimatedAlbumCover } from "./useAnimatedAlbumCover";
 import { useEffect, useState } from "react";
 import { getNativeClientForServer } from "../../lib/subsonic/getNativeClientForServer";
+import { InfoModal } from "../../components/InfoModal";
+import { ContextMenu } from "../../components/menu/ContextMenu";
+import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
+import { useContextMenu } from "../../components/menu/useContextMenu";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -29,15 +34,20 @@ export function AlbumPage() {
   const { id } = useParams<{ id: string }>();
   const { album, loading, error } = useAlbum(id);
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const playTrack = usePlayerStore((s) => s.playTrack);
   const playFromStart = usePlayerStore((s) => s.playFromStart);
+  const addToQueue = usePlayerStore((s) => s.addToQueue);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const rowMenu = useContextMenu();
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const [rowInfoOpen, setRowInfoOpen] = useState(false);
 
   const artistId = album?.artistId;
   const { albums: _artistAlbums, loading: _artistAlbumsLoading } = useArtistAlbums(
@@ -72,6 +82,12 @@ export function AlbumPage() {
       cancelled = true;
     };
   }, [album, server]);
+
+  const animatedCoverUrl = useAnimatedAlbumCover(
+    activeServerId && album ? `${activeServerId}:${album.id}` : undefined,
+    album?.artist,
+    album?.name,
+  );
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -135,7 +151,16 @@ export function AlbumPage() {
     <div>
       <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
-          {coverUrl ? (
+          {animatedCoverUrl ? (
+            <video
+              src={animatedCoverUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="h-full w-full object-cover"
+            />
+          ) : coverUrl ? (
             <img src={coverUrl} alt={album.name} className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">♪</div>
@@ -197,6 +222,10 @@ export function AlbumPage() {
             <div
               key={song.id}
               onClick={() => handleTrackClick(song)}
+              onContextMenu={(e) => {
+                setActiveSongId(song.id);
+                rowMenu.handleContextMenu(e);
+              }}
               className="group grid cursor-pointer grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60"
             >
               <div className="flex items-center justify-center text-sm text-neutral-400">
@@ -248,6 +277,44 @@ export function AlbumPage() {
           </div>
         )}
       </div>
+
+      {rowMenu.open && activeSongId && (() => {
+        const activeSong = album.song.find((s) => s.id === activeSongId);
+        if (!activeSong) return null;
+        return (
+          <ContextMenu
+            x={rowMenu.x}
+            y={rowMenu.y}
+            onClose={rowMenu.close}
+            items={buildTrackMenuItems({
+              track: toTrack(activeSong),
+              client: client!,
+              t,
+              navigate,
+              addToQueue,
+              onOpenInfo: () => setRowInfoOpen(true),
+              hideGoToAlbum: true,
+            })}
+          />
+        );
+      })()}
+
+      {rowInfoOpen && activeSongId && (() => {
+        const activeSong = album.song.find((s) => s.id === activeSongId);
+        if (!activeSong) return null;
+        return (
+          <InfoModal
+            title={activeSong.title}
+            coverUrl={activeSong.coverArt ? client!.getCoverArtUrl(activeSong.coverArt, 300) : coverUrl}
+            onClose={() => setRowInfoOpen(false)}
+            rows={[
+              { label: t("search.artistLabel"), value: activeSong.artist },
+              { label: t("album.labelAlbum"), value: activeSong.album },
+              { label: t("album.columnDuration"), value: formatTrackDuration(activeSong.duration) },
+            ]}
+          />
+        );
+      })()}
     </div>
   );
 }

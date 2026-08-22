@@ -5,17 +5,28 @@ import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCoverArt } from "../../hooks/useCoverArt";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { InfoModal } from "../../components/InfoModal";
+import { ContextMenu } from "../../components/menu/ContextMenu";
+import { buildAlbumMenuItems } from "../../components/menu/buildAlbumMenuItems";
+import { useContextMenu } from "../../components/menu/useContextMenu";
+import { formatAlbumDuration } from "../../lib/format/duration";
+import { useTranslation } from "../../lib/i18n";
 
 interface AlbumCardProps {
   album: AlbumSummary;
 }
 
 export function AlbumCard({ album }: AlbumCardProps) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const playTrack = usePlayerStore((s) => s.playTrack);
+  const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const menu = useContextMenu();
+  const [infoOpen, setInfoOpen] = useState(false);
 
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
@@ -51,7 +62,10 @@ export function AlbumCard({ album }: AlbumCardProps) {
   }
 
   return (
-    <div className="group relative w-full rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800">
+    <div
+      className="group relative w-full rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800"
+      onContextMenu={menu.handleContextMenu}
+    >
       <Link to={`/albums/${album.id}`} className="block cursor-pointer">
         <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
           {cachedCoverUrl ? (
@@ -82,6 +96,35 @@ export function AlbumCard({ album }: AlbumCardProps) {
         </Link>
       ) : (
         <p className="truncate text-xs text-neutral-400">{album.artist}</p>
+      )}
+
+      {menu.open && client && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={menu.close}
+          items={buildAlbumMenuItems({
+            album,
+            client,
+            t,
+            navigate,
+            addToQueue,
+            onOpenInfo: () => setInfoOpen(true),
+          })}
+        />
+      )}
+
+      {infoOpen && (
+        <InfoModal
+          title={album.name}
+          coverUrl={cachedCoverUrl ?? undefined}
+          onClose={() => setInfoOpen(false)}
+          rows={[
+            { label: t("search.artistLabel"), value: album.artist },
+            ...(album.year ? [{ label: t("album.yearLabel"), value: String(album.year) }] : []),
+            { label: t("album.trackCount", { count: album.songCount }), value: formatAlbumDuration(album.duration, t) },
+          ]}
+        />
       )}
     </div>
   );

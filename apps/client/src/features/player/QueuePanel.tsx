@@ -157,19 +157,27 @@ function QueueItem({
           <GripVertical size={14} />
         </div>
 
-        <img src={coverUrl} alt="" className="h-10 w-10 shrink-0 rounded object-cover" loading="lazy" />
+        <img
+          src={coverUrl}
+          alt=""
+          draggable={false}
+          className="h-10 w-10 shrink-0 rounded object-cover"
+          loading="lazy"
+        />
 
         <div className="min-w-0 flex-1">
           <MarqueeText
             text={track.title}
             to={track.albumId ? `/albums/${track.albumId}` : undefined}
             onClick={(e) => e.stopPropagation()}
+            draggable={false}
             className="text-sm text-white hover:underline"
           />
           <MarqueeText
             text={track.artist}
             to={track.artistId ? `/artists/${track.artistId}` : undefined}
             onClick={(e) => e.stopPropagation()}
+            draggable={false}
             className="text-xs text-neutral-400 hover:text-white hover:underline"
           />
         </div>

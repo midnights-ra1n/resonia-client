@@ -65,6 +65,13 @@ export function createTauriFsBlobStore(rootDir: string): BlobStore {
       try {
         const bytes = await readFile(path, { baseDir });
         if (bytes.byteLength === 0) return null;
+        // `readFile` alloue normalement un buffer de taille exacte (byteOffset 0, même
+        // longueur) : dans ce cas (quasi systématique), on le renvoie tel quel plutôt que
+        // de le recopier intégralement en synchrone — un memcpy de plusieurs Mo sur le
+        // thread principal, à chaque transition de piste, cause un micro-freeze de l'UI.
+        if (bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
+          return bytes.buffer as ArrayBuffer;
+        }
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
       } catch {
         return null;

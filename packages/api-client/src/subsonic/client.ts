@@ -50,7 +50,7 @@ export class SubsonicClient {
     return { salt: this.salt, token: this.token };
   }
 
-  private buildParams(extra: Record<string, string> = {}): URLSearchParams {
+  private buildParams(extra: Record<string, string | string[]> = {}): URLSearchParams {
     const params: SubsonicAuthParams = {
       u: this.username,
       t: this.token,
@@ -59,12 +59,17 @@ export class SubsonicClient {
       c: this.clientName,
       f: "json",
     };
-    return new URLSearchParams({ ...params, ...extra });
+    const searchParams = new URLSearchParams(params as unknown as Record<string, string>);
+    for (const [key, value] of Object.entries(extra)) {
+      if (Array.isArray(value)) value.forEach((v) => searchParams.append(key, v));
+      else searchParams.append(key, value);
+    }
+    return searchParams;
   }
 
   private async request<T = unknown>(
     endpoint: string,
-    extraParams: Record<string, string> = {},
+    extraParams: Record<string, string | string[]> = {},
   ): Promise<T> {
     const params = this.buildParams(extraParams);
     const response = await fetch(`${this.url}/rest/${endpoint}?${params.toString()}`);
@@ -150,6 +155,15 @@ export class SubsonicClient {
     if (options.comment !== undefined) params.comment = options.comment;
     if (options.public !== undefined) params.public = String(options.public);
     await this.request("updatePlaylist", params);
+  }
+
+  async addSongsToPlaylist(playlistId: string, songIds: string[]): Promise<void> {
+    if (songIds.length === 0) return;
+    await this.request("updatePlaylist", { playlistId, songIdToAdd: songIds });
+  }
+
+  async deletePlaylist(playlistId: string): Promise<void> {
+    await this.request("deletePlaylist", { id: playlistId });
   }
 
 async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {

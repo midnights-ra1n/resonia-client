@@ -9,7 +9,6 @@ import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useArtist } from "./useArtist";
-import { useArtistPhoto } from "./useArtistPhoto";
 import { useArtistPopularSongs } from "./useArtistPopularSongs";
 
 export function ArtistPage() {
@@ -17,9 +16,12 @@ export function ArtistPage() {
   const { t } = useTranslation();
 
   const { artist, loading, error } = useArtist(id);
-  const { songs: popularSongs, loading: popularSongsLoading, source: popularSongsSource } = useArtistPopularSongs(
-    artist?.name,
-  );
+  const {
+    songs: popularSongs,
+    loading: popularSongsLoading,
+    source: popularSongsSource,
+    lastfmError,
+  } = useArtistPopularSongs(artist?.name);
 
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
@@ -34,8 +36,12 @@ export function ArtistPage() {
   const togglePlay = usePlayerStore((s) => s.togglePlay);
 
   const navidromeCoverUrl = client && artist?.coverArt ? client.getCoverArtUrl(artist.coverArt, 600) : undefined;
-  const photoUrl = useArtistPhoto(artist?.name, navidromeCoverUrl);
-  const cachedPhotoUrl = useCoverArt(activeServerId ?? undefined, artist ? `artist:${artist.id}` : undefined, 600, photoUrl);
+  const cachedPhotoUrl = useCoverArt(
+    activeServerId ?? undefined,
+    artist ? `artist:${artist.id}` : undefined,
+    600,
+    navidromeCoverUrl,
+  );
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -119,6 +125,11 @@ export function ArtistPage() {
               <h2 className="text-xl font-semibold text-white">{t("artist.popularSongs")}</h2>
               {popularSongsSource === "lastfm" && (
                 <span className="text-xs text-neutral-500">{t("artist.popularSongsSourceLastfm")}</span>
+              )}
+              {popularSongsSource === "local" && lastfmError && (
+                <span className="text-xs text-amber-500" title={lastfmError}>
+                  {t("artist.popularSongsLastfmError", { error: lastfmError })}
+                </span>
               )}
             </div>
             <div className="flex flex-col gap-1">

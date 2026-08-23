@@ -141,7 +141,8 @@ export class SubsonicClient {
 
   async getPlaylist(playlistId: string): Promise<PlaylistWithSongsDTO> {
     const result = await this.request<{ playlist: PlaylistWithSongsDTO }>("getPlaylist", { id: playlistId });
-    return result.playlist;
+    // Subsonic omet le champ "entry" quand la playlist est vide plutôt que de renvoyer [].
+    return { ...result.playlist, entry: result.playlist.entry ?? [] };
   }
 
   async createPlaylist(name: string): Promise<PlaylistSummary> {
@@ -160,6 +161,17 @@ export class SubsonicClient {
   async addSongsToPlaylist(playlistId: string, songIds: string[]): Promise<void> {
     if (songIds.length === 0) return;
     await this.request("updatePlaylist", { playlistId, songIdToAdd: songIds });
+  }
+
+  /** L'API Subsonic n'a pas d'opération "déplacer" : on retire toutes les entrées existantes
+   *  (par index) puis on les rajoute dans le nouvel ordre voulu, en une seule requête. */
+  async reorderPlaylist(playlistId: string, orderedSongIds: string[], currentSongCount: number): Promise<void> {
+    const params: Record<string, string | string[]> = { playlistId };
+    if (currentSongCount > 0) {
+      params.songIndexToRemove = Array.from({ length: currentSongCount }, (_, i) => String(i));
+    }
+    if (orderedSongIds.length > 0) params.songIdToAdd = orderedSongIds;
+    await this.request("updatePlaylist", params);
   }
 
   async deletePlaylist(playlistId: string): Promise<void> {
@@ -200,6 +212,13 @@ async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
       offset: String(offset),
     });
     return result.albumList2.album ?? [];
+  }
+
+  async getRandomSongs(size = 20): Promise<SongDTO[]> {
+    const result = await this.request<{ randomSongs: { song?: SongDTO[] } }>("getRandomSongs", {
+      size: String(size),
+    });
+    return result.randomSongs.song ?? [];
   }
 
   async getAlbum(albumId: string): Promise<AlbumWithSongsDTO> {

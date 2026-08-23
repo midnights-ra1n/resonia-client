@@ -19,6 +19,8 @@ import { linearOrder, reshuffleUpcoming, shuffleIndices } from "../lib/audio/shu
 
 const VOLUME_STORAGE_KEY = "resonia:settings:volume";
 const TIME_DISPLAY_STORAGE_KEY = "resonia:settings:showTimeRemaining";
+const SHUFFLE_STORAGE_KEY = "resonia:settings:shuffle";
+const REPEAT_STORAGE_KEY = "resonia:settings:repeat";
 
 export interface Track {
   id: string;
@@ -343,6 +345,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     if (stored === null) return;
     set({ showTimeRemaining: stored });
   });
+  storage.get<boolean>(SHUFFLE_STORAGE_KEY).then((stored) => {
+    if (stored === null) return;
+    set({ isShuffle: stored });
+  });
+  storage.get<boolean>(REPEAT_STORAGE_KEY).then((stored) => {
+    if (stored === null) return;
+    set({ isRepeat: stored });
+  });
 
   engine.onNativePlaying = onPlaybackStarted;
   engine.onNetworkPressure = (active) => (active ? prefetchScheduler.pause() : prefetchScheduler.resume());
@@ -543,6 +553,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
       if (queue.length === 0) {
         set({ isShuffle: nextShuffleState });
+        storage.set(SHUFFLE_STORAGE_KEY, nextShuffleState);
         return;
       }
 
@@ -559,6 +570,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           queueIndex: currentQueueIndex,
         });
       }
+      storage.set(SHUFFLE_STORAGE_KEY, nextShuffleState);
       refreshUpcomingPrefetch();
       scheduledNextKey = null;
       scheduleGaplessNext();
@@ -566,7 +578,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     isRepeat: false,
     toggleRepeat: () => {
-      set((state) => ({ isRepeat: !state.isRepeat }));
+      const isRepeat = !get().isRepeat;
+      set({ isRepeat });
+      storage.set(REPEAT_STORAGE_KEY, isRepeat);
       // La cible visée par la planification gapless change selon isRepeat (rejoue la
       // même piste vs avance normalement) — il faut refaire la planification.
       scheduledNextKey = null;

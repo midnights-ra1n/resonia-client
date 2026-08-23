@@ -1,11 +1,11 @@
-import { Pause, Play } from "lucide-react";
+import { ArrowDownAZ, ArrowUpAZ, Check, ChevronDown, GripVertical, Pause, Play, Shuffle } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
 import { InfoModal } from "../../components/InfoModal";
-import { ContextMenu } from "../../components/menu/ContextMenu";
+import { ContextMenu, type MenuItem } from "../../components/menu/ContextMenu";
 import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuItems";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
@@ -15,7 +15,32 @@ import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
+import { useSettingsStore, type PlaylistSortBy } from "../../stores/settingsStore";
 import { usePlaylist } from "./usePlaylist";
+import { useRandomSongs } from "./useRandomSongs";
+import { RandomSongsCarousel } from "./RandomSongsCarousel";
+
+const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
+
+type PlaylistEntry = PlaylistWithSongsDTO["entry"][number];
+
+function sortPlaylistEntries(
+  entries: PlaylistEntry[],
+  sortBy: PlaylistSortBy,
+  direction: "asc" | "desc",
+): PlaylistEntry[] {
+  if (sortBy === "default") return entries;
+
+  const field: Record<Exclude<PlaylistSortBy, "default">, (entry: PlaylistEntry) => string> = {
+    title: (entry) => entry.title,
+    artist: (entry) => entry.artist,
+    album: (entry) => entry.album,
+  };
+  const getValue = field[sortBy];
+
+  const sorted = [...entries].sort((a, b) => getValue(a).localeCompare(getValue(b)));
+  return direction === "asc" ? sorted : sorted.reverse();
+}
 
 export function PlaylistPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +69,30 @@ export function PlaylistPage() {
   const [activeRowSongId, setActiveRowSongId] = useState<string | null>(null);
   const [rowInfoOpen, setRowInfoOpen] = useState(false);
 
+  const playlistSortBy = useSettingsStore((s) => s.playlistSortBy);
+  const playlistSortDirection = useSettingsStore((s) => s.playlistSortDirection);
+  const setPlaylistSort = useSettingsStore((s) => s.setPlaylistSort);
+  const [sortMenu, setSortMenu] = useState<{ open: boolean; x: number; y: number }>({ open: false, x: 0, y: 0 });
+
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const isShuffle = usePlayerStore((s) => s.isShuffle);
+
+  const isEmpty = !loading && !error && !!playlist && playlist.entry.length === 0;
+  const { songs: randomSongs } = useRandomSongs(isEmpty, 20);
+
+  // Ordre "personnalisé" (glisser-déposer) maintenu en local : on ne le fait pas dépendre
+  // de la playlist chargée pour éviter de perdre l'ordre en cours de manipulation si le
+  // fetch se rejoue — il est simplement remis à zéro quand on change de playlist.
+  const [orderOverride, setOrderOverride] = useState<PlaylistEntry[] | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [dropPosition, setDropPosition] = useState<"before" | "after">("before");
+  const [orderOverrideId, setOrderOverrideId] = useState(id);
+  if (id !== orderOverrideId) {
+    setOrderOverrideId(id);
+    setOrderOverride(null);
+  }
+
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
   }
@@ -68,6 +117,52 @@ export function PlaylistPage() {
     };
   }
 
+  const canReorder = playlistSortBy === "default";
+  const defaultEntries = orderOverride ?? playlist.entry;
+  const sortedEntries = sortPlaylistEntries(defaultEntries, playlistSortBy, playlistSortDirection);
+
+  function handleRowDragStart(index: number) {
+    setDragIndex(index);
+  }
+
+  function handleRowDragOver(e: React.DragEvent, index: number) {
+    if (dragIndex === null) return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const isTopHalf = e.clientY < rect.top + rect.height / 2;
+    setHoverIndex(index);
+    setDropPosition(isTopHalf ? "before" : "after");
+  }
+
+  function handleRowDragEnd() {
+    setDragIndex(null);
+    setHoverIndex(null);
+  }
+
+  function handleRowDrop() {
+    if (dragIndex === null || hoverIndex === null) {
+      setDragIndex(null);
+      setHoverIndex(null);
+      return;
+    }
+
+    let toIndex = hoverIndex + (dropPosition === "after" ? 1 : 0);
+    if (dragIndex < toIndex) toIndex -= 1;
+
+    if (dragIndex !== toIndex) {
+      const newOrder = [...defaultEntries];
+      const [moved] = newOrder.splice(dragIndex, 1);
+      newOrder.splice(toIndex, 0, moved);
+      setOrderOverride(newOrder);
+      client
+        .reorderPlaylist(playlist.id, newOrder.map((entry) => entry.id), defaultEntries.length)
+        .catch((err) => console.error("[playlist] Échec de la réorganisation", err));
+    }
+
+    setDragIndex(null);
+    setHoverIndex(null);
+  }
+
   const isThisPlaylistCurrent = currentTrack !== null && playlist.entry.some((s) => s.id === currentTrack.id);
   const isThisPlaylistPlaying = isThisPlaylistCurrent && isPlaying;
 
@@ -76,7 +171,7 @@ export function PlaylistPage() {
       togglePlay();
       return;
     }
-    const queue = playlist!.entry.map(toTrack);
+    const queue = sortedEntries.map(toTrack);
     if (queue.length > 0) playFromStart(queue);
   }
 
@@ -85,9 +180,35 @@ export function PlaylistPage() {
       togglePlay();
       return;
     }
-    const queue = playlist!.entry.map(toTrack);
+    const queue = sortedEntries.map(toTrack);
     playTrack(toTrack(song), queue);
   }
+
+  function handleSortSelect(field: PlaylistSortBy) {
+    if (field === "default") {
+      setPlaylistSort("default", "asc");
+      return;
+    }
+    if (playlistSortBy === field) {
+      setPlaylistSort(field, playlistSortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setPlaylistSort(field, "asc");
+    }
+  }
+
+  const SORT_LABEL_KEYS: Record<PlaylistSortBy, string> = {
+    default: "playlist.sortDefault",
+    title: "playlist.sortTitle",
+    artist: "playlist.sortArtist",
+    album: "playlist.sortAlbum",
+  };
+
+  const sortMenuItems: MenuItem[] = SORT_FIELDS.map((field) => ({
+    type: "action",
+    label: t(SORT_LABEL_KEYS[field]),
+    icon: playlistSortBy === field ? Check : undefined,
+    onClick: () => handleSortSelect(field),
+  }));
 
   const activeRowSong = playlist.entry.find((s) => s.id === activeRowSongId) ?? null;
 
@@ -116,67 +237,159 @@ export function PlaylistPage() {
       </div>
 
       <div className="flex items-center gap-6 bg-neutral-900/40 px-8 py-6 mb-6">
-        <button
-          onClick={handlePlayPlaylist}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
-          title={t("playlist.play")}
-        >
-          {isThisPlaylistPlaying ? (
-            <Pause size={22} fill="black" className="text-neutral-900" />
-          ) : (
-            <Play size={22} fill="black" className="ml-1 text-neutral-900" />
-          )}
-        </button>
+        {!isEmpty && (
+          <>
+            <button
+              onClick={handlePlayPlaylist}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+              title={t("playlist.play")}
+            >
+              {isThisPlaylistPlaying ? (
+                <Pause size={22} fill="black" className="text-neutral-900" />
+              ) : (
+                <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+              )}
+            </button>
+
+            <button
+              onClick={toggleShuffle}
+              className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+              title={t("playlist.shuffle")}
+            >
+              <Shuffle size={24} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setSortMenu({ open: true, x: rect.left, y: rect.bottom + 4 });
+              }}
+              className="ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition hover:text-white"
+              title={t("playlist.sortLabel")}
+            >
+              <span>{t(SORT_LABEL_KEYS[playlistSortBy])}</span>
+              {playlistSortBy !== "default" &&
+                (playlistSortDirection === "asc" ? <ArrowUpAZ size={16} /> : <ArrowDownAZ size={16} />)}
+              <ChevronDown size={14} />
+            </button>
+          </>
+        )}
       </div>
 
       <div className="px-8 pb-12">
-        <div className="grid grid-cols-[32px_1fr_auto] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
-          <span className="text-center">#</span>
-          <span>{t("playlist.columnTitle")}</span>
-          <span>{t("playlist.columnDuration")}</span>
-        </div>
-
-        {playlist.entry.map((song, index) => {
-          const isCurrent = currentTrack?.id === song.id;
-          return (
-            <div
-              key={`${song.id}-${index}`}
-              onClick={() => handleTrackClick(song)}
-              onContextMenu={(e) => {
-                setActiveRowSongId(song.id);
-                rowMenu.handleContextMenu(e);
-              }}
-              className="group grid cursor-pointer grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60"
-            >
-              <div className="flex items-center justify-center text-sm text-neutral-400">
-                {isCurrent && isPlaying ? (
-                  <Pause size={14} className="text-emerald-400" fill="currentColor" />
-                ) : (
-                  <>
-                    <span className="group-hover:hidden">{index + 1}</span>
-                    <Play size={14} className="hidden text-white group-hover:block" fill="currentColor" />
-                  </>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <MarqueeText
-                  text={song.title}
-                  className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
-                />
-                <MarqueeText
-                  text={song.artist}
-                  to={song.artistId ? `/artists/${song.artistId}` : undefined}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs text-neutral-400 hover:text-white hover:underline"
-                />
-              </div>
-
-              <span className="text-xs text-neutral-400 tabular-nums">{formatTrackDuration(song.duration)}</span>
+        {isEmpty ? (
+          <>
+            <div className="rounded-lg border border-dashed border-neutral-800 px-6 py-10 text-center">
+              <p className="text-lg font-semibold text-white">{t("playlist.emptyTitle")}</p>
+              <p className="mt-1 text-sm text-neutral-400">{t("playlist.emptySubtitle")}</p>
             </div>
-          );
-        })}
+
+            {randomSongs.length > 0 && (
+              <RandomSongsCarousel title={t("playlist.emptySuggestions")} songs={randomSongs} client={client} />
+            )}
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-[32px_1fr_1fr_auto] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+              <span className="text-center">#</span>
+              <span>{t("playlist.columnTitle")}</span>
+              <span>{t("playlist.columnAlbum")}</span>
+              <span>{t("playlist.columnDuration")}</span>
+            </div>
+
+            <div onDragOver={(e) => canReorder && e.preventDefault()} onDrop={canReorder ? handleRowDrop : undefined}>
+              {sortedEntries.map((song, index) => {
+                const isCurrent = currentTrack?.id === song.id;
+                return (
+                  <div
+                    key={`${song.id}-${index}`}
+                    draggable={canReorder}
+                    onDragStart={canReorder ? () => handleRowDragStart(index) : undefined}
+                    onDragOver={canReorder ? (e) => handleRowDragOver(e, index) : undefined}
+                    onDragEnd={canReorder ? handleRowDragEnd : undefined}
+                    onClick={() => handleTrackClick(song)}
+                    onContextMenu={(e) => {
+                      setActiveRowSongId(song.id);
+                      rowMenu.handleContextMenu(e);
+                    }}
+                    className={`group relative grid cursor-pointer grid-cols-[32px_1fr_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                      dragIndex === index ? "opacity-40" : ""
+                    }`}
+                  >
+                    {canReorder && hoverIndex === index && dropPosition === "before" && (
+                      <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                    )}
+
+                    <div className="flex items-center justify-center text-sm text-neutral-400">
+                      {isCurrent && isPlaying ? (
+                        <Pause size={14} className="text-emerald-400" fill="currentColor" />
+                      ) : canReorder ? (
+                        <>
+                          <span className="group-hover:hidden">{index + 1}</span>
+                          <GripVertical
+                            size={14}
+                            className="hidden cursor-grab text-neutral-400 group-hover:block active:cursor-grabbing"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <span className="group-hover:hidden">{index + 1}</span>
+                          <Play size={14} className="hidden text-white group-hover:block" fill="currentColor" />
+                        </>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <MarqueeText
+                        text={song.title}
+                        draggable={false}
+                        className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                      />
+                      <MarqueeText
+                        text={song.artist}
+                        to={song.artistId ? `/artists/${song.artistId}` : undefined}
+                        onClick={(e) => e.stopPropagation()}
+                        draggable={false}
+                        className="text-xs text-neutral-400 hover:text-white hover:underline"
+                      />
+                    </div>
+
+                    <div className="min-w-0">
+                      {song.albumId ? (
+                        <Link
+                          to={`/albums/${song.albumId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          draggable={false}
+                          className="block truncate text-xs text-neutral-400 hover:text-white hover:underline"
+                        >
+                          {song.album}
+                        </Link>
+                      ) : (
+                        <span className="block truncate text-xs text-neutral-400">{song.album}</span>
+                      )}
+                    </div>
+
+                    <span className="text-xs text-neutral-400 tabular-nums">{formatTrackDuration(song.duration)}</span>
+
+                    {canReorder && hoverIndex === index && dropPosition === "after" && (
+                      <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
+
+      {sortMenu.open && (
+        <ContextMenu
+          x={sortMenu.x}
+          y={sortMenu.y}
+          onClose={() => setSortMenu((s) => ({ ...s, open: false }))}
+          items={sortMenuItems}
+        />
+      )}
 
       {headerMenu.open && (
         <ContextMenu

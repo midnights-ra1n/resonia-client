@@ -64,7 +64,19 @@
     "play": "Lecture",
     "owner": "Propriétaire",
     "columnTitle": "Titre",
-    "columnDuration": "Durée"
+    "columnAlbum": "Album",
+    "columnDuration": "Durée",
+    "sortLabel": "Trier par",
+    "sortDefault": "Ordre personnalisé",
+    "sortTitle": "Titre",
+    "sortArtist": "Artiste",
+    "sortAlbum": "Album",
+    "sortAscending": "Croissant",
+    "sortDescending": "Décroissant",
+    "shuffle": "Lecture aléatoire",
+    "emptyTitle": "Cette playlist est vide",
+    "emptySubtitle": "Ajoute des titres pour commencer à écouter.",
+    "emptySuggestions": "Tu pourrais ajouter..."
   },
   "contextMenu": {
     "addToQueue": "Ajouter à la file d'attente",

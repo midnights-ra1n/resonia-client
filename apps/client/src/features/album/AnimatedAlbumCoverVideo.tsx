@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type SyntheticEvent } from "react";
 import Hls from "hls.js";
 import { supportsNativeHls } from "../../lib/platform";
 
@@ -36,6 +36,18 @@ export function AnimatedAlbumCoverVideo({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const useHlsJs = Hls.isSupported();
 
+  // Boucle gérée manuellement (pas d'attribut `loop` natif) : sur WebKit/WKWebView (le WebView
+  // système utilisé par le bundle Tauri), une boucle native réaffiche brièvement le `poster` à
+  // chaque redémarrage avant de reprendre la vidéo — bug non reproductible sous Chrome (donc
+  // invisible en dev via Vite). Un simple retour à `currentTime = 0` + `play()` sur `ended`
+  // contourne ce réaffichage.
+  const loopFromStart = (video: HTMLVideoElement) => {
+    video.currentTime = 0;
+    void video.play();
+  };
+  const handleLoopEnded = (e: SyntheticEvent<HTMLVideoElement>) =>
+    loopFromStart(e.currentTarget);
+
   useEffect(() => {
     if (!useHlsJs) {
       if (!supportsNativeHls()) onFatalError();
@@ -56,8 +68,13 @@ export function AnimatedAlbumCoverVideo({
     });
     hls.loadSource(masterUrl);
     hls.attachMedia(video);
+    const onEnded = () => loopFromStart(video);
+    video.addEventListener("ended", onEnded);
 
-    return () => hls.destroy();
+    return () => {
+      video.removeEventListener("ended", onEnded);
+      hls.destroy();
+    };
     // onFatalError volontairement omis : identité stable non garantie côté appelant, et on ne
     // veut relancer hls.js que lorsque la source (ou la disponibilité de MSE) change réellement.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,10 +90,10 @@ export function AnimatedAlbumCoverVideo({
         src={masterUrl}
         poster={poster}
         autoPlay
-        loop
         muted
         playsInline
         className={className}
+        onEnded={handleLoopEnded}
         onError={(e) => {
           console.warn(
             "[animatedCover] Lecture HLS native impossible, repli sur la pochette statique",
@@ -94,7 +111,6 @@ export function AnimatedAlbumCoverVideo({
       ref={videoRef}
       poster={poster}
       autoPlay
-      loop
       muted
       playsInline
       className={className}

@@ -139,6 +139,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   // du démarrage de lecture, changement de qualité, etc.).
   let scheduledNextKey: string | null = null;
 
+  // Un appel à loadAndPlay() (ci-dessous) attend une résolution async (cache OPFS) avant de
+  // committer quoi que ce soit. Deux appels rapprochés (double-clic next/prev, touche média du
+  // clavier répétée, nextTrack() déclenché pendant qu'un changement précédent est encore en
+  // vol) peuvent donc résoudre dans le désordre : sans garde, le plus lent écraserait
+  // l'engine et le Now Playing système avec les infos d'une piste déjà abandonnée. Chaque
+  // appel capture le numéro de génération courant et abandonne silencieusement s'il a été
+  // dépassé entre-temps par un appel plus récent.
+  let loadGeneration = 0;
+
   // Débounce des seeks (barre de progression) : un clic isolé applique le seek quasi
   // immédiatement, mais une rafale de clics très rapprochés (l'utilisateur "glisse" en
   // cliquant plusieurs fois) ne doit faire atterrir qu'UN seul seek — celui du dernier
@@ -280,6 +289,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       });
       updateMediaSessionMetadata(nextTrackData);
       setMediaSessionPlaybackState("playing");
+      setMediaSessionPositionState(engine.duration, engine.currentTime, true);
       refreshUpcomingPrefetch();
       activateCurrentTrackCaching();
       scheduleGaplessNext();
@@ -399,14 +409,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   requestAnimationFrame(tickProgress);
 
   registerMediaSessionHandlers({
-    onPlay: () => get().togglePlay(),
-    onPause: () => get().togglePlay(),
+    onPlay: () => get().setPlaying(true),
+    onPause: () => get().setPlaying(false),
     onNext: () => get().nextTrack(),
     onPrevious: () => get().prevTrack(),
     onSeekTo: (time) => get().setCurrentTime(time),
   });
 
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
+    const myGeneration = ++loadGeneration;
+
     const resolved = resolvePlayableTrack(track);
     if (!resolved) {
       console.warn("[player] Impossible de résoudre le flux (serveur actif manquant ou qualité invalide)");
@@ -418,6 +430,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     const key = decodedCacheKey(track.id, resolved.qualityId);
     const decoded = decodedCache.get(key);
     const cachedUrl = decoded ? null : await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format);
+
+    // Un appel plus récent a déjà pris le dessus pendant cette attente : ne rien committer,
+    // engine et Now Playing reflètent déjà la piste voulue.
+    if (myGeneration !== loadGeneration) return;
+
     const instantUrl = cachedUrl ?? resolved.streamUrl;
     // Un blob OPFS local n'a ni Range HTTP ni CORS à satisfaire : le repli MediaSource ne
     // s'applique qu'au vrai flux réseau.
@@ -428,6 +445,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     set({ currentTrack: track, queue, currentTime: offset, isPlaying: true });
     updateMediaSessionMetadata(track);
     setMediaSessionPlaybackState("playing");
+    setMediaSessionPositionState(engine.duration, offset, true);
 
     // Une piste déjà décodée démarre directement en mode buffer : aucun événement natif
     // "playing" ne se déclenchera pour signaler le démarrage effectif.
@@ -480,10 +498,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         engine.pause();
         set({ isPlaying: false });
         setMediaSessionPlaybackState("paused");
+        setMediaSessionPositionState(engine.duration, engine.currentTime, true);
       } else {
         engine.resume();
         set({ isPlaying: true });
         setMediaSessionPlaybackState("playing");
+        setMediaSessionPositionState(engine.duration, engine.currentTime, true);
       }
     },
     setPlaying: (playing) => {
@@ -491,6 +511,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       else engine.pause();
       set({ isPlaying: playing });
       setMediaSessionPlaybackState(playing ? "playing" : "paused");
+      setMediaSessionPositionState(engine.duration, engine.currentTime, true);
     },
 
     engineState: "idle",

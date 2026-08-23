@@ -16,6 +16,7 @@ import { InfoModal } from "../../components/InfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
+import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -23,10 +24,14 @@ function formatTrackDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function formatAlbumDuration(seconds: number, t: (key: string, vars?: Record<string, string | number>) => string): string {
+function formatAlbumDuration(
+  seconds: number,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   const hours = Math.floor(seconds / 3600);
   const mins = Math.round((seconds % 3600) / 60);
-  if (hours > 0) return t("album.durationHoursMinutes", { hours, minutes: mins });
+  if (hours > 0)
+    return t("album.durationHoursMinutes", { hours, minutes: mins });
   return t("album.durationMinutes", { minutes: mins });
 }
 
@@ -48,16 +53,20 @@ export function AlbumPage() {
   const rowMenu = useContextMenu();
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [rowInfoOpen, setRowInfoOpen] = useState(false);
+  const {
+    isSelected: isSongSelected,
+    handleRowClick: handleRowSelectClick,
+    handleKeyDown: handleListKeyDown,
+    containerRef: trackListRef,
+    registerRow: registerTrackRow,
+  } = useTrackListSelection(album?.song.length ?? 0);
 
   const artistId = album?.artistId;
-  const { albums: _artistAlbums, loading: _artistAlbumsLoading } = useArtistAlbums(
-    artistId,
-    album?.id ?? "",
-  );
+  const { albums: _artistAlbums, loading: _artistAlbumsLoading } =
+    useArtistAlbums(artistId, album?.id ?? "");
 
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
-
 
   const { albums: randomAlbums, loading: randomLoading } = useSimilarAlbums(
     artistId,
@@ -76,7 +85,9 @@ export function AlbumPage() {
       .then((copyright) => {
         if (!cancelled && copyright) setNativeCopyright(copyright);
       })
-      .catch((err) => console.error("[album] Copyright natif indisponible", err));
+      .catch((err) =>
+        console.error("[album] Copyright natif indisponible", err),
+      );
 
     return () => {
       cancelled = true;
@@ -94,10 +105,14 @@ export function AlbumPage() {
   }
 
   if (error || !album || !client) {
-    return <div className="p-8 text-neutral-400">{error ?? t("album.notFound")}</div>;
+    return (
+      <div className="p-8 text-neutral-400">{error ?? t("album.notFound")}</div>
+    );
   }
 
-  const coverUrl = album.coverArt ? client.getCoverArtUrl(album.coverArt, 600) : undefined;
+  const coverUrl = album.coverArt
+    ? client.getCoverArtUrl(album.coverArt, 600)
+    : undefined;
 
   type AlbumSong = NonNullable<typeof album>["song"][number];
 
@@ -110,11 +125,14 @@ export function AlbumPage() {
       album: song.album,
       albumId: album!.id,
       duration: song.duration,
-      coverUrl: song.coverArt ? client!.getCoverArtUrl(song.coverArt, 300) : coverUrl,
+      coverUrl: song.coverArt
+        ? client!.getCoverArtUrl(song.coverArt, 300)
+        : coverUrl,
     };
   }
 
-  const isThisAlbumCurrent = currentTrack !== null && album.song.some((s) => s.id === currentTrack.id);
+  const isThisAlbumCurrent =
+    currentTrack !== null && album.song.some((s) => s.id === currentTrack.id);
   const isThisAlbumPlaying = isThisAlbumCurrent && isPlaying;
 
   const extractAlbumCopyright = () => {
@@ -161,20 +179,34 @@ export function AlbumPage() {
               className="h-full w-full object-cover"
             />
           ) : coverUrl ? (
-            <img src={coverUrl} alt={album.name} className="h-full w-full object-cover" />
+            <img
+              src={coverUrl}
+              alt={album.name}
+              className="h-full w-full object-cover"
+            />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">♪</div>
+            <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">
+              ♪
+            </div>
           )}
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-white">{t("album.labelAlbum")}</p>
+          <p className="text-sm font-medium text-white">
+            {t("album.labelAlbum")}
+          </p>
           <h1 className="mt-2">
-            <MarqueeText text={album.name} className="text-5xl font-black text-white" />
+            <MarqueeText
+              text={album.name}
+              className="text-5xl font-black text-white"
+            />
           </h1>
           <div className="mt-4 flex items-center gap-2 text-sm text-neutral-300">
             {album.artistId ? (
-              <Link to={`/artists/${album.artistId}`} className="font-semibold text-white hover:underline">
+              <Link
+                to={`/artists/${album.artistId}`}
+                className="font-semibold text-white hover:underline"
+              >
                 {album.artist}
               </Link>
             ) : (
@@ -216,105 +248,144 @@ export function AlbumPage() {
           <span>{t("album.columnDuration")}</span>
         </div>
 
-        {album.song.map((song, index) => {
-          const isCurrent = currentTrack?.id === song.id;
-          return (
-            <div
-              key={song.id}
-              onClick={() => handleTrackClick(song)}
-              onContextMenu={(e) => {
-                setActiveSongId(song.id);
-                rowMenu.handleContextMenu(e);
-              }}
-              className="group grid cursor-pointer grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60"
-            >
-              <div className="flex items-center justify-center text-sm text-neutral-400">
-                {isCurrent && isPlaying ? (
-                  <Pause size={14} className="text-emerald-400" fill="currentColor" />
-                ) : (
-                  <>
-                    <span className="group-hover:hidden">{index + 1}</span>
-                    <Play size={14} className="hidden text-white group-hover:block" fill="currentColor" />
-                  </>
-                )}
-              </div>
+        <div
+          ref={trackListRef}
+          tabIndex={0}
+          onKeyDown={handleListKeyDown}
+          className="outline-none"
+        >
+          {album.song.map((song, index) => {
+            const isCurrent = currentTrack?.id === song.id;
+            const isSelected = isSongSelected(index);
+            return (
+              <div
+                key={song.id}
+                ref={(el) => registerTrackRow(index, el)}
+                onClick={(e) => handleRowSelectClick(e, index)}
+                onDoubleClick={() => handleTrackClick(song)}
+                onContextMenu={(e) => {
+                  setActiveSongId(song.id);
+                  rowMenu.handleContextMenu(e);
+                }}
+                className={`group grid cursor-pointer select-none grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                  isSelected ? "bg-neutral-800/70" : ""
+                }`}
+              >
+                <div className="flex items-center justify-center text-sm text-neutral-400">
+                  {isCurrent && isPlaying ? (
+                    <Pause
+                      size={14}
+                      className="text-emerald-400"
+                      fill="currentColor"
+                    />
+                  ) : (
+                    <>
+                      <span className="group-hover:hidden">{index + 1}</span>
+                      <Play
+                        size={14}
+                        className="hidden text-white group-hover:block"
+                        fill="currentColor"
+                      />
+                    </>
+                  )}
+                </div>
 
-              <div className="min-w-0">
-                <MarqueeText
-                  text={song.title}
-                  className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
-                />
-                {song.artist !== album.artist && (
+                <div className="min-w-0">
                   <MarqueeText
-                    text={song.artist}
-                    to={song.artistId ? `/artists/${song.artistId}` : undefined}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-neutral-400 hover:text-white hover:underline"
+                    text={song.title}
+                    className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
                   />
-                )}
-              </div>
+                  {song.artist !== album.artist && (
+                    <MarqueeText
+                      text={song.artist}
+                      to={
+                        song.artistId ? `/artists/${song.artistId}` : undefined
+                      }
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-neutral-400 hover:text-white hover:underline"
+                    />
+                  )}
+                </div>
 
-              <span className="text-xs text-neutral-400 tabular-nums">{formatTrackDuration(song.duration)}</span>
-            </div>
-          );
-        })}
+                <span className="text-xs text-neutral-400 tabular-nums">
+                  {formatTrackDuration(song.duration)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
 
         {albumCopyright && (
-          <div className="mt-4 text-xs text-neutral-500">
-            {albumCopyright}
-          </div>
+          <div className="mt-4 text-xs text-neutral-500">{albumCopyright}</div>
         )}
 
         {!_artistAlbumsLoading && (
           <div className="mt-10">
-            <AlbumCarousel title={t("album.moreFromArtist", { artist: album.artist })} albums={_artistAlbums} />
+            <AlbumCarousel
+              title={t("album.moreFromArtist", { artist: album.artist })}
+              albums={_artistAlbums}
+            />
           </div>
         )}
 
         {!randomLoading && (
           <div className="mt-10">
-            <AlbumCarousel title={t("album.similarAlbums")} albums={randomAlbums} />
+            <AlbumCarousel
+              title={t("album.similarAlbums")}
+              albums={randomAlbums}
+            />
           </div>
         )}
       </div>
 
-      {rowMenu.open && activeSongId && (() => {
-        const activeSong = album.song.find((s) => s.id === activeSongId);
-        if (!activeSong) return null;
-        return (
-          <ContextMenu
-            x={rowMenu.x}
-            y={rowMenu.y}
-            onClose={rowMenu.close}
-            items={buildTrackMenuItems({
-              track: toTrack(activeSong),
-              client: client!,
-              t,
-              navigate,
-              addToQueue,
-              onOpenInfo: () => setRowInfoOpen(true),
-              hideGoToAlbum: true,
-            })}
-          />
-        );
-      })()}
+      {rowMenu.open &&
+        activeSongId &&
+        (() => {
+          const activeSong = album.song.find((s) => s.id === activeSongId);
+          if (!activeSong) return null;
+          return (
+            <ContextMenu
+              x={rowMenu.x}
+              y={rowMenu.y}
+              onClose={rowMenu.close}
+              items={buildTrackMenuItems({
+                track: toTrack(activeSong),
+                client: client!,
+                t,
+                navigate,
+                addToQueue,
+                onOpenInfo: () => setRowInfoOpen(true),
+                hideGoToAlbum: true,
+              })}
+            />
+          );
+        })()}
 
-      {rowInfoOpen && activeSongId && (() => {
-        const activeSong = album.song.find((s) => s.id === activeSongId);
-        if (!activeSong) return null;
-        return (
-          <InfoModal
-            title={activeSong.title}
-            coverUrl={activeSong.coverArt ? client!.getCoverArtUrl(activeSong.coverArt, 300) : coverUrl}
-            onClose={() => setRowInfoOpen(false)}
-            rows={[
-              { label: t("search.artistLabel"), value: activeSong.artist },
-              { label: t("album.labelAlbum"), value: activeSong.album },
-              { label: t("album.columnDuration"), value: formatTrackDuration(activeSong.duration) },
-            ]}
-          />
-        );
-      })()}
+      {rowInfoOpen &&
+        activeSongId &&
+        (() => {
+          const activeSong = album.song.find((s) => s.id === activeSongId);
+          if (!activeSong) return null;
+          return (
+            <InfoModal
+              title={activeSong.title}
+              coverUrl={
+                activeSong.coverArt
+                  ? client!.getCoverArtUrl(activeSong.coverArt, 300)
+                  : coverUrl
+              }
+              onClose={() => setRowInfoOpen(false)}
+              rows={[
+                { label: t("search.artistLabel"), value: activeSong.artist },
+                { label: t("album.labelAlbum"), value: activeSong.album },
+                {
+                  label: t("album.columnDuration"),
+                  value: formatTrackDuration(activeSong.duration),
+                },
+              ]}
+            />
+          );
+        })()}
     </div>
   );
 }

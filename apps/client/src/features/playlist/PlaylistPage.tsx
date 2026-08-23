@@ -1,4 +1,13 @@
-import { ArrowDownAZ, ArrowUpAZ, Check, ChevronDown, GripVertical, Pause, Play, Shuffle } from "lucide-react";
+import {
+  ArrowDownAZ,
+  ArrowUpAZ,
+  Check,
+  ChevronDown,
+  GripVertical,
+  Pause,
+  Play,
+  Shuffle,
+} from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
@@ -10,15 +19,22 @@ import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuI
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { RenamePlaylistModal } from "../../app/layout/RenamePlaylistModal";
-import { formatAlbumDuration, formatTrackDuration } from "../../lib/format/duration";
+import {
+  formatAlbumDuration,
+  formatTrackDuration,
+} from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
-import { useSettingsStore, type PlaylistSortBy } from "../../stores/settingsStore";
+import {
+  useSettingsStore,
+  type PlaylistSortBy,
+} from "../../stores/settingsStore";
 import { usePlaylist } from "./usePlaylist";
 import { useRandomSongs } from "./useRandomSongs";
 import { RandomSongsCarousel } from "./RandomSongsCarousel";
+import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 
 const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
 
@@ -31,14 +47,19 @@ function sortPlaylistEntries(
 ): PlaylistEntry[] {
   if (sortBy === "default") return entries;
 
-  const field: Record<Exclude<PlaylistSortBy, "default">, (entry: PlaylistEntry) => string> = {
+  const field: Record<
+    Exclude<PlaylistSortBy, "default">,
+    (entry: PlaylistEntry) => string
+  > = {
     title: (entry) => entry.title,
     artist: (entry) => entry.artist,
     album: (entry) => entry.album,
   };
   const getValue = field[sortBy];
 
-  const sorted = [...entries].sort((a, b) => getValue(a).localeCompare(getValue(b)));
+  const sorted = [...entries].sort((a, b) =>
+    getValue(a).localeCompare(getValue(b)),
+  );
   return direction === "asc" ? sorted : sorted.reverse();
 }
 
@@ -70,39 +91,64 @@ export function PlaylistPage() {
   const [rowInfoOpen, setRowInfoOpen] = useState(false);
 
   const playlistSortBy = useSettingsStore((s) => s.playlistSortBy);
-  const playlistSortDirection = useSettingsStore((s) => s.playlistSortDirection);
+  const playlistSortDirection = useSettingsStore(
+    (s) => s.playlistSortDirection,
+  );
   const setPlaylistSort = useSettingsStore((s) => s.setPlaylistSort);
-  const [sortMenu, setSortMenu] = useState<{ open: boolean; x: number; y: number }>({ open: false, x: 0, y: 0 });
+  const [sortMenu, setSortMenu] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+  }>({ open: false, x: 0, y: 0 });
 
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
 
-  const isEmpty = !loading && !error && !!playlist && playlist.entry.length === 0;
+  const isEmpty =
+    !loading && !error && !!playlist && playlist.entry.length === 0;
   const { songs: randomSongs } = useRandomSongs(isEmpty, 20);
 
   // Ordre "personnalisé" (glisser-déposer) maintenu en local : on ne le fait pas dépendre
   // de la playlist chargée pour éviter de perdre l'ordre en cours de manipulation si le
   // fetch se rejoue — il est simplement remis à zéro quand on change de playlist.
-  const [orderOverride, setOrderOverride] = useState<PlaylistEntry[] | null>(null);
+  const [orderOverride, setOrderOverride] = useState<PlaylistEntry[] | null>(
+    null,
+  );
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [dropPosition, setDropPosition] = useState<"before" | "after">("before");
+  const [dropPosition, setDropPosition] = useState<"before" | "after">(
+    "before",
+  );
   const [orderOverrideId, setOrderOverrideId] = useState(id);
   if (id !== orderOverrideId) {
     setOrderOverrideId(id);
     setOrderOverride(null);
   }
 
+  const {
+    isSelected: isSongSelected,
+    handleRowClick: handleRowSelectClick,
+    handleKeyDown: handleListKeyDown,
+    containerRef: trackListRef,
+    registerRow: registerTrackRow,
+  } = useTrackListSelection(playlist?.entry.length ?? 0);
+
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
   }
 
   if (error || !playlist || !client) {
-    return <div className="p-8 text-neutral-400">{error ?? t("playlists.notFound")}</div>;
+    return (
+      <div className="p-8 text-neutral-400">
+        {error ?? t("playlists.notFound")}
+      </div>
+    );
   }
 
   const name = displayName ?? playlist.name;
-  const coverUrl = playlist.coverArt ? client.getCoverArtUrl(playlist.coverArt, 600) : undefined;
+  const coverUrl = playlist.coverArt
+    ? client.getCoverArtUrl(playlist.coverArt, 600)
+    : undefined;
 
   function toTrack(song: PlaylistWithSongsDTO["entry"][number]): Track {
     return {
@@ -113,13 +159,19 @@ export function PlaylistPage() {
       album: song.album,
       albumId: song.albumId,
       duration: song.duration,
-      coverUrl: song.coverArt ? client!.getCoverArtUrl(song.coverArt, 300) : coverUrl,
+      coverUrl: song.coverArt
+        ? client!.getCoverArtUrl(song.coverArt, 300)
+        : coverUrl,
     };
   }
 
   const canReorder = playlistSortBy === "default";
   const defaultEntries = orderOverride ?? playlist.entry;
-  const sortedEntries = sortPlaylistEntries(defaultEntries, playlistSortBy, playlistSortDirection);
+  const sortedEntries = sortPlaylistEntries(
+    defaultEntries,
+    playlistSortBy,
+    playlistSortDirection,
+  );
 
   function handleRowDragStart(index: number) {
     setDragIndex(index);
@@ -155,15 +207,23 @@ export function PlaylistPage() {
       newOrder.splice(toIndex, 0, moved);
       setOrderOverride(newOrder);
       client
-        .reorderPlaylist(playlist.id, newOrder.map((entry) => entry.id), defaultEntries.length)
-        .catch((err) => console.error("[playlist] Échec de la réorganisation", err));
+        .reorderPlaylist(
+          playlist.id,
+          newOrder.map((entry) => entry.id),
+          defaultEntries.length,
+        )
+        .catch((err) =>
+          console.error("[playlist] Échec de la réorganisation", err),
+        );
     }
 
     setDragIndex(null);
     setHoverIndex(null);
   }
 
-  const isThisPlaylistCurrent = currentTrack !== null && playlist.entry.some((s) => s.id === currentTrack.id);
+  const isThisPlaylistCurrent =
+    currentTrack !== null &&
+    playlist.entry.some((s) => s.id === currentTrack.id);
   const isThisPlaylistPlaying = isThisPlaylistCurrent && isPlaying;
 
   function handlePlayPlaylist() {
@@ -210,27 +270,46 @@ export function PlaylistPage() {
     onClick: () => handleSortSelect(field),
   }));
 
-  const activeRowSong = playlist.entry.find((s) => s.id === activeRowSongId) ?? null;
+  const activeRowSong =
+    playlist.entry.find((s) => s.id === activeRowSongId) ?? null;
 
   return (
     <div>
       <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
           {coverUrl ? (
-            <img src={coverUrl} alt={name} className="h-full w-full object-cover" />
+            <img
+              src={coverUrl}
+              alt={name}
+              className="h-full w-full object-cover"
+            />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">♪</div>
+            <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">
+              ♪
+            </div>
           )}
         </div>
 
-        <div className="min-w-0 flex-1" onContextMenu={headerMenu.handleContextMenu}>
-          <p className="text-sm font-medium text-white">{t("playlist.label")}</p>
+        <div
+          className="min-w-0 flex-1"
+          onContextMenu={headerMenu.handleContextMenu}
+        >
+          <p className="text-sm font-medium text-white">
+            {t("playlist.label")}
+          </p>
           <h1 className="mt-2">
-            <MarqueeText text={name} className="text-5xl font-black text-white" />
+            <MarqueeText
+              text={name}
+              className="text-5xl font-black text-white"
+            />
           </h1>
           <div className="mt-4 flex items-center gap-2 text-sm text-neutral-300">
-            {playlist.owner && <span className="font-semibold text-white">{playlist.owner}</span>}
-            <span>· {t("playlist.trackCount", { count: playlist.songCount })}</span>
+            {playlist.owner && (
+              <span className="font-semibold text-white">{playlist.owner}</span>
+            )}
+            <span>
+              · {t("playlist.trackCount", { count: playlist.songCount })}
+            </span>
             <span>, {formatAlbumDuration(playlist.duration, t)}</span>
           </div>
         </div>
@@ -247,7 +326,11 @@ export function PlaylistPage() {
               {isThisPlaylistPlaying ? (
                 <Pause size={22} fill="black" className="text-neutral-900" />
               ) : (
-                <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+                <Play
+                  size={22}
+                  fill="black"
+                  className="ml-1 text-neutral-900"
+                />
               )}
             </button>
 
@@ -269,7 +352,11 @@ export function PlaylistPage() {
             >
               <span>{t(SORT_LABEL_KEYS[playlistSortBy])}</span>
               {playlistSortBy !== "default" &&
-                (playlistSortDirection === "asc" ? <ArrowUpAZ size={16} /> : <ArrowDownAZ size={16} />)}
+                (playlistSortDirection === "asc" ? (
+                  <ArrowUpAZ size={16} />
+                ) : (
+                  <ArrowDownAZ size={16} />
+                ))}
               <ChevronDown size={14} />
             </button>
           </>
@@ -280,12 +367,20 @@ export function PlaylistPage() {
         {isEmpty ? (
           <>
             <div className="rounded-lg border border-dashed border-neutral-800 px-6 py-10 text-center">
-              <p className="text-lg font-semibold text-white">{t("playlist.emptyTitle")}</p>
-              <p className="mt-1 text-sm text-neutral-400">{t("playlist.emptySubtitle")}</p>
+              <p className="text-lg font-semibold text-white">
+                {t("playlist.emptyTitle")}
+              </p>
+              <p className="mt-1 text-sm text-neutral-400">
+                {t("playlist.emptySubtitle")}
+              </p>
             </div>
 
             {randomSongs.length > 0 && (
-              <RandomSongsCarousel title={t("playlist.emptySuggestions")} songs={randomSongs} client={client} />
+              <RandomSongsCarousel
+                title={t("playlist.emptySuggestions")}
+                songs={randomSongs}
+                client={client}
+              />
             )}
           </>
         ) : (
@@ -297,35 +392,59 @@ export function PlaylistPage() {
               <span>{t("playlist.columnDuration")}</span>
             </div>
 
-            <div onDragOver={(e) => canReorder && e.preventDefault()} onDrop={canReorder ? handleRowDrop : undefined}>
+            <div
+              ref={trackListRef}
+              tabIndex={0}
+              onKeyDown={handleListKeyDown}
+              onDragOver={(e) => canReorder && e.preventDefault()}
+              onDrop={canReorder ? handleRowDrop : undefined}
+              className="outline-none"
+            >
               {sortedEntries.map((song, index) => {
                 const isCurrent = currentTrack?.id === song.id;
+                const isSelected = isSongSelected(index);
                 return (
                   <div
                     key={`${song.id}-${index}`}
+                    ref={(el) => registerTrackRow(index, el)}
                     draggable={canReorder}
-                    onDragStart={canReorder ? () => handleRowDragStart(index) : undefined}
-                    onDragOver={canReorder ? (e) => handleRowDragOver(e, index) : undefined}
+                    onDragStart={
+                      canReorder ? () => handleRowDragStart(index) : undefined
+                    }
+                    onDragOver={
+                      canReorder
+                        ? (e) => handleRowDragOver(e, index)
+                        : undefined
+                    }
                     onDragEnd={canReorder ? handleRowDragEnd : undefined}
-                    onClick={() => handleTrackClick(song)}
+                    onClick={(e) => handleRowSelectClick(e, index)}
+                    onDoubleClick={() => handleTrackClick(song)}
                     onContextMenu={(e) => {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`group relative grid cursor-pointer grid-cols-[32px_1fr_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                    className={`group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
                       dragIndex === index ? "opacity-40" : ""
-                    }`}
+                    } ${isSelected ? "bg-neutral-800/70" : ""}`}
                   >
-                    {canReorder && hoverIndex === index && dropPosition === "before" && (
-                      <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
-                    )}
+                    {canReorder &&
+                      hoverIndex === index &&
+                      dropPosition === "before" && (
+                        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                      )}
 
                     <div className="flex items-center justify-center text-sm text-neutral-400">
                       {isCurrent && isPlaying ? (
-                        <Pause size={14} className="text-emerald-400" fill="currentColor" />
+                        <Pause
+                          size={14}
+                          className="text-emerald-400"
+                          fill="currentColor"
+                        />
                       ) : canReorder ? (
                         <>
-                          <span className="group-hover:hidden">{index + 1}</span>
+                          <span className="group-hover:hidden">
+                            {index + 1}
+                          </span>
                           <GripVertical
                             size={14}
                             className="hidden cursor-grab text-neutral-400 group-hover:block active:cursor-grabbing"
@@ -333,8 +452,14 @@ export function PlaylistPage() {
                         </>
                       ) : (
                         <>
-                          <span className="group-hover:hidden">{index + 1}</span>
-                          <Play size={14} className="hidden text-white group-hover:block" fill="currentColor" />
+                          <span className="group-hover:hidden">
+                            {index + 1}
+                          </span>
+                          <Play
+                            size={14}
+                            className="hidden text-white group-hover:block"
+                            fill="currentColor"
+                          />
                         </>
                       )}
                     </div>
@@ -347,7 +472,11 @@ export function PlaylistPage() {
                       />
                       <MarqueeText
                         text={song.artist}
-                        to={song.artistId ? `/artists/${song.artistId}` : undefined}
+                        to={
+                          song.artistId
+                            ? `/artists/${song.artistId}`
+                            : undefined
+                        }
                         onClick={(e) => e.stopPropagation()}
                         draggable={false}
                         className="text-xs text-neutral-400 hover:text-white hover:underline"
@@ -365,15 +494,21 @@ export function PlaylistPage() {
                           {song.album}
                         </Link>
                       ) : (
-                        <span className="block truncate text-xs text-neutral-400">{song.album}</span>
+                        <span className="block truncate text-xs text-neutral-400">
+                          {song.album}
+                        </span>
                       )}
                     </div>
 
-                    <span className="text-xs text-neutral-400 tabular-nums">{formatTrackDuration(song.duration)}</span>
+                    <span className="text-xs text-neutral-400 tabular-nums">
+                      {formatTrackDuration(song.duration)}
+                    </span>
 
-                    {canReorder && hoverIndex === index && dropPosition === "after" && (
-                      <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
-                    )}
+                    {canReorder &&
+                      hoverIndex === index &&
+                      dropPosition === "after" && (
+                        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                      )}
                   </div>
                 );
               })}
@@ -431,9 +566,21 @@ export function PlaylistPage() {
           coverUrl={coverUrl}
           onClose={() => setInfoOpen(false)}
           rows={[
-            ...(playlist.owner ? [{ label: t("playlist.owner"), value: playlist.owner }] : []),
-            { label: t("playlist.trackCount", { count: playlist.songCount }), value: formatAlbumDuration(playlist.duration, t) },
-            ...(playlist.comment ? [{ label: t("playlists.descriptionLabel"), value: playlist.comment }] : []),
+            ...(playlist.owner
+              ? [{ label: t("playlist.owner"), value: playlist.owner }]
+              : []),
+            {
+              label: t("playlist.trackCount", { count: playlist.songCount }),
+              value: formatAlbumDuration(playlist.duration, t),
+            },
+            ...(playlist.comment
+              ? [
+                  {
+                    label: t("playlists.descriptionLabel"),
+                    value: playlist.comment,
+                  },
+                ]
+              : []),
           ]}
         />
       )}
@@ -441,13 +588,20 @@ export function PlaylistPage() {
       {rowInfoOpen && activeRowSong && (
         <InfoModal
           title={activeRowSong.title}
-          coverUrl={activeRowSong.coverArt ? client.getCoverArtUrl(activeRowSong.coverArt, 300) : coverUrl}
+          coverUrl={
+            activeRowSong.coverArt
+              ? client.getCoverArtUrl(activeRowSong.coverArt, 300)
+              : coverUrl
+          }
           onClose={() => setRowInfoOpen(false)}
           rows={[
             { label: t("playlist.columnTitle"), value: activeRowSong.title },
             { label: t("search.artistLabel"), value: activeRowSong.artist },
             { label: t("album.labelAlbum"), value: activeRowSong.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(activeRowSong.duration) },
+            {
+              label: t("playlist.columnDuration"),
+              value: formatTrackDuration(activeRowSong.duration),
+            },
           ]}
         />
       )}

@@ -64,7 +64,19 @@
     "play": "Play",
     "owner": "Owner",
     "columnTitle": "Title",
-    "columnDuration": "Duration"
+    "columnAlbum": "Album",
+    "columnDuration": "Duration",
+    "sortLabel": "Sort by",
+    "sortDefault": "Custom order",
+    "sortTitle": "Title",
+    "sortArtist": "Artist",
+    "sortAlbum": "Album",
+    "sortAscending": "Ascending",
+    "sortDescending": "Descending",
+    "shuffle": "Shuffle play",
+    "emptyTitle": "This playlist is empty",
+    "emptySubtitle": "Add songs to start listening.",
+    "emptySuggestions": "You could add..."
   },
   "contextMenu": {
     "addToQueue": "Add to queue",

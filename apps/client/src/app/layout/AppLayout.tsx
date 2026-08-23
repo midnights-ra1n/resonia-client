@@ -5,9 +5,21 @@ import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useTranslation } from "../../lib/i18n";
+import { usePlayerStore } from "../../stores/playerStore";
 import { Sidebar } from "./Sidebar";
 
 const MIN_QUERY_LENGTH = 2;
+
+// Champs/éléments dans lesquels la barre d'espace doit garder son sens normal (saisir un
+// espace) plutôt que de basculer play/pause : la recherche, mais aussi tout champ texte ou
+// élément interactif natif (inputs des modales, textarea, boutons focus, éléments édition).
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -15,6 +27,21 @@ export function AppLayout() {
   const location = useLocation();
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const debouncedQuery = useDebouncedValue(query, 300);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+
+  // Espace = play/pause partout dans l'app, sauf pendant une saisie (recherche, modales,
+  // champs de formulaire...) où l'espace doit rester un espace normal.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.code !== "Space" && e.key !== " ") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      togglePlay();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [togglePlay]);
 
   // Synchronise le champ avec le paramètre "q" quand l'utilisateur arrive sur /search
   // par un autre chemin que la saisie (lien, navigation retour...).

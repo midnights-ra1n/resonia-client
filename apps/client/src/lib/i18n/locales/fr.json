@@ -81,6 +81,7 @@
   "contextMenu": {
     "addToQueue": "Ajouter à la file d'attente",
     "addToPlaylist": "Ajouter à une playlist",
+    "addToPlaylistCount": "Ajouter {{count}} titres à une playlist",
     "newPlaylist": "Nouvelle playlist",
     "getInfo": "Obtenir les informations",
     "goToAlbum": "Aller à l'album",

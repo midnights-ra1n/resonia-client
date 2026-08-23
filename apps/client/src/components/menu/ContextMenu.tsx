@@ -4,8 +4,20 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type MenuItem =
-  | { type: "action"; label: string; icon?: LucideIcon; onClick: () => void; danger?: boolean; disabled?: boolean }
-  | { type: "submenu"; label: string; icon?: LucideIcon; renderSubmenu: (close: () => void) => React.ReactNode }
+  | {
+      type: "action";
+      label: string;
+      icon?: LucideIcon;
+      onClick: () => void;
+      danger?: boolean;
+      disabled?: boolean;
+    }
+  | {
+      type: "submenu";
+      label: string;
+      icon?: LucideIcon;
+      renderSubmenu: (close: () => void) => React.ReactNode;
+    }
   | { type: "separator" };
 
 interface ContextMenuProps {
@@ -15,15 +27,25 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-function useClampedPosition(x: number, y: number, ref: React.RefObject<HTMLElement | null>) {
+function useClampedPosition(
+  x: number,
+  y: number,
+  ref: React.RefObject<HTMLElement | null>,
+) {
   const [pos, setPos] = useState({ x, y });
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const clampedX = x + rect.width > window.innerWidth ? Math.max(0, window.innerWidth - rect.width) : x;
-    const clampedY = y + rect.height > window.innerHeight ? Math.max(0, window.innerHeight - rect.height) : y;
+    const clampedX =
+      x + rect.width > window.innerWidth
+        ? Math.max(0, window.innerWidth - rect.width)
+        : x;
+    const clampedY =
+      y + rect.height > window.innerHeight
+        ? Math.max(0, window.innerHeight - rect.height)
+        : y;
     setPos({ x: clampedX, y: clampedY });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [x, y]);
@@ -108,10 +130,14 @@ function MenuPanel({
             <div key={index} className="relative px-1.5">
               <button
                 type="button"
+                onMouseEnter={(e) => openSubmenu(index, e.currentTarget)}
+                onFocus={(e) => openSubmenu(index, e.currentTarget)}
                 onClick={(e) => openSubmenu(index, e.currentTarget)}
                 className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
               >
-                {Icon && <Icon size={16} className="shrink-0 text-neutral-400" />}
+                {Icon && (
+                  <Icon size={16} className="shrink-0 text-neutral-400" />
+                )}
                 <span className="flex-1 truncate">{item.label}</span>
                 <ChevronRight size={14} className="shrink-0 text-neutral-500" />
               </button>
@@ -119,7 +145,12 @@ function MenuPanel({
                 createPortal(
                   <div
                     data-context-menu-panel
-                    style={{ position: "fixed", left: submenuPos.x, top: submenuPos.y, zIndex: 1001 }}
+                    style={{
+                      position: "fixed",
+                      left: submenuPos.x,
+                      top: submenuPos.y,
+                      zIndex: 1001,
+                    }}
                     className="min-w-[220px] max-w-[280px] rounded-xl border border-white/10 bg-neutral-900/95 py-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -136,6 +167,7 @@ function MenuPanel({
             <button
               type="button"
               disabled={item.disabled}
+              onMouseEnter={() => setOpenSubmenuIndex(null)}
               onClick={() => {
                 item.onClick();
                 onClose();

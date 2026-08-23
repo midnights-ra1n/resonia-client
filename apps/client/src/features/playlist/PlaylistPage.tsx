@@ -126,9 +126,11 @@ export function PlaylistPage() {
   }
 
   const {
+    selectedIndices,
     isSelected: isSongSelected,
     handleRowClick: handleRowSelectClick,
     handleKeyDown: handleListKeyDown,
+    ensureSelected,
     containerRef: trackListRef,
     registerRow: registerTrackRow,
   } = useTrackListSelection(playlist?.entry.length ?? 0);
@@ -420,6 +422,7 @@ export function PlaylistPage() {
                     onClick={(e) => handleRowSelectClick(e, index)}
                     onDoubleClick={() => handleTrackClick(song)}
                     onContextMenu={(e) => {
+                      ensureSelected(index);
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
@@ -556,6 +559,9 @@ export function PlaylistPage() {
             navigate,
             addToQueue: (track, position) => addToQueue(track, position),
             onOpenInfo: () => setRowInfoOpen(true),
+            selectedTrackIds: Array.from(selectedIndices)
+              .map((i) => sortedEntries[i]?.id)
+              .filter((id): id is string => id !== undefined),
           })}
         />
       )}

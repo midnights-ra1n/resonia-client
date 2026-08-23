@@ -15,6 +15,12 @@ interface BuildTrackMenuItemsParams {
   /** Masque "Aller à l'album"/"Aller à l'artiste" quand on est déjà sur cette page. */
   hideGoToAlbum?: boolean;
   hideGoToArtist?: boolean;
+  /**
+   * Ids de tous les titres actuellement sélectionnés dans la liste (sélection multiple).
+   * Si elle contient `track.id` et au moins 2 entrées, les actions groupées (ajout à une
+   * playlist, etc.) s'appliquent à toute la sélection plutôt qu'au seul titre cliqué.
+   */
+  selectedTrackIds?: string[];
 }
 
 export function buildTrackMenuItems({
@@ -26,7 +32,16 @@ export function buildTrackMenuItems({
   onOpenInfo,
   hideGoToAlbum,
   hideGoToArtist,
+  selectedTrackIds,
 }: BuildTrackMenuItemsParams): MenuItem[] {
+  const targetIds =
+    selectedTrackIds &&
+    selectedTrackIds.length > 1 &&
+    selectedTrackIds.includes(track.id)
+      ? selectedTrackIds
+      : [track.id];
+  const isMultiple = targetIds.length > 1;
+
   const items: MenuItem[] = [
     {
       type: "action",
@@ -36,10 +51,16 @@ export function buildTrackMenuItems({
     },
     {
       type: "submenu",
-      label: t("contextMenu.addToPlaylist"),
+      label: isMultiple
+        ? t("contextMenu.addToPlaylistCount", { count: targetIds.length })
+        : t("contextMenu.addToPlaylist"),
       icon: ListMusic,
       renderSubmenu: (close) => (
-        <AddToPlaylistSubmenu client={client} getSongIds={async () => [track.id]} close={close} />
+        <AddToPlaylistSubmenu
+          client={client}
+          getSongIds={async () => targetIds}
+          close={close}
+        />
       ),
     },
     { type: "separator" },

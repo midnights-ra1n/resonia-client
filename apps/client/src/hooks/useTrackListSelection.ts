@@ -18,7 +18,13 @@ export function useTrackListSelection(count: number) {
   useEffect(() => {
     function handlePointerDown(e: MouseEvent) {
       if (!containerRef.current) return;
-      if (!containerRef.current.contains(e.target as Node)) clearSelection();
+      const target = e.target as HTMLElement;
+      if (containerRef.current.contains(target)) return;
+      // Le menu contextuel (et ses sous-menus) est rendu via un portail vers
+      // document.body : ce n'est donc jamais un descendant du conteneur, même
+      // quand on interagit avec pour agir sur la sélection courante.
+      if (target.closest("[data-context-menu-panel]")) return;
+      clearSelection();
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
@@ -94,12 +100,23 @@ export function useTrackListSelection(count: number) {
     else rowRefs.current.delete(index);
   }
 
+  /** À utiliser avant l'ouverture d'un menu contextuel : si la ligne cliquée ne fait pas
+   *  déjà partie de la sélection, on remplace la sélection par cette seule ligne (sinon on
+   *  garde la sélection multiple en cours, pour permettre des actions groupées). */
+  function ensureSelected(index: number) {
+    if (selectedIndices.has(index)) return;
+    setSelectedIndices(new Set([index]));
+    setAnchorIndex(index);
+    setFocusIndex(index);
+  }
+
   return {
     selectedIndices,
     isSelected: (index: number) => selectedIndices.has(index),
     handleRowClick,
     handleKeyDown,
     clearSelection,
+    ensureSelected,
     containerRef,
     registerRow,
   };

@@ -81,6 +81,7 @@
   "contextMenu": {
     "addToQueue": "Add to queue",
     "addToPlaylist": "Add to playlist",
+    "addToPlaylistCount": "Add {{count}} songs to a playlist",
     "newPlaylist": "New playlist",
     "getInfo": "Get info",
     "goToAlbum": "Go to album",

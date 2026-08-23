@@ -54,9 +54,11 @@ export function AlbumPage() {
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [rowInfoOpen, setRowInfoOpen] = useState(false);
   const {
+    selectedIndices,
     isSelected: isSongSelected,
     handleRowClick: handleRowSelectClick,
     handleKeyDown: handleListKeyDown,
+    ensureSelected,
     containerRef: trackListRef,
     registerRow: registerTrackRow,
   } = useTrackListSelection(album?.song.length ?? 0);
@@ -264,6 +266,7 @@ export function AlbumPage() {
                 onClick={(e) => handleRowSelectClick(e, index)}
                 onDoubleClick={() => handleTrackClick(song)}
                 onContextMenu={(e) => {
+                  ensureSelected(index);
                   setActiveSongId(song.id);
                   rowMenu.handleContextMenu(e);
                 }}
@@ -356,6 +359,9 @@ export function AlbumPage() {
                 addToQueue,
                 onOpenInfo: () => setRowInfoOpen(true),
                 hideGoToAlbum: true,
+                selectedTrackIds: Array.from(selectedIndices)
+                  .map((i) => album.song[i]?.id)
+                  .filter((id): id is string => id !== undefined),
               })}
             />
           );

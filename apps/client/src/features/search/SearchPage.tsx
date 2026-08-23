@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
-import { AlbumCarousel } from "../album/AlbumCarousel";
 import { useTranslation } from "../../lib/i18n";
+import { AlbumResultRow } from "./AlbumResultRow";
 import { ArtistCard } from "./ArtistCard";
 import { PlaylistCard } from "./PlaylistCard";
 import { ResultSection } from "./ResultSection";
@@ -39,6 +39,17 @@ export function SearchPage() {
         <p className="text-neutral-400">{t("search.noResults")}</p>
       ) : (
         <>
+          {results.albums.length > 0 && (
+            <section className="mb-8">
+              <h2 className="mb-4 text-xl font-semibold text-white">{t("search.sectionAlbums")}</h2>
+              <div className="flex flex-col gap-1">
+                {results.albums.map((album) => (
+                  <AlbumResultRow key={album.id} album={album} />
+                ))}
+              </div>
+            </section>
+          )}
+
           {results.songs.length > 0 && (
             <section className="mb-8">
               <h2 className="mb-4 text-xl font-semibold text-white">{t("search.sectionSongs")}</h2>
@@ -57,8 +68,6 @@ export function SearchPage() {
               ))}
             </ResultSection>
           )}
-
-          {results.albums.length > 0 && <AlbumCarousel title={t("search.sectionAlbums")} albums={results.albums} />}
 
           {results.playlists.length > 0 && (
             <ResultSection title={t("search.sectionPlaylists")}>

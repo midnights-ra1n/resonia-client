@@ -3,7 +3,9 @@ import type { AlbumSummary } from "@resonia/api-client";
 import { useServersStore } from "../stores/serversStore";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 
-export function useMostPlayedAlbums() {
+type AlbumListType = "frequent" | "recent" | "newest" | "random" | "highest";
+
+export function useAlbumList(type: AlbumListType, size = 20) {
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -21,11 +23,11 @@ export function useMostPlayedAlbums() {
     setLoading(true);
 
     getClientForServer(server)
-      .getAlbumList2("frequent", 20)
+      .getAlbumList2(type, size)
       .then((result) => {
         if (!cancelled) setAlbums(result);
       })
-      .catch((err) => console.error("[home] Échec du chargement des albums les plus joués", err))
+      .catch((err) => console.error(`[home] Échec du chargement des albums (${type})`, err))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -33,7 +35,7 @@ export function useMostPlayedAlbums() {
     return () => {
       cancelled = true;
     };
-  }, [servers, activeServerId]);
+  }, [servers, activeServerId, type, size]);
 
   return { albums, loading };
 }

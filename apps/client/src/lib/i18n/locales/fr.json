@@ -36,7 +36,11 @@
     "mostPlayedAlbums": "Albums les plus joués",
     "noAlbums": "Aucun album à afficher pour le moment",
     "mostPlayedSongs": "Titres les plus joués",
-    "noSongs": "Aucun titre à afficher pour le moment"
+    "noSongs": "Aucun titre à afficher pour le moment",
+    "yourPlaylists": "Tes playlists",
+    "newReleases": "Nouveautés",
+    "recentlyPlayed": "Écoutés récemment",
+    "discover": "Découvrir"
   },
   "playlists": {
     "loadError": "Échec du chargement des playlists",
@@ -101,7 +105,8 @@
     "sectionAlbums": "Albums",
     "sectionPlaylists": "Playlists",
     "artistLabel": "Artiste",
-    "playlistLabel": "Playlist"
+    "playlistLabel": "Playlist",
+    "albumLabel": "Album"
   },
   "artist": {
     "notFound": "Artiste introuvable",

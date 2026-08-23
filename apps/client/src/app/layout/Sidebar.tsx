@@ -61,10 +61,8 @@ export function Sidebar() {
       </div>
 
       {/* Spotify-like playlists section - with scroll only for this section */}
-      <div className="mt-auto min-h-0 overflow-y-auto">
-
-        {/* Version label */}
-        <nav className="space-y-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <nav className="space-y-1">
           {playlists.map((playlist) => (
             <PlaylistSidebarItem key={playlist.id} playlist={playlist} onChanged={refreshPlaylists} />
           ))}

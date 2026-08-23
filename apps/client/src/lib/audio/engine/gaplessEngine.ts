@@ -6,6 +6,11 @@ import type { EngineError, EngineState, EngineStateListener } from "./types";
 // écart de timing : la planification elle-même est sample-accurate.
 const SWAP_FADE_SECONDS = 0.008;
 
+// WAV silencieux (0,05s, 8-bit/4kHz mono) utilisé uniquement pour ancrer la session Now
+// Playing du système — voir le commentaire sur `sessionAnchor` ci-dessous.
+const SILENT_LOOP_DATA_URI =
+  "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAoA8AAKAPAAABAAgAZGF0YcgAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==";
+
 function describeMediaError(error: MediaError | null): string {
   if (!error) return "Lecture audio impossible (erreur inconnue)";
   switch (error.code) {
@@ -76,6 +81,15 @@ export class GaplessEngine {
   private nativeAudio: HTMLAudioElement;
   private nativeGain: GainNode;
 
+  /** Sur WebKit/macOS, l'intégration Now Playing (MPNowPlayingInfoCenter/MPRemoteCommandCenter)
+   *  ne reste active que tant qu'un vrai élément <audio>/<video> est dans l'état "playing" —
+   *  `navigator.mediaSession.playbackState` fixé manuellement ne suffit pas. Or dès qu'une piste
+   *  bascule en mode buffer (voir `attachDecodedActive`), `nativeAudio` est mis en pause : plus
+   *  aucun élément média ne joue réellement, WebKit gèle alors le widget système sur "lecture" et
+   *  ignore les commandes distantes. Cet élément silencieux, indépendant du graphe audio, reste
+   *  actif exactement en même temps que la lecture logique pour maintenir cette session vivante. */
+  private sessionAnchor: HTMLAudioElement;
+
   private trackState: TrackState | null = null;
   private pendingNext: PendingNext | null = null;
   private onEndedCallback: (() => void) | null = null;
@@ -121,6 +135,12 @@ export class GaplessEngine {
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
     this.nativeGain.connect(this.masterGain);
+
+    this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
+    this.sessionAnchor.loop = true;
+    this.sessionAnchor.muted = true;
+    this.sessionAnchor.volume = 0;
+    this.sessionAnchor.preload = "auto";
 
     this.nativeAudio.addEventListener("waiting", () => {
       if (this.trackState?.mode === "native") {
@@ -250,7 +270,43 @@ export class GaplessEngine {
   private setState(state: EngineState, error: EngineError | null = null) {
     this._state = state;
     this._error = error;
+    if (state === "playing") this.startSessionAnchor();
+    else if (state === "paused" || state === "idle") this.stopSessionAnchor();
     this.stateListeners.forEach((cb) => cb(state, error));
+  }
+
+  /** File d'attente sérialisée pour les transitions play()/pause() de `sessionAnchor` : des
+   *  changements d'état rapprochés (double-appui sur une touche média, espace + touche média
+   *  quasi simultanés...) peuvent sinon appeler `.pause()` pendant qu'un `.play()` précédent
+   *  est encore en vol — WebKit lève alors une AbortError qui laisse l'élément réellement en
+   *  lecture ou en pause à l'insu du code appelant, désynchronisant silencieusement l'ancrage
+   *  Now Playing sans qu'aucune erreur ne remonte nulle part. Chaque demande attend la
+   *  précédente et abandonne si une demande plus récente l'a déjà emporté entre-temps. */
+  private anchorQueue: Promise<void> = Promise.resolve();
+  private anchorDesiredPlaying = false;
+
+  private setSessionAnchorPlaying(playing: boolean) {
+    this.anchorDesiredPlaying = playing;
+    this.anchorQueue = this.anchorQueue.then(async () => {
+      if (this.anchorDesiredPlaying !== playing) return; // supplanté entre-temps
+      if (playing) {
+        try {
+          await this.sessionAnchor.play();
+        } catch {
+          /* noop — un rejet ici n'affecte pas la lecture réelle, seule l'intégration système en pâtit */
+        }
+      } else {
+        this.sessionAnchor.pause();
+      }
+    });
+  }
+
+  private startSessionAnchor() {
+    this.setSessionAnchorPlaying(true);
+  }
+
+  private stopSessionAnchor() {
+    this.setSessionAnchorPlaying(false);
   }
 
   reportError(message: string, cause?: unknown) {

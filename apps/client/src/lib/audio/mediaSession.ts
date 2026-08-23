@@ -37,7 +37,7 @@ let _lastPositionState: { duration: number; position: number } | null = null;
 let _currentPosition: number = 0;
 const POSITION_UPDATE_THRESHOLD = 0.25;
 
-export function setMediaSessionPositionState(duration: number, position: number) {
+export function setMediaSessionPositionState(duration: number, position: number, force = false) {
   if (!isSupported() || !("setPositionState" in navigator.mediaSession)) return;
   if (!isFinite(duration) || duration <= 0) return;
 
@@ -45,6 +45,7 @@ export function setMediaSessionPositionState(duration: number, position: number)
   const adjustedPosition = Math.min(Math.max(position, 0), adjustedDuration);
 
   if (
+    !force &&
     _lastPositionState &&
     Math.abs(_lastPositionState.duration - adjustedDuration) < 0.1 &&
     Math.abs(_lastPositionState.position - adjustedPosition) < POSITION_UPDATE_THRESHOLD

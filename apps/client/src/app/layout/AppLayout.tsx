@@ -78,45 +78,47 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-neutral-950">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800">
-          <form onSubmit={handleSubmit} className="flex items-center justify-center px-4 py-3 gap-2">
-            {/* Boutons navigation à gauche de la barre de recherche */}
-            <div className="flex items-center gap-1 pr-2">
-              <button onClick={handleGoBack} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page précédente">
-                <ArrowLeft size={16} />
-              </button>
-              <button onClick={handleGoForward} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page suivante">
-                <ArrowRight size={16} />
-              </button>
-            </div>
-            
-            <div className="relative w-full max-w-xl">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("search.placeholder")}
-                spellCheck={false}
-                autoCorrect="off"
-                autoCapitalize="off"
-                autoComplete="off"
-                data-1p-ignore
-                data-lpignore="true"
-                className="w-full rounded-full bg-neutral-900 border border-neutral-700 px-5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-              />
-            </div>
-          </form>
-        </header>
+    <div className="flex h-screen flex-col bg-neutral-950">
+      <div className="flex flex-1 min-h-0">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800">
+            <form onSubmit={handleSubmit} className="flex items-center justify-center px-4 py-3 gap-2">
+              {/* Boutons navigation à gauche de la barre de recherche */}
+              <div className="flex items-center gap-1 pr-2">
+                <button onClick={handleGoBack} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page précédente">
+                  <ArrowLeft size={16} />
+                </button>
+                <button onClick={handleGoForward} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page suivante">
+                  <ArrowRight size={16} />
+                </button>
+              </div>
 
-        <main className="flex-1 min-h-0 overflow-y-auto">
-          <Outlet />
-        </main>
-        <PlayerBar />
+              <div className="relative w-full max-w-xl">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("search.placeholder")}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  className="w-full rounded-full bg-neutral-900 border border-neutral-700 px-5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                />
+              </div>
+            </form>
+          </header>
+
+          <main className="flex-1 min-h-0 overflow-y-auto">
+            <Outlet />
+          </main>
+        </div>
+        <QueuePanel />
       </div>
-      <QueuePanel />
+      <PlayerBar />
     </div>
   );
 }

@@ -22,6 +22,10 @@ function searchEndpointFor(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/artwork/search`;
 }
 
+function urlEndpointFor(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/api/v1/artwork/url`;
+}
+
 /** Normalise un titre pour comparaison stricte : insensible à la casse, aux espaces superflus,
  *  aux accents et à la variante d'apostrophe (courbe vs droite). Ne retire volontairement AUCUN
  *  texte entre parenthèses — c'est précisément ce qui distingue par ex. "1989" de "1989 (Taylor's
@@ -46,10 +50,14 @@ export async function searchAnimatedArtwork(
   baseUrl: string = DEFAULT_ANIMATED_ARTWORK_BASE_URL,
 ): Promise<AnimatedArtworkSearchResult | null> {
   const params = new URLSearchParams({ artist, album });
-  const response = await fetchImpl(`${searchEndpointFor(baseUrl)}?${params.toString()}`);
+  const response = await fetchImpl(
+    `${searchEndpointFor(baseUrl)}?${params.toString()}`,
+  );
   if (response.status === 404) return null;
   if (!response.ok) {
-    throw new Error(`Échec de la recherche de pochette animée (${response.status})`);
+    throw new Error(
+      `Échec de la recherche de pochette animée (${response.status})`,
+    );
   }
 
   const data = (await response.json()) as AnimatedArtworkSearchResponse;
@@ -59,7 +67,10 @@ export async function searchAnimatedArtwork(
   // (typiquement une réédition "Taylor's Version" confondue avec l'originale, ou l'inverse) :
   // on rejette toute réponse dont le titre d'album ne correspond pas exactement à celui demandé
   // plutôt que d'afficher la pochette animée d'un autre album.
-  if (data.album !== undefined && normalizeTitle(data.album) !== normalizeTitle(album)) {
+  if (
+    data.album !== undefined &&
+    normalizeTitle(data.album) !== normalizeTitle(album)
+  ) {
     return null;
   }
 
@@ -68,6 +79,41 @@ export async function searchAnimatedArtwork(
     tallUrl: data.url_tall ?? null,
     artist: data.artist ?? artist,
     album: data.album ?? album,
+  };
+}
+
+/** Variante de searchAnimatedArtwork qui interroge directement l'API m8tec avec une URL Apple
+ *  Music déjà connue (`GET /api/v1/artwork/url`), plutôt que de lui laisser deviner l'album via
+ *  une recherche texte artiste/titre. Ce chemin est nettement plus fiable pour les albums dont le
+ *  titre contient des caractères spéciaux (apostrophes, parenthèses, etc.) : côté serveur, il va
+ *  directement parser la page Apple Music (identifiant numérique de l'album) au lieu de scraper
+ *  une page de résultats de recherche et d'essayer d'y retrouver le bon lien — c'est précisément
+ *  cette étape de matching texte qui échoue régulièrement sur ces caractères. Voir
+ *  resolveAppleMusicAlbumUrl (itunes/client.ts) pour obtenir l'URL à passer ici. */
+export async function searchAnimatedArtworkByUrl(
+  appleMusicUrl: string,
+  fetchImpl: typeof fetch = fetch,
+  baseUrl: string = DEFAULT_ANIMATED_ARTWORK_BASE_URL,
+): Promise<AnimatedArtworkSearchResult | null> {
+  const params = new URLSearchParams({ url: appleMusicUrl });
+  const response = await fetchImpl(
+    `${urlEndpointFor(baseUrl)}?${params.toString()}`,
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(
+      `Échec de la résolution de pochette animée par URL (${response.status})`,
+    );
+  }
+
+  const data = (await response.json()) as AnimatedArtworkSearchResponse;
+  if (!data.url && !data.url_tall) return null;
+
+  return {
+    squareUrl: data.url ?? null,
+    tallUrl: data.url_tall ?? null,
+    artist: data.artist ?? "",
+    album: data.album ?? "",
   };
 }
 
@@ -91,7 +137,9 @@ export async function checkAnimatedArtworkHealth(
   fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
   try {
-    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/api/v1/status`);
+    const response = await fetchImpl(
+      `${baseUrl.replace(/\/+$/, "")}/api/v1/status`,
+    );
     if (!response.ok) return false;
 
     const data = (await response.json()) as AnimatedArtworkStatusResponse;
@@ -101,92 +149,13 @@ export async function checkAnimatedArtworkHealth(
   }
 }
 
-interface StreamVariant {
-  url: string;
-  width: number;
-  height: number;
-  isAvc: boolean;
-}
-
-function parseStreamVariants(masterPlaylistText: string, masterUrl: string): StreamVariant[] {
-  const lines = masterPlaylistText.split("\n").map((l) => l.trim());
-  const variants: StreamVariant[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // #EXT-X-I-FRAME-STREAM-INF référence une piste de vignettes (trick-play), pas une piste
-    // vidéo jouable — seule #EXT-X-STREAM-INF (sans le préfixe I-FRAME) désigne un flux réel.
-    if (!line.startsWith("#EXT-X-STREAM-INF")) continue;
-
-    const next = lines[i + 1];
-    if (!next || next.startsWith("#")) continue;
-
-    const resolutionMatch = line.match(/RESOLUTION=(\d+)x(\d+)/i);
-    if (!resolutionMatch) continue;
-
-    variants.push({
-      url: new URL(next, masterUrl).href,
-      width: Number(resolutionMatch[1]),
-      height: Number(resolutionMatch[2]),
-      isAvc: /CODECS="avc1\./i.test(line),
-    });
-  }
-
-  return variants;
-}
-
-/** Parmi les variantes avc1 (H.264, décodable partout, contrairement à hvc1/HEVC), retient la
- *  plus petite résolution : suffisant pour une pochette d'album, économe en bande passante et
- *  en espace de cache. */
-function pickSmallestCompatibleVariant(variants: StreamVariant[]): StreamVariant | null {
-  const avcVariants = variants.filter((v) => v.isAvc);
-  const pool = avcVariants.length > 0 ? avcVariants : variants;
-  if (pool.length === 0) return null;
-
-  return pool.reduce((smallest, v) => (v.width * v.height < smallest.width * smallest.height ? v : smallest));
-}
-
-/** Extrait l'URI du fichier vidéo référencé par #EXT-X-MAP dans une playlist média HLS. Les
- *  segments HLS d'Apple Music pour l'artwork animé sont en réalité des plages d'octets d'un même
- *  fichier MP4 fragmenté (CMAF) : télécharger ce fichier en entier donne un .mp4 valide et
- *  directement lisible par une balise <video>, sans avoir besoin de hls.js ni de remux. */
-function extractMappedMp4Url(mediaPlaylistText: string, mediaPlaylistUrl: string): string | null {
-  const match = mediaPlaylistText.match(/#EXT-X-MAP:URI="([^"]+)"/);
-  if (!match) return null;
-  return new URL(match[1], mediaPlaylistUrl).href;
-}
-
-export interface AnimatedArtworkSources {
-  /** Playlist média HLS (une seule variante, déjà la plus petite avc1 compatible) : à donner
-   *  telle quelle à une balise <video> sur les moteurs à support HLS natif (WebKit/Safari) — ils
-   *  savent nativement lire du CMAF fragmenté via HLS, contrairement à Blink/Gecko en <video src>
-   *  brut. */
-  hlsUrl: string;
-  /** Fichier .mp4 fragmenté unique référencé par la playlist média (voir extractMappedMp4Url) :
-   *  téléchargeable et jouable directement en <video src> sur Blink/Gecko, à mettre en cache. */
-  mp4Url: string;
-}
-
-/** Résout l'URL du flux HLS "master" (issue de searchAnimatedArtwork) vers la plus petite
- *  variante avc1 exploitable, sous ses deux formes utiles à la lecture (voir
- *  AnimatedArtworkSources). Renvoie null si aucune piste vidéo exploitable n'est trouvée. */
-export async function resolveAnimatedArtworkSources(
-  masterPlaylistUrl: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<AnimatedArtworkSources | null> {
-  const masterResponse = await fetchImpl(masterPlaylistUrl);
-  if (!masterResponse.ok) return null;
-  const masterText = await masterResponse.text();
-
-  const variant = pickSmallestCompatibleVariant(parseStreamVariants(masterText, masterPlaylistUrl));
-  if (!variant) return null;
-
-  const mediaResponse = await fetchImpl(variant.url);
-  if (!mediaResponse.ok) return null;
-  const mediaText = await mediaResponse.text();
-
-  const mp4Url = extractMappedMp4Url(mediaText, variant.url);
-  if (!mp4Url) return null;
-
-  return { hlsUrl: variant.url, mp4Url };
-}
+// Historique : ce fichier contenait auparavant un parsing manuel de la playlist HLS "master"
+// (choix de la plus petite variante avc1, extraction du .mp4 CMAF référencé par #EXT-X-MAP) pour
+// télécharger un unique fichier .mp4 "à plat" et le donner tel quel à un <video src>. Abandonné :
+// les fragments Apple ont des timestamps internes (tfdt/baseMediaDecodeTime) calés sur la timeline
+// globale du flux, pas remis à zéro — un décodeur "fichier isolé" (le <video> de Blink hors HLS)
+// refuse ça (MEDIA_ERR_SRC_NOT_SUPPORTED), alors qu'un vrai lecteur HLS (natif WebKit, ou hls.js
+// via MediaSource côté Blink/Gecko) le gère nativement. Voir useAnimatedAlbumCover.ts et
+// AnimatedAlbumCoverVideo.tsx côté client : on se contente maintenant de donner l'URL de la
+// playlist "master" telle quelle à ces lecteurs, qui se chargent eux-mêmes du choix de variante et
+// du démuxage.

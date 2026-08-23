@@ -10,6 +10,7 @@ import { useArtistAlbums } from "./useArtistAlbums";
 import { AlbumCarousel } from "./AlbumCarousel";
 import { useSimilarAlbums } from "./useSimilarAlbums";
 import { useAnimatedAlbumCover } from "./useAnimatedAlbumCover";
+import { AnimatedAlbumCoverVideo } from "./AnimatedAlbumCoverVideo";
 import { useEffect, useState } from "react";
 import { getNativeClientForServer } from "../../lib/subsonic/getNativeClientForServer";
 import { InfoModal } from "../../components/InfoModal";
@@ -101,6 +102,15 @@ export function AlbumPage() {
     album?.artist,
     album?.name,
   );
+  // Repli si la lecture échoue réellement dans le <video> (voir onError plus bas) : sans ça, un
+  // flux qui résout correctement côté réseau mais que le moteur vidéo refuse de décoder laisse un
+  // cadre vide au lieu de retomber sur la pochette statique. Dérivé au rendu (comme
+  // `resolved.key === albumKey` dans useAnimatedAlbumCover) plutôt que réinitialisé dans un effet :
+  // dès que animatedCoverUrl change, failedCoverUrl (l'URL en échec) ne correspond plus, donc
+  // animatedCoverFailed retombe à false sans action explicite.
+  const [failedCoverUrl, setFailedCoverUrl] = useState<string | null>(null);
+  const animatedCoverFailed =
+    failedCoverUrl !== null && failedCoverUrl === animatedCoverUrl;
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -171,14 +181,12 @@ export function AlbumPage() {
     <div>
       <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
-          {animatedCoverUrl ? (
-            <video
-              src={animatedCoverUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
+          {animatedCoverUrl && !animatedCoverFailed ? (
+            <AnimatedAlbumCoverVideo
+              masterUrl={animatedCoverUrl}
+              poster={coverUrl}
               className="h-full w-full object-cover"
+              onFatalError={() => setFailedCoverUrl(animatedCoverUrl)}
             />
           ) : coverUrl ? (
             <img

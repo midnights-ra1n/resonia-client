@@ -1,24 +1,22 @@
 import { useEffect, useState } from "react";
 import {
   searchAnimatedArtwork,
-  resolveAnimatedArtworkSources,
+  searchAnimatedArtworkByUrl,
+  resolveAppleMusicAlbumUrl,
   DEFAULT_ANIMATED_ARTWORK_BASE_URL,
 } from "@resonia/api-client";
-import { isTauri, supportsNativeHls } from "../../lib/platform";
-import { getCachedAnimatedCoverUrl, loadAndCacheAnimatedCover } from "../../lib/image/animatedCoverCache";
+import { isTauri } from "../../lib/platform";
 import {
   getCachedSearchResult,
   setCachedSearchResult,
-  getCachedResolvedSources,
-  setCachedResolvedSources,
   clearAnimatedCoverSearchCache,
 } from "../../lib/image/animatedCoverSearchCache";
 import { useSettingsStore } from "../../stores/settingsStore";
 
-/** Voir coverCache.ts / animatedCoverCache.ts : le CDN Apple derrière artwork.m8tec.top envoie
- *  bien un en-tête CORS ouvert, mais on passe quand même par le client HTTP natif de Tauri côté
- *  bureau pour rester cohérent avec le reste du cache d'images et robuste à un changement futur
- *  de politique CORS côté serveur. */
+/** Voir coverCache.ts : le CDN Apple derrière artwork.m8tec.top envoie bien un en-tête CORS
+ *  ouvert, mais on passe quand même par le client HTTP natif de Tauri côté bureau pour rester
+ *  cohérent avec le reste du cache d'images et robuste à un changement futur de politique CORS
+ *  côté serveur. */
 const platformFetch: typeof fetch = async (input, init) => {
   if (isTauri()) {
     const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
@@ -40,7 +38,62 @@ function searchKeyFor(baseUrl: string, artist: string, album: string): string {
   return `${baseUrl}::${artist.trim().toLowerCase()}::${album.trim().toLowerCase()}`;
 }
 
-async function resolveMasterUrl(baseUrl: string, artist: string, album: string): Promise<string | null> {
+// Cache purement en mémoire (jamais persisté sur disque, contrairement à searchResultCache) de
+// l'URL Apple Music résolue par couple artiste/album via resolveAppleMusicAlbumUrl : ce n'est
+// qu'un repli intermédiaire pour la recherche texte m8tec ci-dessous (voir resolveMasterUrl), pas
+// la peine de le faire survivre au delà de la session en cours. Indépendant de baseUrl : l'URL
+// Apple Music d'un album ne dépend pas de l'instance m8tec interrogée ensuite.
+const appleMusicUrlCache = new Map<string, string | null>();
+
+function appleMusicUrlCacheKeyFor(artist: string, album: string): string {
+  return `${artist.trim().toLowerCase()}::${album.trim().toLowerCase()}`;
+}
+
+/** Repli déclenché quand la recherche texte m8tec (searchAnimatedArtwork) ne trouve rien : elle
+ *  scrape une page de résultats de recherche Apple Music et y cherche un lien correspondant au
+ *  titre demandé, ce qui échoue régulièrement dès que ce titre contient une apostrophe, des
+ *  parenthèses ou d'autres caractères spéciaux — alors même que la pochette animée existe bel et
+ *  bien. On résout ici l'URL Apple Music exacte de l'album via l'API de recherche publique
+ *  d'Apple (iTunes Search, matching plein texte fiable sur ces caractères), puis on la transmet
+ *  telle quelle à l'API m8tec (searchAnimatedArtworkByUrl) : plus aucune recherche texte fragile
+ *  n'intervient à ce stade côté serveur. */
+async function resolveMasterUrlViaAppleMusicUrl(
+  baseUrl: string,
+  artist: string,
+  album: string,
+): Promise<string | null> {
+  const cacheKey = appleMusicUrlCacheKeyFor(artist, album);
+  let appleMusicUrl = appleMusicUrlCache.get(cacheKey);
+  if (appleMusicUrl === undefined) {
+    appleMusicUrl = await resolveAppleMusicAlbumUrl(
+      artist,
+      album,
+      platformFetch,
+    );
+    appleMusicUrlCache.set(cacheKey, appleMusicUrl);
+  }
+  if (!appleMusicUrl) return null;
+
+  const result = await searchAnimatedArtworkByUrl(
+    appleMusicUrl,
+    platformFetch,
+    baseUrl,
+  );
+  return result?.squareUrl ?? null;
+}
+
+/** Résout l'URL de la playlist HLS "master" de la pochette animée d'un album (ou null si elle
+ *  n'existe pas). Cette URL est ensuite donnée telle quelle à un lecteur HLS complet (HLS natif de
+ *  WebKit, ou hls.js côté Blink/Gecko — voir AnimatedAlbumCoverVideo.tsx) : contrairement à une
+ *  ancienne version de ce fichier, on ne tente plus de choisir nous-mêmes une variante ni de
+ *  télécharger un .mp4 "à plat" en un seul fichier — ces flux ont des timestamps internes calés
+ *  sur la timeline globale (normal en HLS), ce qu'un vrai lecteur HLS gère très bien mais qu'un
+ *  <video src> pointé directement sur un fichier refuse (MEDIA_ERR_SRC_NOT_SUPPORTED). */
+async function resolveMasterUrl(
+  baseUrl: string,
+  artist: string,
+  album: string,
+): Promise<string | null> {
   const searchKey = searchKeyFor(baseUrl, artist, album);
   const inMemory = searchResultCache.get(searchKey);
   if (inMemory !== undefined) return inMemory;
@@ -52,8 +105,26 @@ async function resolveMasterUrl(baseUrl: string, artist: string, album: string):
   }
 
   try {
-    const result = await searchAnimatedArtwork(artist, album, platformFetch, baseUrl);
-    const masterUrl = result?.squareUrl ?? null;
+    const result = await searchAnimatedArtwork(
+      artist,
+      album,
+      platformFetch,
+      baseUrl,
+    );
+    let masterUrl = result?.squareUrl ?? null;
+
+    if (!masterUrl) {
+      try {
+        masterUrl = await resolveMasterUrlViaAppleMusicUrl(
+          baseUrl,
+          artist,
+          album,
+        );
+      } catch (err) {
+        console.warn("[animatedCover] Repli iTunes/URL échoué", err);
+      }
+    }
+
     // Uniquement ici (réponse effectivement obtenue, cover absente ou trouvée) le résultat est
     // digne d'être mis en cache, y compris sur disque : c'est une réponse confirmée de l'API.
     searchResultCache.set(searchKey, masterUrl);
@@ -68,37 +139,15 @@ async function resolveMasterUrl(baseUrl: string, artist: string, album: string):
   }
 }
 
-/** Enveloppe resolveAnimatedArtworkSources avec un cache persisté par masterUrl : sur le chemin
- *  WebKit (voir plus bas), aucun binaire n'est mis en cache disque, donc sans ce cache on
- *  re-téléchargerait les playlists m3u8 master + média à chaque montage de AlbumPage. */
-async function resolveSourcesCached(
-  masterUrl: string,
-): Promise<{ hlsUrl: string; mp4Url: string } | null> {
-  const cached = await getCachedResolvedSources(masterUrl);
-  if (cached) return cached;
-
-  const sources = await resolveAnimatedArtworkSources(masterUrl, platformFetch);
-  if (sources) void setCachedResolvedSources(masterUrl, sources);
-  return sources;
-}
-
 interface ResolvedAnimatedCover {
   key: string;
   url: string;
 }
 
-/** Résout la pochette animée (mp4) d'un album via artwork.m8tec.top, si elle existe. Renvoie null
- *  en l'absence de pochette animée ou en cas d'échec (silencieux : la pochette statique reste
- *  l'affichage de repli, ce n'est jamais une erreur bloquante).
- *
- *  Deux chemins de lecture selon le moteur de rendu (voir supportsNativeHls) :
- *  - WebKit (Safari, webview macOS de l'app de bureau) : lit le HLS nativement, y compris le
- *    CMAF fragmenté utilisé ici, mais uniquement depuis une vraie URL http(s) — son moteur HLS
- *    (AVFoundation) ne sait pas charger un flux depuis un blob: local, donc pas de mise en cache
- *    disque possible sur ce chemin, on laisse le cache HTTP du système faire son travail.
- *  - Blink/Gecko (Chrome, Firefox, WebView2...) : pas de support HLS natif, mais lisent très bien
- *    en <video src> le fichier .mp4 fragmenté unique une fois téléchargé — c'est ce fichier qu'on
- *    télécharge et met en cache disque (voir animatedCoverCache.ts). */
+/** Résout l'URL de la playlist HLS "master" de la pochette animée (mp4/HLS) d'un album, si elle
+ *  existe, via artwork.m8tec.top. Renvoie null en l'absence de pochette animée ou en cas d'échec
+ *  (silencieux : la pochette statique reste l'affichage de repli, ce n'est jamais une erreur
+ *  bloquante). Le rendu effectif (HLS natif vs hls.js) est délégué à AnimatedAlbumCoverVideo. */
 export function useAnimatedAlbumCover(
   albumKey: string | undefined,
   artist: string | undefined,
@@ -112,56 +161,15 @@ export function useAnimatedAlbumCover(
     if (!albumKey || !artist || !album) return;
 
     let cancelled = false;
-    let objectUrl: string | null = null;
 
     (async () => {
-      if (supportsNativeHls()) {
-        const masterUrl = await resolveMasterUrl(baseUrl, artist, album);
-        if (!masterUrl || cancelled) return;
-
-        try {
-          const sources = await resolveSourcesCached(masterUrl);
-          if (!sources || cancelled) return;
-          setResolved({ key: albumKey, url: sources.hlsUrl });
-        } catch (err) {
-          console.warn("[animatedCover] Résolution HLS échouée", err);
-        }
-        return;
-      }
-
-      const cachedLocally = await getCachedAnimatedCoverUrl(albumKey);
-      if (cachedLocally) {
-        if (cancelled) {
-          URL.revokeObjectURL(cachedLocally);
-          return;
-        }
-        objectUrl = cachedLocally;
-        setResolved({ key: albumKey, url: cachedLocally });
-        return;
-      }
-
       const masterUrl = await resolveMasterUrl(baseUrl, artist, album);
       if (!masterUrl || cancelled) return;
-
-      try {
-        const sources = await resolveSourcesCached(masterUrl);
-        if (!sources || cancelled) return;
-
-        const cached = await loadAndCacheAnimatedCover(albumKey, sources.mp4Url);
-        if (cancelled) {
-          URL.revokeObjectURL(cached);
-          return;
-        }
-        objectUrl = cached;
-        setResolved({ key: albumKey, url: cached });
-      } catch (err) {
-        console.warn("[animatedCover] Résolution/cache de la pochette animée échoués", err);
-      }
+      setResolved({ key: albumKey, url: masterUrl });
     })();
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [albumKey, artist, album, baseUrl]);
 
@@ -171,11 +179,11 @@ export function useAnimatedAlbumCover(
   return resolved && resolved.key === albumKey ? resolved.url : null;
 }
 
-/** Vide le cache de résolution (recherche + sources HLS/mp4), en mémoire ET sur disque, pour
- *  forcer une nouvelle requête à l'API plutôt que de continuer à servir un résultat déjà connu —
- *  ne touche pas au cache des vidéos déjà téléchargées (voir animatedCoverCache.clearAnimatedCoverCache
- *  pour ça). Utilisé par le bouton "Forcer une nouvelle récupération" des réglages. */
+/** Vide le cache de résolution (recherche du master URL), en mémoire ET sur disque, pour forcer
+ *  une nouvelle requête à l'API plutôt que de continuer à servir un résultat déjà connu. Utilisé
+ *  par le bouton "Forcer une nouvelle récupération" des réglages. */
 export async function clearAnimatedCoverResolutionCache(): Promise<void> {
   searchResultCache.clear();
+  appleMusicUrlCache.clear();
   await clearAnimatedCoverSearchCache();
 }

@@ -208,9 +208,9 @@ export function PlaylistPage() {
       const [moved] = newOrder.splice(dragIndex, 1);
       newOrder.splice(toIndex, 0, moved);
       setOrderOverride(newOrder);
-      client
+      client!
         .reorderPlaylist(
-          playlist.id,
+          playlist!.id,
           newOrder.map((entry) => entry.id),
           defaultEntries.length,
         )

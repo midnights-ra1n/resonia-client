@@ -1,20 +1,17 @@
-import { useEffect, useRef, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import { supportsNativeHls } from "../../lib/platform";
 
 interface AnimatedAlbumCoverVideoProps {
   /** URL de la playlist HLS "master" de la pochette animée (voir useAnimatedAlbumCover). */
   masterUrl: string;
-  poster?: string;
   className: string;
-  /** Appelé quand la lecture échoue réellement : le parent doit alors retomber sur la pochette
-   *  statique plutôt que de laisser un cadre vide à l'écran. */
-  onFatalError: () => void;
 }
 
 /** Lit une pochette animée Apple Music (HLS, CMAF fragmenté, timestamps internes calés sur la
  *  timeline globale du flux plutôt que remis à zéro — normal en HLS) via hls.js (MediaSource
- *  Extensions) sur TOUS les moteurs, y compris WebKit/Safari.
+ *  Extensions) sur TOUS les moteurs qui le supportent (Chromium, Gecko, WebView2, WebKit
+ *  desktop).
  *
  *  On pourrait s'attendre à préférer le HLS natif de Safari (<video src="....m3u8">) plutôt que
  *  d'embarquer hls.js pour lui aussi : en pratique AVFoundation refuse ces flux précis avec
@@ -22,98 +19,127 @@ interface AnimatedAlbumCoverVideoProps {
  *  découpage "trick-play" particulier qu'Apple utilise pour ses pochettes animées — assez
  *  différent d'un HLS "classique" pour que même l'outil de référence de cette intégration
  *  (github.com/m8tec/apple-music-animated-artworks, dont le lecteur web utilise hls.js "in any
- *  browser (not just Safari)") ne fasse pas confiance au moteur natif. hls.js/MSE en revanche
- *  gère ces flux sans problème partout où il est disponible.
+ *  browser (not just Safari)") ne fasse pas confiance au moteur natif. hls.js/MSE gère ces flux
+ *  sans problème partout où il est disponible (voir Hls.isSupported()).
  *
- *  Le HLS natif ne reste qu'un ultime repli, pour les moteurs sans MediaSource Extensions
- *  (Hls.isSupported() === false, ex. Safari iOS) mais qui savent lire du HLS nativement. */
+ *  Le HLS natif (<video src="...m3u8">, via supportsNativeHls) ne reste qu'un ultime repli, pour
+ *  les moteurs sans MediaSource Extensions (Hls.isSupported() === false, ex. Safari iOS) mais qui
+ *  savent lire du HLS nativement.
+ *
+ *  Boucle : PAS l'attribut `loop` natif. La cause réelle du "flash vers la pochette statique" a
+ *  été identifiée en comparant le flux brut récupéré directement depuis l'API à ce qui s'affichait
+ *  dans l'app : le fichier lui-même démarre par quelques images quasi figées, très proches
+ *  visuellement de la pochette statique, avant que l'animation ne démarre vraiment. Ce n'est donc
+ *  ni un bug de rendu propre à un moteur, ni un problème de `poster` — n'importe quelle technique
+ *  de boucle qui revient pile à `currentTime = 0` (attribut `loop` natif compris) réaffiche
+ *  fidèlement ce prologue à CHAQUE tour, d'où l'impression de "coupure" vers la pochette statique.
+ *  On redémarre donc manuellement un peu après 0 (voir LOOP_RESTART_OFFSET_SECONDS) pour sauter ce
+ *  prologue — mais uniquement lors des boucles suivantes : le tout premier affichage, lui, s'en
+ *  accommode très bien (la pochette statique est déjà affichée juste en dessous à ce moment-là,
+ *  voir AlbumPage.tsx, donc rien ne "tranche" avec ces toutes premières images). */
+// Faut-il ajuster cette valeur ? Écoute une boucle et augmente-la si le prologue quasi figé est
+// encore visible, ou diminue-la si le redémarrage saute une portion de l'animation elle-même.
+const LOOP_RESTART_OFFSET_SECONDS = 0.5;
 export function AnimatedAlbumCoverVideo({
   masterUrl,
-  poster,
   className,
-  onFatalError,
 }: AnimatedAlbumCoverVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const useHlsJs = Hls.isSupported();
-
-  // Boucle gérée manuellement (pas d'attribut `loop` natif) : sur WebKit/WKWebView (le WebView
-  // système utilisé par le bundle Tauri), une boucle native réaffiche brièvement le `poster` à
-  // chaque redémarrage avant de reprendre la vidéo — bug non reproductible sous Chrome (donc
-  // invisible en dev via Vite). Un simple retour à `currentTime = 0` + `play()` sur `ended`
-  // contourne ce réaffichage.
-  const loopFromStart = (video: HTMLVideoElement) => {
-    video.currentTime = 0;
-    void video.play();
-  };
-  const handleLoopEnded = (e: SyntheticEvent<HTMLVideoElement>) =>
-    loopFromStart(e.currentTarget);
+  // Piste de l'URL en échec plutôt qu'un simple booléen : dérivé au rendu (comme
+  // `resolved.key === albumKey` dans useAnimatedAlbumCover), pas de useEffect dédié pour le
+  // réinitialiser — dès que `masterUrl` change, `erroredUrl` ne correspond plus, donc `hasError`
+  // retombe à false sans action explicite.
+  const [erroredUrl, setErroredUrl] = useState<string | null>(null);
+  // Vérification d'environnement pure, indépendante de `masterUrl` : calculée directement au
+  // rendu plutôt que dans un effet, aucune raison d'en faire un aller-retour d'état.
+  const unsupported = !Hls.isSupported() && !supportsNativeHls();
+  const hasError = unsupported || erroredUrl === masterUrl;
 
   useEffect(() => {
-    if (!useHlsJs) {
-      if (!supportsNativeHls()) onFatalError();
-      return;
-    }
-
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || hasError) return;
 
-    const hls = new Hls();
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return;
-      console.warn(
-        "[animatedCover] Erreur hls.js fatale, repli sur la pochette statique",
-        data,
-      );
-      onFatalError();
-    });
-    hls.loadSource(masterUrl);
-    hls.attachMedia(video);
-    const onEnded = () => loopFromStart(video);
+    const onEnded = () => {
+      const offset = Number.isFinite(video.duration)
+        ? Math.min(LOOP_RESTART_OFFSET_SECONDS, video.duration / 4)
+        : LOOP_RESTART_OFFSET_SECONDS;
+      video.currentTime = offset;
+      void video.play();
+    };
     video.addEventListener("ended", onEnded);
 
+    if (!Hls.isSupported()) {
+      // supportsNativeHls() est nécessairement vrai ici : le cas contraire est déjà couvert par
+      // `unsupported` ci-dessus (hasError serait vrai, on ne serait pas arrivé jusque-là).
+      video.src = masterUrl;
+      video.play().catch(() => setErroredUrl(masterUrl));
+      return () => {
+        video.removeEventListener("ended", onEnded);
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      };
+    }
+
+    let cancelled = false;
+    const hls = new Hls();
+
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return;
+      // hls.js sait récupérer la plupart des erreurs fatales sans tout reconstruire : un souci
+      // réseau (timeout, requête échouée...) se résout en relançant le chargement, une corruption
+      // du SourceBuffer en recréant le media-buffer sous-jacent. On ne retombe sur la pochette
+      // statique que pour tout le reste (MUX_ERROR, OTHER_ERROR — véritablement irrécupérable).
+      switch (data.type) {
+        case Hls.ErrorTypes.NETWORK_ERROR:
+          hls.startLoad();
+          return;
+        case Hls.ErrorTypes.MEDIA_ERROR:
+          hls.recoverMediaError();
+          return;
+        default:
+          console.warn(
+            "[animatedCover] Erreur hls.js fatale et non récupérable, repli sur la pochette statique",
+            data,
+          );
+          if (!cancelled) setErroredUrl(masterUrl);
+      }
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      if (cancelled || !videoRef.current) return;
+      videoRef.current.play().catch(() => {
+        if (!cancelled) setErroredUrl(masterUrl);
+      });
+    });
+
+    hls.loadSource(masterUrl);
+    hls.attachMedia(video);
+
     return () => {
+      cancelled = true;
       video.removeEventListener("ended", onEnded);
       hls.destroy();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
     };
-    // onFatalError volontairement omis : identité stable non garantie côté appelant, et on ne
-    // veut relancer hls.js que lorsque la source (ou la disponibilité de MSE) change réellement.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [masterUrl, useHlsJs]);
+  }, [masterUrl, hasError]);
 
-  if (!useHlsJs) {
-    return (
-      <video
-        // Clé = source : force React à démonter/remonter l'élément plutôt que de réutiliser le
-        // nœud DOM existant en ne changeant que `src` (voir AlbumPage.tsx pour le même souci côté
-        // pochette statique/vidéo).
-        key={masterUrl}
-        src={masterUrl}
-        poster={poster}
-        autoPlay
-        muted
-        playsInline
-        className={className}
-        onEnded={handleLoopEnded}
-        onError={(e) => {
-          console.warn(
-            "[animatedCover] Lecture HLS native impossible, repli sur la pochette statique",
-            e.currentTarget.error,
-          );
-          onFatalError();
-        }}
-      />
-    );
-  }
+  if (hasError) return null;
 
   return (
     <video
+      // Clé = source : force React à démonter/remonter plutôt que de réutiliser le nœud DOM
+      // existant en ne changeant que `src`.
       key={masterUrl}
       ref={videoRef}
-      poster={poster}
-      autoPlay
-      muted
-      playsInline
       className={className}
+      muted
+      autoPlay
+      playsInline
+      aria-hidden="true"
+      onError={() => setErroredUrl(masterUrl)}
     />
   );
 }

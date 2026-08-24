@@ -3,7 +3,13 @@ export interface SilenceTrim {
   end: number;
 }
 
-const SILENCE_THRESHOLD = 0.008;
+// Seuil volontairement strict (~-58 dB) : le but est de ne détecter que le silence
+// numérique réel (padding de conteneur, encoder delay), jamais un passage audible mais
+// calme (fade-in, ambiance) — un seuil trop permissif (ex: l'ancien -42 dB) rogne des
+// intros entières et décale le début audible de la piste, perceptible surtout en lecture
+// depuis le cache décodé (démarrage direct en mode buffer, sans streaming natif pour
+// masquer l'écart).
+const SILENCE_THRESHOLD = 0.0012;
 const MAX_TRIM_SECONDS = 0.3;
 
 /** Détecte le silence strict en bord de piste (début/fin), pour éliminer le padding de

@@ -45,7 +45,18 @@ async function fetchRangeOnce(url: string, start: number, signal: AbortSignal, c
   if (res.status === 200) {
     // Le serveur ignore les requêtes Range (pas de support partiel) : on récupère tout.
     const data = await res.arrayBuffer();
-    return { data, totalBytes: data.byteLength };
+    if (start === 0) return { data, totalBytes: data.byteLength };
+
+    // `start` > 0 : ce n'était pas un premier appel, mais une REPRISE (pause prefetch,
+    // pression réseau...) — `TrackDownloader.run()` a positionné son writer OPFS à
+    // `bytesCached` (milieu de fichier) et va y ajouter `data` telle quelle. Si `data` est
+    // ici le fichier COMPLET depuis son octet 0 (ce que ce statut 200 signifie), l'écrire
+    // tel quel dupliquerait tout le fichier à cette position et corromprait l'octet cache
+    // — c'est précisément la cause d'un saut audible en lecture, souvent tôt dans le
+    // morceau puisque les reprises de téléchargement y sont les plus fréquentes. On
+    // découpe donc nous-mêmes le segment réellement demandé dans la réponse complète.
+    if (start >= data.byteLength) throw new EndOfStreamError();
+    return { data: data.slice(start, start + chunkSize), totalBytes: data.byteLength };
   }
 
   if (res.status !== 206) {

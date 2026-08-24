@@ -6,6 +6,11 @@ installWebAudioMocks();
 // Importé après l'installation des mocks : le constructeur instancie `new AudioContext()`.
 const { GaplessEngine } = await import("./gaplessEngine");
 
+// Doit rester synchronisé avec SWAP_FADE_SECONDS dans gaplessEngine.ts : la piste suivante
+// démarre `SWAP_FADE_SECONDS` avant l'instant de fin logique de la piste courante, pour un
+// micro-crossfade au lieu d'un raccord bord-à-bord (voir trySchedulePending).
+const SWAP_FADE_SECONDS = 0.008;
+
 function decodedTrack(durationSeconds: number) {
   return { buffer: makeFakeAudioBuffer(durationSeconds, 44100, 1), trim: { start: 0, end: 0 } };
 }
@@ -32,9 +37,9 @@ describe("GaplessEngine — planification gapless déterministe", () => {
     expect(ctx.createdSources).toHaveLength(2);
     const [sourceA, sourceB] = ctx.createdSources;
     expect(sourceA.startCall).toEqual({ when: 0, offset: 0 });
-    // La piste A dure 10s : la piste B doit démarrer exactement à t=10, sans chevauchement
-    // ni silence intercalé.
-    expect(sourceB.startCall).toEqual({ when: 10, offset: 0 });
+    // La piste A dure 10s : la piste B démarre SWAP_FADE_SECONDS avant t=10 pour un
+    // micro-crossfade (jamais de silence intercalé, jamais de vrai raccord bord-à-bord).
+    expect(sourceB.startCall).toEqual({ when: 10 - SWAP_FADE_SECONDS, offset: 0 });
   });
 
   it("enchaîne plusieurs transitions sans dérive cumulative", () => {
@@ -54,8 +59,8 @@ describe("GaplessEngine — planification gapless déterministe", () => {
     ctx.createdSources[0].onended?.();
 
     expect(ctx.createdSources).toHaveLength(3);
-    expect(ctx.createdSources[1].startCall).toEqual({ when: 10, offset: 0 }); // B après A (10s)
-    expect(ctx.createdSources[2].startCall).toEqual({ when: 18, offset: 0 }); // C après B (10+8s)
+    expect(ctx.createdSources[1].startCall).toEqual({ when: 10 - SWAP_FADE_SECONDS, offset: 0 }); // B après A (10s)
+    expect(ctx.createdSources[2].startCall).toEqual({ when: 18 - SWAP_FADE_SECONDS, offset: 0 }); // C après B (10+8s)
   });
 
   it("un pause() annule le swap déjà planifié sans perte, et un resume() le replanifie sans dérive", () => {
@@ -65,7 +70,7 @@ describe("GaplessEngine — planification gapless déterministe", () => {
     ctx.currentTime = 0;
     engine.loadAndPlay("blob:a", 0, trackA);
     engine.scheduleNext(trackB.buffer, trackB.trim, vi.fn());
-    expect(ctx.createdSources[1].startCall).toEqual({ when: 10, offset: 0 });
+    expect(ctx.createdSources[1].startCall).toEqual({ when: 10 - SWAP_FADE_SECONDS, offset: 0 });
 
     // 3 secondes de lecture, puis pause.
     ctx.currentTime = 3;
@@ -86,7 +91,7 @@ describe("GaplessEngine — planification gapless déterministe", () => {
     const resumedA = ctx.createdSources[2];
     expect(resumedA.startCall).toEqual({ when: 8, offset: 3 });
     const rescheduledB = ctx.createdSources[3];
-    expect(rescheduledB.startCall).toEqual({ when: 15, offset: 0 });
+    expect(rescheduledB.startCall).toEqual({ when: 15 - SWAP_FADE_SECONDS, offset: 0 });
   });
 
   it("un seek() en cours de lecture annule et replanifie la piste suivante à la bonne position", () => {
@@ -104,7 +109,7 @@ describe("GaplessEngine — planification gapless déterministe", () => {
     expect(seekedA.startCall).toEqual({ when: 2, offset: 9 });
     // B doit maintenant démarrer 1s plus tard (10 - 9 restante), soit t=3.
     const rescheduledB = ctx.createdSources[3];
-    expect(rescheduledB.startCall).toEqual({ when: 3, offset: 0 });
+    expect(rescheduledB.startCall).toEqual({ when: 3 - SWAP_FADE_SECONDS, offset: 0 });
   });
 
   it("replie gracieusement sur l'état 'ended' + le callback de secours si rien n'est prêt à temps", () => {

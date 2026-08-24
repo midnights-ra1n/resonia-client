@@ -86,7 +86,7 @@ interface PendingNext {
  * façon déterministe, sans heuristique de détection de silence en temps réel.
  */
 export class GaplessEngine {
-  readonly context: AudioContext;
+  context: AudioContext;
   private masterGain: GainNode;
   private nativeAudio: HTMLAudioElement;
   private nativeGain: GainNode;
@@ -138,9 +138,7 @@ export class GaplessEngine {
     this.masterGain = this.context.createGain();
     this.masterGain.connect(this.context.destination);
 
-    this.nativeAudio = new Audio();
-    this.nativeAudio.preload = "auto";
-    this.nativeAudio.crossOrigin = "anonymous";
+    this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
@@ -152,22 +150,37 @@ export class GaplessEngine {
     this.sessionAnchor.volume = 0;
     this.sessionAnchor.preload = "auto";
 
-    this.nativeAudio.addEventListener("waiting", () => {
+    this.installAutoplayUnlock();
+    this.installOutputDeviceChangeHandler();
+  }
+
+  /** Crée un élément <audio> "natif" fraîchement câblé avec tous les listeners dont dépend le
+   *  streaming progressif (voir le constructeur pour le détail de chacun). Extrait du
+   *  constructeur pour pouvoir en recréer un à l'identique dans `rebuildAudioGraph` — un
+   *  HTMLMediaElement ne peut être passé qu'une seule fois à `createMediaElementSource` sur
+   *  toute sa durée de vie, il faut donc systématiquement un nouvel élément avec un nouvel
+   *  AudioContext. */
+  private createNativeAudioElement(): HTMLAudioElement {
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
+
+    audio.addEventListener("waiting", () => {
       if (this.trackState?.mode === "native") {
         this.setState("buffering");
         this.onNetworkPressure?.(true);
       }
     });
-    this.nativeAudio.addEventListener("seeking", () => {
+    audio.addEventListener("seeking", () => {
       if (this.trackState?.mode === "native") this.onNetworkPressure?.(true);
     });
-    this.nativeAudio.addEventListener("canplay", () => {
+    audio.addEventListener("canplay", () => {
       if (this.trackState?.mode === "native") {
         this.onNetworkPressure?.(false);
         if (this._state === "loading" || this._state === "buffering") this.setState("ready");
       }
     });
-    this.nativeAudio.addEventListener("playing", () => {
+    audio.addEventListener("playing", () => {
       if (this.trackState?.mode === "native") {
         this.onNetworkPressure?.(false);
         this.setState("playing");
@@ -180,13 +193,13 @@ export class GaplessEngine {
         this.resumeContextWithRetry();
       }
     });
-    this.nativeAudio.addEventListener("ended", () => this.handleNativeEnded());
+    audio.addEventListener("ended", () => this.handleNativeEnded());
     // Sans ce listener, un échec de chargement (CORS refusé, codec non supporté par
     // WebKit/Safari — ex: Opus — flux réseau invalide) laisse l'élément <audio> planté
     // silencieusement en l'état "loading" : aucune erreur ne remonte nulle part ailleurs.
-    this.nativeAudio.addEventListener("error", () => {
-      if (this.trackState?.mode !== "native") return;
-      const mediaError = this.nativeAudio.error;
+    audio.addEventListener("error", () => {
+      if (this.trackState?.mode !== "native" || audio !== this.nativeAudio) return;
+      const mediaError = audio.error;
       const offset = this.trackState.pauseOffset;
 
       if (mediaError?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
@@ -214,7 +227,107 @@ export class GaplessEngine {
       this.reportError(describeMediaError(mediaError), mediaError);
     });
 
-    this.installAutoplayUnlock();
+    return audio;
+  }
+
+  /** `AudioContext.destination` reste lié au périphérique de sortie par défaut tel qu'il était
+   *  AU MOMENT de la création du contexte — sur WebKit/WKWebView (donc l'app de bureau
+   *  compilée), il ne suit PAS automatiquement un changement de périphérique par défaut (ex:
+   *  débranchement d'un casque après l'avoir sélectionné comme sortie) : la lecture continue
+   *  d'écrire silencieusement vers un périphérique disparu. La seule parade fiable est de
+   *  reconstruire entièrement le graphe (nouvel AudioContext, donc nouvelle `destination`
+   *  liée au nouveau périphérique par défaut) dès que le système signale un changement. */
+  private installOutputDeviceChangeHandler() {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) return;
+    let debounce: ReturnType<typeof window.setTimeout> | null = null;
+    navigator.mediaDevices.addEventListener("devicechange", () => {
+      // `devicechange` peut se déclencher plusieurs fois de suite pour un seul branchement/
+      // débranchement physique (énumération des entrées ET sorties) : on ne reconstruit qu'une
+      // fois l'événement retombé.
+      if (debounce !== null) window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        debounce = null;
+        this.rebuildAudioGraph();
+      }, 300);
+    });
+  }
+
+  /** Reconstruit entièrement le graphe Web Audio (nouveau AudioContext + noeuds de gain +
+   *  élément <audio> natif) tout en préservant la lecture en cours (piste, position, état
+   *  pause/lecture, piste suivante déjà planifiée). Provoque une coupure très brève,
+   *  inévitable ici (l'ancien graphe écrit vers un périphérique disparu, il n'y a rien à
+   *  faire fondre en douceur) — très largement préférable à un silence complet jusqu'à la
+   *  prochaine action de l'utilisateur. */
+  private rebuildAudioGraph() {
+    if (!this.trackState) return; // rien ne joue : le prochain loadAndPlay/resume repartira sur un graphe déjà à jour
+
+    const oldContext = this.context;
+    const oldNativeAudio = this.nativeAudio;
+    const volume = this.masterGain.gain.value;
+
+    // Capturé AVANT toute bascule : this.currentTime dépend encore de l'ancien trackState/
+    // contexte à ce stade.
+    const mode = this.trackState.mode;
+    const wasPaused = this.isTrackStatePaused(this.trackState);
+    const position = this.currentTime;
+    const bufferState =
+      this.trackState.mode === "buffer"
+        ? { buffer: this.trackState.buffer, trim: this.trackState.trim }
+        : null;
+    const nativeUrl = mode === "native" ? oldNativeAudio.src : null;
+
+    // La piste déjà planifiée référence des noeuds liés à l'ancien contexte : on les détache
+    // sans perdre buffer/trim/onSwap, pour la replanifier une fois le nouveau graphe en place.
+    const savedPending = this.pendingNext
+      ? { buffer: this.pendingNext.buffer, trim: this.pendingNext.trim, onSwap: this.pendingNext.onSwap }
+      : null;
+    this.discardPending();
+    this.stopCurrentBufferPlayback();
+    oldNativeAudio.pause();
+
+    this.context = new AudioContext();
+    this.masterGain = this.context.createGain();
+    this.masterGain.gain.setValueAtTime(volume, this.context.currentTime);
+    this.masterGain.connect(this.context.destination);
+
+    this.nativeAudio = this.createNativeAudioElement();
+    const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
+    this.nativeGain = this.context.createGain();
+    mediaSource.connect(this.nativeGain);
+    this.nativeGain.connect(this.masterGain);
+
+    this.trackState = null;
+
+    if (mode === "native" && nativeUrl) {
+      this.nativeAudio.src = nativeUrl;
+      this.nativeAudio.currentTime = position;
+      this.trackState = {
+        mode: "native",
+        contextStartTime: this.context.currentTime - position,
+        pauseOffset: position,
+        isPaused: wasPaused,
+      };
+      if (wasPaused) {
+        this.setState("paused");
+      } else {
+        this.nativeAudio
+          .play()
+          .catch((err) =>
+            this.reportError("Reprise de lecture impossible après changement de périphérique audio", err),
+          );
+      }
+    } else if (bufferState) {
+      this.startBufferAt(bufferState.buffer, bufferState.trim, position, wasPaused);
+    }
+
+    if (savedPending) {
+      this.pendingNext = { ...savedPending, scheduled: false };
+      this.trySchedulePending();
+    }
+
+    oldNativeAudio.removeAttribute("src");
+    oldNativeAudio.load();
+    void oldContext.close().catch(() => {});
   }
 
   /** Relance context.resume() avec réessais (délais croissants) tant que le contexte reste
@@ -485,7 +598,13 @@ export class GaplessEngine {
   attachDecodedActive(decoded: DecodedTrack) {
     if (!this.trackState || this.trackState.mode !== "native") return;
     const wasPaused = this.trackState.isPaused;
-    const position = this.currentTime;
+    // `this.currentTime` en mode natif renvoie la position BRUTE dans le fichier (silence de
+    // tête inclus, l'élément <audio> ne sait rien du rognage) alors que `startBufferAt` attend
+    // un décalage LOGIQUE (déjà relatif à `trim.start`, comme tout le reste du moteur une fois
+    // en mode buffer) et lui ajoute lui-même `trim.start`. Sans cette conversion, le rognage
+    // était compté deux fois lors du basculement streaming→buffer, provoquant un saut en avant
+    // audible égal à la durée du silence de tête (typiquement quelques centaines de ms à ~1s).
+    const position = Math.max(0, this.currentTime - decoded.trim.start);
 
     const nativeAudioRef = this.nativeAudio;
     const now = this.context.currentTime;

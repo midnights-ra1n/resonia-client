@@ -102,15 +102,6 @@ export function AlbumPage() {
     album?.artist,
     album?.name,
   );
-  // Repli si la lecture échoue réellement dans le <video> (voir onError plus bas) : sans ça, un
-  // flux qui résout correctement côté réseau mais que le moteur vidéo refuse de décoder laisse un
-  // cadre vide au lieu de retomber sur la pochette statique. Dérivé au rendu (comme
-  // `resolved.key === albumKey` dans useAnimatedAlbumCover) plutôt que réinitialisé dans un effet :
-  // dès que animatedCoverUrl change, failedCoverUrl (l'URL en échec) ne correspond plus, donc
-  // animatedCoverFailed retombe à false sans action explicite.
-  const [failedCoverUrl, setFailedCoverUrl] = useState<string | null>(null);
-  const animatedCoverFailed =
-    failedCoverUrl !== null && failedCoverUrl === animatedCoverUrl;
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -180,15 +171,12 @@ export function AlbumPage() {
   return (
     <div>
       <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
-        <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
-          {animatedCoverUrl && !animatedCoverFailed ? (
-            <AnimatedAlbumCoverVideo
-              masterUrl={animatedCoverUrl}
-              poster={coverUrl}
-              className="h-full w-full object-cover"
-              onFatalError={() => setFailedCoverUrl(animatedCoverUrl)}
-            />
-          ) : coverUrl ? (
+        <div className="relative h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
+          {/* Pochette statique toujours présente en dessous : la pochette animée (voir plus bas)
+             est empilée par-dessus plutôt que substituée, pour qu'il n'y ait jamais rien d'autre
+             à montrer en cas de souci de lecture, aussi bref soit-il — pas de bascule d'un
+             élément à l'autre à surveiller, juste la vraie pochette en permanence. */}
+          {coverUrl ? (
             <img
               src={coverUrl}
               alt={album.name}
@@ -198,6 +186,12 @@ export function AlbumPage() {
             <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">
               ♪
             </div>
+          )}
+          {animatedCoverUrl && (
+            <AnimatedAlbumCoverVideo
+              masterUrl={animatedCoverUrl}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           )}
         </div>
 

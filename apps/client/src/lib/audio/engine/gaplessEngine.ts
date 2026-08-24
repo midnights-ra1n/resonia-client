@@ -1,10 +1,20 @@
 import { detectEdgeSilence, logicalDuration, type SilenceTrim } from "./silenceTrim";
 import type { EngineError, EngineState, EngineStateListener } from "./types";
+import { debugLog } from "../debug/audioDebugLogger";
 
 // Fondu très court, uniquement pour masquer le point de jonction entre deux sources
 // (natif→buffer, ou deux AudioBufferSourceNode consécutifs) — pas pour compenser un
 // écart de timing : la planification elle-même est sample-accurate.
 const SWAP_FADE_SECONDS = 0.008;
+
+// Fondu d'entrée appliqué à tout démarrage "à froid" d'un AudioBufferSourceNode
+// (loadAndPlay depuis le cache décodé, resume(), seek()) — distinct de SWAP_FADE_SECONDS
+// qui ne concerne que les jonctions entre deux sources déjà en cours de lecture. Un
+// graphe Web Audio qui démarre à plein volume instantanément sur un thread audio inactif
+// expose un artefact de démarrage connu sur WebKit (rattrapage du thread audio au réveil,
+// perçu comme une accélération/pitch-up très brève) — masqué par un fondu, jamais par une
+// planification différée qui romprait la réactivité au clic.
+const COLD_START_FADE_SECONDS = 0.015;
 
 // WAV silencieux (0,05s, 8-bit/4kHz mono) utilisé uniquement pour ancrer la session Now
 // Playing du système — voir le commentaire sur `sessionAnchor` ci-dessous.
@@ -347,7 +357,9 @@ export class GaplessEngine {
 
   async decodeAndTrim(arrayBuffer: ArrayBuffer): Promise<DecodedTrack> {
     const buffer = await this.decode(arrayBuffer);
-    return { buffer, trim: detectEdgeSilence(buffer) };
+    const trim = detectEdgeSilence(buffer);
+    debugLog("decode:trim", { durationSec: buffer.duration, trimStartSec: trim.start, trimEndSec: trim.end });
+    return { buffer, trim };
   }
 
   // ---- lecture ----
@@ -588,12 +600,14 @@ export class GaplessEngine {
 
     const now = this.context.currentTime;
     const gain = this.context.createGain();
-    gain.gain.value = 1;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(1, now + COLD_START_FADE_SECONDS);
     gain.connect(this.masterGain);
 
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.connect(gain);
+    debugLog("buffer:start", { offset, trimStartSec: trim.start, bufferPositionSec: trim.start + offset });
     source.start(now, trim.start + offset);
 
     const remaining = Math.max(logicalDuration(buffer, trim) - offset, 0);
@@ -633,29 +647,43 @@ export class GaplessEngine {
     }
   }
 
-  /** Programme, sur l'horloge de l'AudioContext, le démarrage exact de la piste en
-   *  attente à l'instant de fin calculé de la piste courante — aucune attente d'événement,
+  /** Programme, sur l'horloge de l'AudioContext, le démarrage de la piste en attente
+   *  autour de l'instant de fin calculé de la piste courante — aucune attente d'événement,
    *  aucune heuristique : purement déterministe. No-op si la piste courante n'est pas
-   *  actuellement en train de jouer en mode buffer, ou si déjà planifié. */
+   *  actuellement en train de jouer en mode buffer, ou si déjà planifié.
+   *
+   *  La jonction elle-même est un micro-crossfade symétrique (piste courante 1→0, piste
+   *  suivante 0→1, sur la même fenêtre de SWAP_FADE_SECONDS se terminant à `endTime`) plutôt
+   *  qu'un raccord bord-à-bord (arrêt sec + fade-in seul après coup). Sur Chromium, deux
+   *  AudioBufferSourceNode démarré/arrêté au même instant s'enchaînent déjà sample-accurate ;
+   *  WebKit (moteur de l'app desktop compilée) est en pratique moins fiable sur cet
+   *  alignement pile-à-pile et peut laisser un micro-gap au raccord — un vrai chevauchement
+   *  audible absorbe cette imprécision des deux côtés. `endTime` reste la référence
+   *  logique (position 0 de la piste suivante, bascule d'état) : seul le début physique de
+   *  `nextSource` est avancé de SWAP_FADE_SECONDS pour ce chevauchement. */
   private trySchedulePending() {
     if (!this.pendingNext || this.pendingNext.scheduled) return;
     if (!this.trackState || this.trackState.mode !== "buffer" || this.trackState.isPaused || !this.trackState.playback) return;
 
     const { buffer: curBuffer, trim: curTrim, playback } = this.trackState;
-    const { source: curSource, scheduledStartContextTime, startOffsetInTrim } = playback;
+    const { source: curSource, gain: curGain, scheduledStartContextTime, startOffsetInTrim } = playback;
     const endTime = scheduledStartContextTime - startOffsetInTrim + logicalDuration(curBuffer, curTrim);
+    const crossfadeStart = endTime - SWAP_FADE_SECONDS;
+
+    curGain.gain.setValueAtTime(1, crossfadeStart);
+    curGain.gain.linearRampToValueAtTime(0, endTime);
 
     const { buffer: nextBuffer, trim: nextTrim } = this.pendingNext;
 
     const nextGain = this.context.createGain();
-    nextGain.gain.setValueAtTime(0, endTime);
-    nextGain.gain.linearRampToValueAtTime(1, endTime + SWAP_FADE_SECONDS);
+    nextGain.gain.setValueAtTime(0, crossfadeStart);
+    nextGain.gain.linearRampToValueAtTime(1, endTime);
     nextGain.connect(this.masterGain);
 
     const nextSource = this.context.createBufferSource();
     nextSource.buffer = nextBuffer;
     nextSource.connect(nextGain);
-    nextSource.start(endTime, nextTrim.start);
+    nextSource.start(crossfadeStart, nextTrim.start);
     try {
       nextSource.stop(endTime + logicalDuration(nextBuffer, nextTrim));
     } catch {

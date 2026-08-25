@@ -73,7 +73,7 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
       <Link to={`/playlists/${playlist.id}`} className="block cursor-pointer">
         <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
           {cachedCoverUrl ? (
-            <img src={cachedCoverUrl} alt={name} className="h-full w-full object-cover" />
+            <img src={cachedCoverUrl} alt={name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
           )}

@@ -426,7 +426,7 @@ export function PlaylistPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
                       dragIndex === index ? "opacity-40" : ""
                     } ${isSelected ? "bg-neutral-800/70" : ""}`}
                   >

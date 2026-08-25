@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useTranslation } from "../../lib/i18n";
 import { AlbumResultRow } from "./AlbumResultRow";
 import { ArtistCard } from "./ArtistCard";
@@ -20,6 +21,12 @@ export function SearchPage() {
   const hasQuery = trimmed.length >= MIN_QUERY_LENGTH;
   const hasResults =
     results.songs.length > 0 || results.albums.length > 0 || results.artists.length > 0 || results.playlists.length > 0;
+
+  const shownSongs = results.songs.slice(0, MAX_SONGS_SHOWN);
+  const trackSelection = useTrackListSelection(shownSongs.length);
+  const selectedSongIds = Array.from(trackSelection.selectedIndices)
+    .map((i) => shownSongs[i]?.id)
+    .filter((songId): songId is string => songId !== undefined);
 
   if (!hasQuery) {
     return (
@@ -50,12 +57,27 @@ export function SearchPage() {
             </section>
           )}
 
-          {results.songs.length > 0 && (
+          {shownSongs.length > 0 && (
             <section className="mb-8">
               <h2 className="mb-4 text-xl font-semibold text-white">{t("search.sectionSongs")}</h2>
-              <div className="flex flex-col gap-1">
-                {results.songs.slice(0, MAX_SONGS_SHOWN).map((song) => (
-                  <TrackResultRow key={song.id} song={song} songs={results.songs} />
+              <div
+                ref={trackSelection.containerRef}
+                tabIndex={0}
+                onKeyDown={trackSelection.handleKeyDown}
+                className="flex flex-col gap-1 outline-none"
+              >
+                {shownSongs.map((song, index) => (
+                  <TrackResultRow
+                    key={song.id}
+                    song={song}
+                    songs={results.songs}
+                    index={index}
+                    isSelected={trackSelection.isSelected(index)}
+                    onSelectClick={trackSelection.handleRowClick}
+                    onEnsureSelected={trackSelection.ensureSelected}
+                    registerRow={trackSelection.registerRow}
+                    selectedSongIds={selectedSongIds}
+                  />
                 ))}
               </div>
             </section>

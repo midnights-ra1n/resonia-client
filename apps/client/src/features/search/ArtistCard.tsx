@@ -26,7 +26,7 @@ export function ArtistCard({ artist }: ArtistCardProps) {
     >
       <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={artist.name} className="h-full w-full object-cover" />
+          <img src={cachedCoverUrl} alt={artist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <span className="text-3xl text-neutral-600">♪</span>
         )}

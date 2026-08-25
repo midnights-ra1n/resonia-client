@@ -1,7 +1,8 @@
 import { GripVertical, X } from "lucide-react";
 import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useScrollingClass } from "../../hooks/useScrollingClass";
 
 const MAX_QUEUE_DISPLAY = 50;
 
@@ -12,7 +13,8 @@ function formatDuration(seconds: number): string {
 }
 
 export function QueuePanel() {
-  const { showQueue, toggleQueue } = usePlayerStore();
+  const showQueue = usePlayerStore((s) => s.showQueue);
+  const toggleQueue = usePlayerStore((s) => s.toggleQueue);
 
   if (!showQueue) return null;
 
@@ -33,11 +35,16 @@ export function QueuePanel() {
 type DropPosition = "before" | "after";
 
 function QueueList() {
-  const { queue, playOrder, playOrderPosition, reorderQueue } = usePlayerStore();
+  const queue = usePlayerStore((s) => s.queue);
+  const playOrder = usePlayerStore((s) => s.playOrder);
+  const playOrderPosition = usePlayerStore((s) => s.playOrderPosition);
+  const reorderQueue = usePlayerStore((s) => s.reorderQueue);
 
   const [dragLocalIndex, setDragLocalIndex] = useState<number | null>(null);
   const [hoverLocalIndex, setHoverLocalIndex] = useState<number | null>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>("before");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useScrollingClass(scrollRef);
 
   const upcomingIndices = playOrder.slice(playOrderPosition + 1, playOrderPosition + 1 + MAX_QUEUE_DISPLAY);
   const upcoming = upcomingIndices.map((queueIdx) => queue[queueIdx]).filter(Boolean);
@@ -85,7 +92,7 @@ function QueueList() {
   }, []);
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       {upcoming.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-neutral-500">
           <p className="text-sm">Aucune musique dans la file d'attente.</p>

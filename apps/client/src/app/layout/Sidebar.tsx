@@ -1,7 +1,8 @@
 import { BarChart3, Disc, Download, Folder, Home, LayoutList, Music, Plus, Settings, Star } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
+import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { PlaylistSidebarItem } from "./PlaylistSidebarItem";
@@ -25,6 +26,8 @@ export function Sidebar() {
   const handlePlaylistCreated = () => {
     refreshPlaylists();
   };
+  const playlistsScrollRef = useRef<HTMLDivElement>(null);
+  useScrollingClass(playlistsScrollRef);
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4 min-h-0">
@@ -61,7 +64,7 @@ export function Sidebar() {
       </div>
 
       {/* Spotify-like playlists section - with scroll only for this section */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={playlistsScrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <nav className="space-y-1">
           {playlists.map((playlist) => (
             <PlaylistSidebarItem key={playlist.id} playlist={playlist} onChanged={refreshPlaylists} />

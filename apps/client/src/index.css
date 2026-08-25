@@ -29,6 +29,30 @@ img {
   -webkit-user-drag: none;
 }
 
+/* Voir useScrollingClass.ts : coupe l'évaluation de :hover (donc les transitions
+ * qu'elle déclenche) sur les cartes/lignes tant qu'un conteneur défile activement.
+ * Appliqué aux ENFANTS seulement, jamais au conteneur qui défile lui-même : un
+ * `pointer-events: none` sur le conteneur qui reçoit la molette/le trackpad fait sortir
+ * cet élément du hit-testing WebKit en plein geste de scroll, ce qui pouvait interrompre
+ * le scroll natif (à-coups, gel) sur un carrousel scrollé rapidement — régression
+ * corrigée en ne coupant les pointer-events que sur son contenu, jamais le conteneur. */
+.is-scrolling > * {
+  pointer-events: none;
+}
+
+/* Lignes de liste de pistes (playlist, album) : une playlist peut compter des centaines/
+ * milliers de titres, tous montés dans le DOM à la fois (nécessaire pour le drag-and-drop
+ * et la sélection multiple au clavier, qui s'appuient sur une ref par ligne). Plutôt que de
+ * remplacer ce DOM par une virtualisation de bibliothèque (risque de casser ces
+ * interactions), on demande au navigateur de sauter entièrement le style/layout/paint des
+ * lignes hors écran : le DOM et les refs restent intacts, seul le travail de rendu pour ce
+ * qui n'est pas visible disparaît. `contain-intrinsic-size` évite un saut de hauteur du
+ * scroll avant la première mesure réelle de chaque ligne. */
+.track-row-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
 /* Scrollbar customisation */
 ::-webkit-scrollbar {
   width: 6px;

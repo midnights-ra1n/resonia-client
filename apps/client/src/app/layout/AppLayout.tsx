@@ -1,9 +1,10 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
 import { usePlayerStore } from "../../stores/playerStore";
 import { Sidebar } from "./Sidebar";
@@ -28,6 +29,8 @@ export function AppLayout() {
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const debouncedQuery = useDebouncedValue(query, 300);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const mainRef = useRef<HTMLElement>(null);
+  useScrollingClass(mainRef);
 
   // Espace = play/pause partout dans l'app, sauf pendant une saisie (recherche, modales,
   // champs de formulaire...) où l'espace doit rester un espace normal.
@@ -82,7 +85,11 @@ export function AppLayout() {
       <div className="flex flex-1 min-h-0">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800">
+          {/* Pas de backdrop-blur ici : un filtre de flou d'arrière-plan sticky force WKWebView à
+              recomposer le flou à chaque peinture sous le header (scroll, pochette animée en
+              lecture...) — un coût GPU permanent pour un gain visuel marginal. Fond quasi-opaque
+              à la place, même lisibilité sans recomposition continue. */}
+          <header className="sticky top-0 z-10 bg-neutral-950/95 border-b border-neutral-800">
             <form onSubmit={handleSubmit} className="flex items-center justify-center px-4 py-3 gap-2">
               {/* Boutons navigation à gauche de la barre de recherche */}
               <div className="flex items-center gap-1 pr-2">
@@ -112,7 +119,7 @@ export function AppLayout() {
             </form>
           </header>
 
-          <main className="flex-1 min-h-0 overflow-y-auto">
+          <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto">
             <Outlet />
           </main>
         </div>

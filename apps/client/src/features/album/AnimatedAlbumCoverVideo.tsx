@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
+import type Hls from "hls.js";
 import { supportsNativeHls } from "../../lib/platform";
 
 interface AnimatedAlbumCoverVideoProps {
@@ -12,6 +12,13 @@ interface AnimatedAlbumCoverVideoProps {
  *  timeline globale du flux plutôt que remis à zéro — normal en HLS) via hls.js (MediaSource
  *  Extensions) sur TOUS les moteurs qui le supportent (Chromium, Gecko, WebView2, WebKit
  *  desktop).
+ *
+ *  hls.js (~1,4 Mo non minifié) est importé dynamiquement plutôt qu'en tête de fichier : ce
+ *  composant ne s'affiche que sur les pages album possédant une pochette animée, mais un
+ *  `import` statique aurait forcé le bundler à l'inclure dans le chunk principal — donc à le
+ *  parser/exécuter à CHAQUE démarrage de l'app, y compris pour un utilisateur qui ne consulte
+ *  jamais d'album avec pochette animée. Le module est mis en cache par le navigateur/bundler
+ *  après le premier chargement, donc le coût ne revient plus ensuite.
  *
  *  On pourrait s'attendre à préférer le HLS natif de Safari (<video src="....m3u8">) plutôt que
  *  d'embarquer hls.js pour lui aussi : en pratique AVFoundation refuse ces flux précis avec
@@ -50,14 +57,18 @@ export function AnimatedAlbumCoverVideo({
   // réinitialiser — dès que `masterUrl` change, `erroredUrl` ne correspond plus, donc `hasError`
   // retombe à false sans action explicite.
   const [erroredUrl, setErroredUrl] = useState<string | null>(null);
-  // Vérification d'environnement pure, indépendante de `masterUrl` : calculée directement au
-  // rendu plutôt que dans un effet, aucune raison d'en faire un aller-retour d'état.
-  const unsupported = !Hls.isSupported() && !supportsNativeHls();
-  const hasError = unsupported || erroredUrl === masterUrl;
+  // Contrairement à la version avec import statique, on ne peut plus savoir de façon synchrone
+  // si l'environnement est supporté (Hls.isSupported() vit dans le module chargé à la volée) :
+  // le <video> est donc monté de façon optimiste, et l'effet ci-dessous bascule sur `erroredUrl`
+  // dès que le chargement du module révèle un environnement non supporté.
+  const hasError = erroredUrl === masterUrl;
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || hasError) return;
+
+    let cancelled = false;
+    let hls: Hls | null = null;
 
     const onEnded = () => {
       const offset = Number.isFinite(video.duration)
@@ -68,58 +79,69 @@ export function AnimatedAlbumCoverVideo({
     };
     video.addEventListener("ended", onEnded);
 
-    if (!Hls.isSupported()) {
-      // supportsNativeHls() est nécessairement vrai ici : le cas contraire est déjà couvert par
-      // `unsupported` ci-dessus (hasError serait vrai, on ne serait pas arrivé jusque-là).
-      video.src = masterUrl;
-      video.play().catch(() => setErroredUrl(masterUrl));
-      return () => {
-        video.removeEventListener("ended", onEnded);
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-      };
-    }
+    // Fenêtre/onglet masqué·e (minimisée sur bureau) : coupe le décodage vidéo en continu
+    // (coût CPU/GPU réel, contrairement à l'audio qui reste géré indépendamment par le
+    // moteur gapless) plutôt que de le laisser tourner pour un rendu que personne ne voit.
+    // Reprend automatiquement au retour au premier plan.
+    const onVisibilityChange = () => {
+      if (document.hidden) video.pause();
+      else if (!video.ended) void video.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
-    let cancelled = false;
-    const hls = new Hls();
-
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return;
-      // hls.js sait récupérer la plupart des erreurs fatales sans tout reconstruire : un souci
-      // réseau (timeout, requête échouée...) se résout en relançant le chargement, une corruption
-      // du SourceBuffer en recréant le media-buffer sous-jacent. On ne retombe sur la pochette
-      // statique que pour tout le reste (MUX_ERROR, OTHER_ERROR — véritablement irrécupérable).
-      switch (data.type) {
-        case Hls.ErrorTypes.NETWORK_ERROR:
-          hls.startLoad();
-          return;
-        case Hls.ErrorTypes.MEDIA_ERROR:
-          hls.recoverMediaError();
-          return;
-        default:
-          console.warn(
-            "[animatedCover] Erreur hls.js fatale et non récupérable, repli sur la pochette statique",
-            data,
-          );
-          if (!cancelled) setErroredUrl(masterUrl);
-      }
-    });
-
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+    import("hls.js").then(({ default: HlsCtor }) => {
       if (cancelled || !videoRef.current) return;
-      videoRef.current.play().catch(() => {
-        if (!cancelled) setErroredUrl(masterUrl);
-      });
-    });
 
-    hls.loadSource(masterUrl);
-    hls.attachMedia(video);
+      if (!HlsCtor.isSupported()) {
+        if (!supportsNativeHls()) {
+          setErroredUrl(masterUrl);
+          return;
+        }
+        video.src = masterUrl;
+        video.play().catch(() => setErroredUrl(masterUrl));
+        return;
+      }
+
+      hls = new HlsCtor();
+
+      hls.on(HlsCtor.Events.ERROR, (_event, data) => {
+        if (!data.fatal || !hls) return;
+        // hls.js sait récupérer la plupart des erreurs fatales sans tout reconstruire : un souci
+        // réseau (timeout, requête échouée...) se résout en relançant le chargement, une corruption
+        // du SourceBuffer en recréant le media-buffer sous-jacent. On ne retombe sur la pochette
+        // statique que pour tout le reste (MUX_ERROR, OTHER_ERROR — véritablement irrécupérable).
+        switch (data.type) {
+          case HlsCtor.ErrorTypes.NETWORK_ERROR:
+            hls.startLoad();
+            return;
+          case HlsCtor.ErrorTypes.MEDIA_ERROR:
+            hls.recoverMediaError();
+            return;
+          default:
+            console.warn(
+              "[animatedCover] Erreur hls.js fatale et non récupérable, repli sur la pochette statique",
+              data,
+            );
+            if (!cancelled) setErroredUrl(masterUrl);
+        }
+      });
+
+      hls.on(HlsCtor.Events.MANIFEST_PARSED, () => {
+        if (cancelled || !videoRef.current) return;
+        videoRef.current.play().catch(() => {
+          if (!cancelled) setErroredUrl(masterUrl);
+        });
+      });
+
+      hls.loadSource(masterUrl);
+      hls.attachMedia(video);
+    });
 
     return () => {
       cancelled = true;
       video.removeEventListener("ended", onEnded);
-      hls.destroy();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      hls?.destroy();
       video.pause();
       video.removeAttribute("src");
       video.load();

@@ -4,6 +4,7 @@ import type { AlbumSummary } from "@resonia/api-client";
 import { AlbumCarousel } from "../album/AlbumCarousel";
 import { TrackResultRow } from "../search/TrackResultRow";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
@@ -42,6 +43,11 @@ export function ArtistPage() {
     600,
     navidromeCoverUrl,
   );
+
+  const trackSelection = useTrackListSelection(popularSongs.length);
+  const selectedSongIds = Array.from(trackSelection.selectedIndices)
+    .map((i) => popularSongs[i]?.id)
+    .filter((songId): songId is string => songId !== undefined);
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -132,9 +138,24 @@ export function ArtistPage() {
                 </span>
               )}
             </div>
-            <div className="flex flex-col gap-1">
-              {popularSongs.map((song) => (
-                <TrackResultRow key={song.id} song={song} songs={popularSongs} />
+            <div
+              ref={trackSelection.containerRef}
+              tabIndex={0}
+              onKeyDown={trackSelection.handleKeyDown}
+              className="flex flex-col gap-1 outline-none"
+            >
+              {popularSongs.map((song, index) => (
+                <TrackResultRow
+                  key={song.id}
+                  song={song}
+                  songs={popularSongs}
+                  index={index}
+                  isSelected={trackSelection.isSelected(index)}
+                  onSelectClick={trackSelection.handleRowClick}
+                  onEnsureSelected={trackSelection.ensureSelected}
+                  registerRow={trackSelection.registerRow}
+                  selectedSongIds={selectedSongIds}
+                />
               ))}
             </div>
           </section>

@@ -387,11 +387,13 @@ export function PlaylistPage() {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-[32px_1fr_1fr_auto] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+            <div className="grid grid-cols-[32px_1fr_1fr_72px_96px_64px] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
               <span className="text-center">#</span>
               <span>{t("playlist.columnTitle")}</span>
               <span>{t("playlist.columnAlbum")}</span>
-              <span>{t("playlist.columnDuration")}</span>
+              <span className="text-right">{t("playlist.columnFormat")}</span>
+              <span className="text-right">{t("playlist.columnBitrate")}</span>
+              <span className="text-right">{t("playlist.columnDuration")}</span>
             </div>
 
             <div
@@ -426,7 +428,7 @@ export function PlaylistPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
                       dragIndex === index ? "opacity-40" : ""
                     } ${isSelected ? "bg-neutral-800/70" : ""}`}
                   >
@@ -503,7 +505,15 @@ export function PlaylistPage() {
                       )}
                     </div>
 
-                    <span className="text-xs text-neutral-400 tabular-nums">
+                    <span className="text-right text-xs uppercase text-neutral-400">
+                      {song.suffix ?? "—"}
+                    </span>
+
+                    <span className="text-right text-xs text-neutral-400 tabular-nums">
+                      {song.bitRate ? `${song.bitRate} kbps` : "—"}
+                    </span>
+
+                    <span className="text-right text-xs text-neutral-400 tabular-nums">
                       {formatTrackDuration(song.duration)}
                     </span>
 

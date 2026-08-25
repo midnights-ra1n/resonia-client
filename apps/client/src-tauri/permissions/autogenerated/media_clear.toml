@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-media-clear"
+description = "Enables the media_clear command without any pre-configured scope."
+commands.allow = ["media_clear"]
+
+[[permission]]
+identifier = "deny-media-clear"
+description = "Denies the media_clear command without any pre-configured scope."
+commands.deny = ["media_clear"]

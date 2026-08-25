@@ -71,6 +71,8 @@ export interface SongDTO {
   playCount?: number;
   year?: number;
   copyright?: string;
+  suffix?: string;
+  bitRate?: number;
 }
 
 export interface AlbumWithSongsDTO extends AlbumSummary {

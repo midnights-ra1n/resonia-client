@@ -246,10 +246,12 @@ export function AlbumPage() {
       </div>
 
       <div className="px-8 pb-12">
-        <div className="grid grid-cols-[32px_1fr_auto] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+        <div className="grid grid-cols-[32px_1fr_72px_96px_64px] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
           <span className="text-center">#</span>
           <span>{t("album.columnTitle")}</span>
-          <span>{t("album.columnDuration")}</span>
+          <span className="text-right">{t("album.columnFormat")}</span>
+          <span className="text-right">{t("album.columnBitrate")}</span>
+          <span className="text-right">{t("album.columnDuration")}</span>
         </div>
 
         <div
@@ -272,7 +274,7 @@ export function AlbumPage() {
                   setActiveSongId(song.id);
                   rowMenu.handleContextMenu(e);
                 }}
-                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[32px_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
                   isSelected ? "bg-neutral-800/70" : ""
                 }`}
               >
@@ -312,7 +314,15 @@ export function AlbumPage() {
                   )}
                 </div>
 
-                <span className="text-xs text-neutral-400 tabular-nums">
+                <span className="text-right text-xs uppercase text-neutral-400">
+                  {song.suffix ?? "—"}
+                </span>
+
+                <span className="text-right text-xs text-neutral-400 tabular-nums">
+                  {song.bitRate ? `${song.bitRate} kbps` : "—"}
+                </span>
+
+                <span className="text-right text-xs text-neutral-400 tabular-nums">
                   {formatTrackDuration(song.duration)}
                 </span>
               </div>

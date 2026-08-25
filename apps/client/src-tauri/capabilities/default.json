@@ -16,6 +16,9 @@
       ]
     },
     "fs:allow-appcache-read-recursive",
-    "fs:allow-appcache-write-recursive"
+    "fs:allow-appcache-write-recursive",
+    "allow-media-set-metadata",
+    "allow-media-set-playback",
+    "allow-media-clear"
   ]
 }

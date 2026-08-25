@@ -5,11 +5,12 @@ import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
 import { getGaplessEngine } from "../lib/audio/engine/gaplessEngine";
 import type { EngineState } from "../lib/audio/engine/types";
 import {
-  registerMediaSessionHandlers,
-  setMediaSessionPlaybackState,
-  setMediaSessionPositionState,
-  updateMediaSessionMetadata,
-} from "../lib/audio/mediaSession";
+  clearNowPlaying,
+  initNowPlaying,
+  setNowPlayingPlaybackState,
+  setNowPlayingPositionState,
+  updateNowPlayingMetadata,
+} from "../lib/audio/nowPlaying";
 import { getQualityById } from "../lib/audio/qualityOptions";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { storage } from "../lib/storage";
@@ -289,9 +290,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         queueIndex: nextQueueIndex,
         currentTime: 0,
       });
-      updateMediaSessionMetadata(nextTrackData);
-      setMediaSessionPlaybackState("playing");
-      setMediaSessionPositionState(engine.duration, engine.currentTime, true);
+      updateNowPlayingMetadata(nextTrackData, nextTrackData.duration);
+      setNowPlayingPlaybackState("playing");
+      setNowPlayingPositionState(engine.duration, engine.currentTime, true);
       refreshUpcomingPrefetch();
       activateCurrentTrackCaching();
       scheduleGaplessNext();
@@ -401,7 +402,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   //
   // Cadence IDENTIQUE fenêtre visible ou masquée (contrairement à une version précédente
   // qui descendait à 1s en arrière-plan) : ce tick est aussi ce qui informe le Now Playing
-  // système (setMediaSessionPositionState) de la position de lecture. Un intervalle plus
+  // système (setNowPlayingPositionState) de la position de lecture. Un intervalle plus
   // long laisse davantage de marge à App Nap/macOS pour retarder/regrouper le timer d'une
   // fenêtre masquée — observé en pratique comme un compteur qui saute (0, 2, 4, 6s au lieu
   // de 0, 1, 2, 3s) dans le widget système. Demander une cadence courte et constante est
@@ -423,7 +424,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const time = engine.currentTime;
       const duration = engine.duration;
       set({ currentTime: time });
-      setMediaSessionPositionState(duration, time);
+      setNowPlayingPositionState(duration, time);
 
       if (!scrobbledNowPlaying && time > 1) {
         scrobbledNowPlaying = true;
@@ -439,13 +440,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
   scheduleTick();
 
-  registerMediaSessionHandlers({
+  initNowPlaying({
     onPlay: () => get().setPlaying(true),
     onPause: () => get().setPlaying(false),
+    onToggle: () => get().togglePlay(),
     onNext: () => get().nextTrack(),
     onPrevious: () => get().prevTrack(),
     onSeekTo: (time) => get().setCurrentTime(time),
-  });
+  }).catch((err) => console.error("[player] Échec d'initialisation du Now Playing système", err));
 
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
     const myGeneration = ++loadGeneration;
@@ -474,9 +476,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
 
     set({ currentTrack: track, queue, currentTime: offset, isPlaying: true });
-    updateMediaSessionMetadata(track);
-    setMediaSessionPlaybackState("playing");
-    setMediaSessionPositionState(engine.duration, offset, true);
+    updateNowPlayingMetadata(track, track.duration);
+    setNowPlayingPlaybackState("playing");
+    setNowPlayingPositionState(engine.duration, offset, true);
 
     // Une piste déjà décodée démarre directement en mode buffer : aucun événement natif
     // "playing" ne se déclenchera pour signaler le démarrage effectif.
@@ -528,21 +530,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (isPlaying) {
         engine.pause();
         set({ isPlaying: false });
-        setMediaSessionPlaybackState("paused");
-        setMediaSessionPositionState(engine.duration, engine.currentTime, true);
+        setNowPlayingPlaybackState("paused");
+        setNowPlayingPositionState(engine.duration, engine.currentTime, true);
       } else {
         engine.resume();
         set({ isPlaying: true });
-        setMediaSessionPlaybackState("playing");
-        setMediaSessionPositionState(engine.duration, engine.currentTime, true);
+        setNowPlayingPlaybackState("playing");
+        setNowPlayingPositionState(engine.duration, engine.currentTime, true);
       }
     },
     setPlaying: (playing) => {
       if (playing) engine.resume();
       else engine.pause();
       set({ isPlaying: playing });
-      setMediaSessionPlaybackState(playing ? "playing" : "paused");
-      setMediaSessionPositionState(engine.duration, engine.currentTime, true);
+      setNowPlayingPlaybackState(playing ? "playing" : "paused");
+      setNowPlayingPositionState(engine.duration, engine.currentTime, true);
     },
 
     engineState: "idle",
@@ -636,8 +638,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         engine.stop();
         prefetchScheduler.stop();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
-        updateMediaSessionMetadata({ title: "—", artist: "—", album: "—" });
-        setMediaSessionPlaybackState("paused");
+        clearNowPlaying();
         resetPlaybackFlags();
         return;
       }
@@ -652,8 +653,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         engine.stop();
         prefetchScheduler.stop();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
-        updateMediaSessionMetadata({ title: "—", artist: "—", album: "—" });
-        setMediaSessionPlaybackState("paused");
+        clearNowPlaying();
         resetPlaybackFlags();
         return;
       }

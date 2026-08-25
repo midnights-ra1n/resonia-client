@@ -1,6 +1,7 @@
 import { detectEdgeSilence, logicalDuration, type SilenceTrim } from "./silenceTrim";
 import type { EngineError, EngineState, EngineStateListener } from "./types";
 import { debugLog } from "../debug/audioDebugLogger";
+import { isTauri } from "../../platform";
 
 // Fondu très court, uniquement pour masquer le point de jonction entre deux sources
 // (natif→buffer, ou deux AudioBufferSourceNode consécutifs) — pas pour compenser un
@@ -91,13 +92,23 @@ export class GaplessEngine {
   private nativeAudio: HTMLAudioElement;
   private nativeGain: GainNode;
 
-  /** Sur WebKit/macOS, l'intégration Now Playing (MPNowPlayingInfoCenter/MPRemoteCommandCenter)
-   *  ne reste active que tant qu'un vrai élément <audio>/<video> est dans l'état "playing" —
-   *  `navigator.mediaSession.playbackState` fixé manuellement ne suffit pas. Or dès qu'une piste
-   *  bascule en mode buffer (voir `attachDecodedActive`), `nativeAudio` est mis en pause : plus
-   *  aucun élément média ne joue réellement, WebKit gèle alors le widget système sur "lecture" et
-   *  ignore les commandes distantes. Cet élément silencieux, indépendant du graphe audio, reste
-   *  actif exactement en même temps que la lecture logique pour maintenir cette session vivante. */
+  /** Sur WebKit/macOS (navigateur uniquement — voir `isTauri()` ci-dessous), l'intégration Now
+   *  Playing (MPNowPlayingInfoCenter/MPRemoteCommandCenter) ne reste active que tant qu'un vrai
+   *  élément <audio>/<video> est dans l'état "playing" — `navigator.mediaSession.playbackState`
+   *  fixé manuellement ne suffit pas. Or dès qu'une piste bascule en mode buffer (voir
+   *  `attachDecodedActive`), `nativeAudio` est mis en pause : plus aucun élément média ne joue
+   *  réellement, WebKit gèle alors le widget système sur "lecture" et ignore les commandes
+   *  distantes. Cet élément silencieux, indépendant du graphe audio, reste actif exactement en
+   *  même temps que la lecture logique pour maintenir cette session vivante.
+   *
+   *  Sur l'app de bureau (Tauri), le Now Playing système est piloté nativement côté Rust (voir
+   *  src-tauri/src/media_controls.rs), indépendamment de tout élément <audio> — cette astuce y
+   *  est non seulement inutile mais activement nuisible : WebKit enregistre AUTOMATIQUEMENT sa
+   *  propre entrée Now Playing (process WebContent séparé) pour tout élément <audio>/<video>
+   *  réellement en train de jouer, qu'on utilise ou non la MediaSession API. Garder cet ancrage
+   *  actif sur desktop créait donc une seconde entrée "Resonia" fantôme dans le Centre de
+   *  contrôle, non reliée à nos handlers Rust. D'où le `startSessionAnchor`/`stopSessionAnchor`
+   *  no-op sur desktop ci-dessous. */
   private sessionAnchor: HTMLAudioElement;
 
   private trackState: TrackState | null = null;
@@ -437,10 +448,12 @@ export class GaplessEngine {
   }
 
   private startSessionAnchor() {
+    if (isTauri()) return;
     this.setSessionAnchorPlaying(true);
   }
 
   private stopSessionAnchor() {
+    if (isTauri()) return;
     this.setSessionAnchorPlaying(false);
   }
 

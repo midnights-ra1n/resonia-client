@@ -21,43 +21,18 @@ function formatTime(seconds: number): string {
 }
 
 export function PlayerSectionCenter() {
-  const {
-    currentTrack,
-    isPlaying,
-    togglePlay,
-    isShuffle,
-    toggleShuffle,
-    isRepeat,
-    toggleRepeat,
-    nextTrack,
-    prevTrack,
-    currentTime,
-    setCurrentTime,
-    showTimeRemaining,
-    toggleTimeDisplay,
-  } = usePlayerStore();
-
-  const duration = currentTrack?.duration ?? 0;
-
-  const [hoverProgress, setHoverProgress] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const barRef = useRef<HTMLDivElement>(null);
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!barRef.current || !duration) return;
-    const rect = barRef.current.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setCurrentTime(pct * duration);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!barRef.current || !duration) return;
-    const rect = barRef.current.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setHoverProgress(pct * duration);
-  };
+  // Sélecteurs fins plutôt que la déstructuration du store entier : currentTime change
+  // jusqu'à 4x/s pendant la lecture (voir tickProgress dans playerStore), et un store
+  // entier abonné ici re-rendrait aussi les boutons de contrôle à chaque tick alors
+  // qu'eux seuls dépendent d'isPlaying/isShuffle/isRepeat. ProgressBar isole le reste.
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const isShuffle = usePlayerStore((s) => s.isShuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const isRepeat = usePlayerStore((s) => s.isRepeat);
+  const toggleRepeat = usePlayerStore((s) => s.toggleRepeat);
+  const nextTrack = usePlayerStore((s) => s.nextTrack);
+  const prevTrack = usePlayerStore((s) => s.prevTrack);
 
   return (
     <div className="flex flex-col items-center gap-2 w-full max-w-2xl">
@@ -114,60 +89,95 @@ export function PlayerSectionCenter() {
         </button>
       </div>
 
-      {/* Progress bar + time */}
-      <div className="flex items-center gap-2 w-full">
-        <span className="text-xs text-neutral-400 w-10 text-right tabular-nums select-none">
-          {currentTrack ? formatTime(currentTime) : "--:--"}
-        </span>
+      <ProgressBar />
+    </div>
+  );
+}
 
-        <div
-          ref={barRef}
-          className="relative flex-1 h-1.5 bg-neutral-700 rounded-full cursor-pointer group"
-          onClick={handleClickBar}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverProgress(null)}
-          onMouseDown={() => setIsDragging(true)}
-          onMouseUp={() => setIsDragging(false)}
-        >
-          {/* Hover fill — only when hover is behind current progress */}
-          {hoverProgress !== null && hoverProgress < currentTime && (
-            <div
-              className="absolute top-0 left-0 h-full bg-neutral-500 rounded-full"
-              style={{
-                width: `${(hoverProgress / (duration || 1)) * 100}%`,
-              }}
-            />
-          )}
+// Seul ce composant re-rend au rythme de tickProgress (currentTime) : isolé du reste des
+// contrôles pour que le tick de lecture n'entraîne pas un re-render des boutons ci-dessus.
+function ProgressBar() {
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
+  const showTimeRemaining = usePlayerStore((s) => s.showTimeRemaining);
+  const toggleTimeDisplay = usePlayerStore((s) => s.toggleTimeDisplay);
 
-          {/* Progress fill */}
+  const duration = currentTrack?.duration ?? 0;
+
+  const [hoverProgress, setHoverProgress] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!barRef.current || !duration) return;
+    const rect = barRef.current.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setCurrentTime(pct * duration);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!barRef.current || !duration) return;
+    const rect = barRef.current.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setHoverProgress(pct * duration);
+  };
+
+  return (
+    <div className="flex items-center gap-2 w-full">
+      <span className="text-xs text-neutral-400 w-10 text-right tabular-nums select-none">
+        {currentTrack ? formatTime(currentTime) : "--:--"}
+      </span>
+
+      <div
+        ref={barRef}
+        className="relative flex-1 h-1.5 bg-neutral-700 rounded-full cursor-pointer group"
+        onClick={handleClickBar}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverProgress(null)}
+        onMouseDown={() => setIsDragging(true)}
+        onMouseUp={() => setIsDragging(false)}
+      >
+        {/* Hover fill — only when hover is behind current progress */}
+        {hoverProgress !== null && hoverProgress < currentTime && (
           <div
-            className="absolute top-0 left-0 h-full bg-white rounded-full group-hover:bg-emerald-500 transition-colors"
-            style={{ width: `${progress}%` }}
-          />
-
-          {/* Thumb */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-0 left-0 h-full bg-neutral-500 rounded-full"
             style={{
-              left: `calc(${isDragging && hoverProgress !== null ? (hoverProgress / (duration || 1)) * 100 : progress}% - 6px)`,
+              width: `${(hoverProgress / (duration || 1)) * 100}%`,
             }}
           />
-        </div>
+        )}
 
-        <span
-          className="text-xs text-neutral-400 w-10 tabular-nums select-none cursor-pointer hover:text-white"
-          onClick={toggleTimeDisplay}
-          title={
-            showTimeRemaining ? "Click for total time" : "Click for remaining time"
-          }
-        >
-          {!currentTrack
-            ? "--:--"
-            : showTimeRemaining
-              ? `-${formatTime(Math.max(duration - currentTime, 0))}`
-              : formatTime(duration)}
-        </span>
+        {/* Progress fill */}
+        <div
+          className="absolute top-0 left-0 h-full bg-white rounded-full group-hover:bg-emerald-500 transition-colors"
+          style={{ width: `${progress}%` }}
+        />
+
+        {/* Thumb */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow"
+          style={{
+            left: `calc(${isDragging && hoverProgress !== null ? (hoverProgress / (duration || 1)) * 100 : progress}% - 6px)`,
+          }}
+        />
       </div>
+
+      <span
+        className="text-xs text-neutral-400 w-10 tabular-nums select-none cursor-pointer hover:text-white"
+        onClick={toggleTimeDisplay}
+        title={
+          showTimeRemaining ? "Click for total time" : "Click for remaining time"
+        }
+      >
+        {!currentTrack
+          ? "--:--"
+          : showTimeRemaining
+            ? `-${formatTime(Math.max(duration - currentTime, 0))}`
+            : formatTime(duration)}
+      </span>
     </div>
   );
 }

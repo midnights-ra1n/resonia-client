@@ -146,8 +146,12 @@ export class GaplessEngine {
 
     this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
     this.sessionAnchor.loop = true;
+    // `muted = true` suffit à garantir le silence (et reste exempté des restrictions
+    // autoplay du navigateur). `volume = 0` en plus est redondant — et suspect : WebKit
+    // semble parfois exclure un élément à volume 0 de son heuristique "est-ce vraiment en
+    // train de jouer" pour MPNowPlayingInfoCenter, ce qui expliquerait un widget Now
+    // Playing système bloqué sur "en pause" malgré une lecture bien réelle. Retiré.
     this.sessionAnchor.muted = true;
-    this.sessionAnchor.volume = 0;
     this.sessionAnchor.preload = "auto";
 
     this.installAutoplayUnlock();
@@ -391,6 +395,7 @@ export class GaplessEngine {
   }
 
   private setState(state: EngineState, error: EngineError | null = null) {
+    debugLog("engine:setState", { from: this._state, to: state });
     this._state = state;
     this._error = error;
     if (state === "playing") this.startSessionAnchor();
@@ -410,16 +415,23 @@ export class GaplessEngine {
 
   private setSessionAnchorPlaying(playing: boolean) {
     this.anchorDesiredPlaying = playing;
+    debugLog("sessionAnchor:request", { playing, engineState: this._state });
     this.anchorQueue = this.anchorQueue.then(async () => {
-      if (this.anchorDesiredPlaying !== playing) return; // supplanté entre-temps
+      if (this.anchorDesiredPlaying !== playing) {
+        debugLog("sessionAnchor:superseded", { requested: playing, current: this.anchorDesiredPlaying });
+        return; // supplanté entre-temps
+      }
       if (playing) {
         try {
           await this.sessionAnchor.play();
-        } catch {
+          debugLog("sessionAnchor:played", { paused: this.sessionAnchor.paused });
+        } catch (err) {
+          debugLog("sessionAnchor:play-rejected", { error: String(err) });
           /* noop — un rejet ici n'affecte pas la lecture réelle, seule l'intégration système en pâtit */
         }
       } else {
         this.sessionAnchor.pause();
+        debugLog("sessionAnchor:paused", { paused: this.sessionAnchor.paused, nativeAudioPaused: this.nativeAudio.paused });
       }
     });
   }
@@ -634,6 +646,12 @@ export class GaplessEngine {
       this.trackState = { mode: "buffer", buffer: this.trackState.buffer, trim: this.trackState.trim, isPaused: true, pauseOffset: offset, playback: null };
     }
     this.setState("paused");
+    // Un AudioContext "running" continue de tourner son graphe de rendu (thread audio actif,
+    // callbacks réguliers) même sans aucune source active — coût CPU permanent et inutile en
+    // pause. `resume()`/`loadAndPlay()` relancent déjà le contexte au besoin (voir
+    // `resumeContextWithRetry`), donc rien ne dépend de le laisser "running" ici.
+    // `decodeAudioData` (préchargement pendant la pause) n'a besoin d'aucun contexte actif.
+    this.context.suspend().catch(() => {});
   }
 
   resume() {
@@ -684,6 +702,9 @@ export class GaplessEngine {
     this.teardownCurrent();
     this.trackState = null;
     this.setState("idle");
+    // Voir le commentaire équivalent dans pause() : aucune raison de laisser le graphe de
+    // rendu tourner une fois la file vidée.
+    this.context.suspend().catch(() => {});
   }
 
   get currentTime(): number {

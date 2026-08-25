@@ -103,6 +103,11 @@ export class FakeAudioContext {
     return Promise.resolve();
   }
 
+  suspend(): Promise<void> {
+    this.state = "suspended";
+    return Promise.resolve();
+  }
+
   decodeAudioData(): Promise<AudioBuffer> {
     return Promise.resolve(makeFakeAudioBuffer(1, 44100, 2));
   }

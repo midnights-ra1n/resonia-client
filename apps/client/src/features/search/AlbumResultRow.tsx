@@ -71,7 +71,7 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" />
+          <img src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}

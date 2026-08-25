@@ -393,12 +393,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   // l'horloge audio. Le chemin de succès est géré entièrement par commitSwap ci-dessus.
   engine.onEnded(() => get().nextTrack());
 
+  // Anciennement requestAnimationFrame (60 ticks/s, y compris piste en pause ou fenêtre
+  // en arrière-plan) : chaque tick faisait un set({ currentTime }) qui re-render tout
+  // composant abonné au store entier, et tournait même sans rien à afficher. La barre de
+  // progression n'a besoin d'aucune précision à l'œil au-delà de ~250ms. Aucun ticker
+  // tant que rien ne joue (gate sur isPlaying ci-dessous).
+  //
+  // Cadence IDENTIQUE fenêtre visible ou masquée (contrairement à une version précédente
+  // qui descendait à 1s en arrière-plan) : ce tick est aussi ce qui informe le Now Playing
+  // système (setMediaSessionPositionState) de la position de lecture. Un intervalle plus
+  // long laisse davantage de marge à App Nap/macOS pour retarder/regrouper le timer d'une
+  // fenêtre masquée — observé en pratique comme un compteur qui saute (0, 2, 4, 6s au lieu
+  // de 0, 1, 2, 3s) dans le widget système. Demander une cadence courte et constante est
+  // servi plus fidèlement par l'OS. Le coût gardé (React/Zustand) est de toute façon
+  // négligeable : le tick ne touche qu'un petit composant isolé (ProgressBar), invisible
+  // qui plus est quand la fenêtre est masquée.
+  const TICK_INTERVAL_MS = 250;
+
+  function scheduleTick() {
+    window.setTimeout(tickProgress, TICK_INTERVAL_MS);
+  }
+
   function tickProgress() {
-    const track = get().currentTrack;
+    const { currentTrack: track, isPlaying } = get();
     // Un seek est débounced (voir setCurrentTime) : tant qu'il n'est pas encore parti sur
     // le moteur, ne pas resynchroniser currentTime depuis engine.currentTime (position
     // pré-seek) — ça écraserait la position optimiste affichée au clic.
-    if (track && pendingSeekTime === null) {
+    if (track && isPlaying && pendingSeekTime === null) {
       const time = engine.currentTime;
       const duration = engine.duration;
       set({ currentTime: time });
@@ -414,9 +435,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         sendScrobble(track, true);
       }
     }
-    requestAnimationFrame(tickProgress);
+    scheduleTick();
   }
-  requestAnimationFrame(tickProgress);
+  scheduleTick();
 
   registerMediaSessionHandlers({
     onPlay: () => get().setPlaying(true),

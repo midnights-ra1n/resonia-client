@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { AlbumSummary } from "@resonia/api-client";
 import { AlbumCard } from "../home/AlbumCard";
+import { useScrollingClass } from "../../hooks/useScrollingClass";
 
 interface AlbumCarouselProps {
   title: string;
@@ -10,6 +11,7 @@ interface AlbumCarouselProps {
 
 export function AlbumCarousel({ title, albums }: AlbumCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  useScrollingClass(scrollRef);
 
   function scrollBy(amount: number) {
     scrollRef.current?.scrollBy({ left: amount, behavior: "smooth" });

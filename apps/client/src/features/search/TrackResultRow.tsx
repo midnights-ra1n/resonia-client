@@ -21,9 +21,18 @@ function formatDuration(seconds: number): string {
 interface TrackResultRowProps {
   song: SongDTO;
   songs: SongDTO[];
+  /** Position dans la liste affichée — nécessaire à la sélection multiple (clic simple)
+   *  et au double-clic pour lancer la lecture (voir SearchPage, même schéma que
+   *  PlaylistPage/AlbumPage : clic = sélection, double-clic = lecture). */
+  index: number;
+  isSelected: boolean;
+  onSelectClick: (e: React.MouseEvent, index: number) => void;
+  onEnsureSelected: (index: number) => void;
+  registerRow: (index: number, el: HTMLDivElement | null) => void;
+  selectedSongIds: string[];
 }
 
-export function TrackResultRow({ song, songs }: TrackResultRowProps) {
+export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, onEnsureSelected, registerRow, selectedSongIds }: TrackResultRowProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const servers = useServersStore((s) => s.servers);
@@ -62,18 +71,23 @@ export function TrackResultRow({ song, songs }: TrackResultRowProps) {
 
   return (
     <div
+      ref={(el) => registerRow(index, el)}
       role="button"
       tabIndex={0}
-      onClick={handlePlay}
+      onClick={(e) => onSelectClick(e, index)}
+      onDoubleClick={handlePlay}
       onKeyDown={(e) => e.key === "Enter" && handlePlay()}
-      onContextMenu={menu.handleContextMenu}
-      className={`group flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition hover:bg-neutral-800/80 ${
-        isCurrent ? "bg-neutral-800/60" : ""
+      onContextMenu={(e) => {
+        onEnsureSelected(index);
+        menu.handleContextMenu(e);
+      }}
+      className={`track-row-cv group flex w-full cursor-pointer select-none items-center gap-3 rounded-md px-3 py-2 text-left transition hover:bg-neutral-800/80 ${
+        isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-neutral-800/60" : ""
       }`}
     >
       <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" />
+          <img src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}
@@ -111,6 +125,7 @@ export function TrackResultRow({ song, songs }: TrackResultRowProps) {
             navigate,
             addToQueue,
             onOpenInfo: () => setInfoOpen(true),
+            selectedTrackIds: selectedSongIds,
           })}
         />
       )}

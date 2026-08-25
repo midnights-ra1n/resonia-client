@@ -3,18 +3,19 @@ import { ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
 import { usePlayerStore } from "../../stores/playerStore";
 
 export function PlayerSectionRight() {
-  const {
-    volume,
-    isMuted,
-    setVolume,
-    toggleMute,
-    showQueue,
-    toggleQueue,
-    showLyrics,
-    toggleLyrics,
-    showConnect,
-    toggleConnect,
-  } = usePlayerStore();
+  // Sélecteurs fins : ce panneau n'a rien à voir avec currentTime mais un `usePlayerStore()`
+  // sans sélecteur s'abonne au store entier et re-rendrait ces contrôles à chaque tick de
+  // lecture (voir tickProgress dans playerStore).
+  const volume = usePlayerStore((s) => s.volume);
+  const isMuted = usePlayerStore((s) => s.isMuted);
+  const setVolume = usePlayerStore((s) => s.setVolume);
+  const toggleMute = usePlayerStore((s) => s.toggleMute);
+  const showQueue = usePlayerStore((s) => s.showQueue);
+  const toggleQueue = usePlayerStore((s) => s.toggleQueue);
+  const showLyrics = usePlayerStore((s) => s.showLyrics);
+  const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
+  const showConnect = usePlayerStore((s) => s.showConnect);
+  const toggleConnect = usePlayerStore((s) => s.toggleConnect);
 
   const [isDragging, setIsDragging] = useState(false);
 

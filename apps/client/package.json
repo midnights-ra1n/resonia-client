@@ -15,7 +15,6 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@chakra-ui/react": "^3.36.1",
     "@resonia/api-client": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.9.0",

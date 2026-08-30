@@ -22,6 +22,14 @@ const VOLUME_STORAGE_KEY = "resonia:settings:volume";
 const TIME_DISPLAY_STORAGE_KEY = "resonia:settings:showTimeRemaining";
 const SHUFFLE_STORAGE_KEY = "resonia:settings:shuffle";
 const REPEAT_STORAGE_KEY = "resonia:settings:repeat";
+const PITCH_STORAGE_KEY = "resonia:settings:pitch";
+const MASTER_TEMPO_STORAGE_KEY = "resonia:settings:masterTempo";
+
+/** Bornes du pitch fader, en pourcentage — plage type d'une platine DJ (CDJ/Serato : ±8%
+ *  par défaut, jusqu'à ±16% en mode étendu). Vitesse effective envoyée au moteur : 1 +
+ *  pitch/100. */
+const PITCH_MIN_PERCENT = -16;
+const PITCH_MAX_PERCENT = 16;
 
 export interface Track {
   id: string;
@@ -118,6 +126,24 @@ export interface PlayerState {
   isMuted: boolean;
   setVolume: (volume: number) => void;
   toggleMute: () => void;
+
+  /** Pitch fader façon platine DJ, en pourcentage (voir PITCH_MIN_PERCENT/MAX_PERCENT) :
+   *  couple vitesse et hauteur — le moteur n'offre pas de time-stretching indépendant
+   *  (Web Audio n'a pas de pitch-shifting natif, voir GaplessEngine.setPlaybackRate). */
+  pitch: number;
+  setPitch: (percent: number) => void;
+  resetPitch: () => void;
+  showPitchMenu: boolean;
+  togglePitchMenu: () => void;
+
+  /** Interrupteur "Master Tempo" : demande au moteur de préserver la hauteur pendant que la
+   *  vitesse change (voir GaplessEngine.setPreservePitch), via l'algorithme natif du
+   *  navigateur — réel, mais seulement pour la phase de streaming natif en tout début de
+   *  piste. Une fois le moteur basculé en mode buffer gapless (l'essentiel de la lecture),
+   *  aucune préservation n'existe côté Web Audio : la hauteur y redérive avec la vitesse.
+   *  Limitation connue et acceptée, pas un bug à corriger. */
+  masterTempo: boolean;
+  toggleMasterTempo: () => void;
 
   showQueue: boolean;
   toggleQueue: () => void;
@@ -290,9 +316,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         queueIndex: nextQueueIndex,
         currentTime: 0,
       });
-      updateNowPlayingMetadata(nextTrackData, nextTrackData.duration);
+      updateNowPlayingMetadata(nextTrackData);
       setNowPlayingPlaybackState("playing");
-      setNowPlayingPositionState(engine.duration, engine.currentTime, true);
+      setNowPlayingPositionState(engine.duration, engine.currentTime, true, engine.playbackRate);
       refreshUpcomingPrefetch();
       activateCurrentTrackCaching();
       scheduleGaplessNext();
@@ -353,6 +379,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   storage.get<boolean>(REPEAT_STORAGE_KEY).then((stored) => {
     if (stored === null) return;
     set({ isRepeat: stored });
+  });
+  storage.get<number>(PITCH_STORAGE_KEY).then((stored) => {
+    if (stored === null || !isFinite(stored) || stored < PITCH_MIN_PERCENT || stored > PITCH_MAX_PERCENT) return;
+    engine.setPlaybackRate(1 + stored / 100);
+    set({ pitch: stored });
+  });
+  storage.get<boolean>(MASTER_TEMPO_STORAGE_KEY).then((stored) => {
+    if (stored === null) return;
+    engine.setPreservePitch(stored);
+    set({ masterTempo: stored });
   });
 
   engine.onNativePlaying = onPlaybackStarted;
@@ -424,7 +460,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const time = engine.currentTime;
       const duration = engine.duration;
       set({ currentTime: time });
-      setNowPlayingPositionState(duration, time);
+      setNowPlayingPositionState(duration, time, false, engine.playbackRate);
 
       if (!scrobbledNowPlaying && time > 1) {
         scrobbledNowPlaying = true;
@@ -443,10 +479,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   initNowPlaying({
     onPlay: () => get().setPlaying(true),
     onPause: () => get().setPlaying(false),
-    onToggle: () => get().togglePlay(),
     onNext: () => get().nextTrack(),
     onPrevious: () => get().prevTrack(),
     onSeekTo: (time) => get().setCurrentTime(time),
+    // Simples drapeaux de présence pour mediaSession.ts (voir son commentaire sur
+    // `onSeekForward`/`onSeekBackward`) : le décalage réel est calculé en interne et repasse
+    // par `onSeekTo` ci-dessus, ces callbacks ne sont jamais appelées directement.
+    onSeekForward: () => {},
+    onSeekBackward: () => {},
   }).catch((err) => console.error("[player] Échec d'initialisation du Now Playing système", err));
 
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
@@ -476,9 +516,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
 
     set({ currentTrack: track, queue, currentTime: offset, isPlaying: true });
-    updateNowPlayingMetadata(track, track.duration);
+    updateNowPlayingMetadata(track);
     setNowPlayingPlaybackState("playing");
-    setNowPlayingPositionState(engine.duration, offset, true);
+    setNowPlayingPositionState(engine.duration, offset, true, engine.playbackRate);
 
     // Une piste déjà décodée démarre directement en mode buffer : aucun événement natif
     // "playing" ne se déclenchera pour signaler le démarrage effectif.
@@ -531,12 +571,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         engine.pause();
         set({ isPlaying: false });
         setNowPlayingPlaybackState("paused");
-        setNowPlayingPositionState(engine.duration, engine.currentTime, true);
+        setNowPlayingPositionState(engine.duration, engine.currentTime, true, engine.playbackRate);
       } else {
         engine.resume();
         set({ isPlaying: true });
         setNowPlayingPlaybackState("playing");
-        setNowPlayingPositionState(engine.duration, engine.currentTime, true);
+        setNowPlayingPositionState(engine.duration, engine.currentTime, true, engine.playbackRate);
       }
     },
     setPlaying: (playing) => {
@@ -544,7 +584,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       else engine.pause();
       set({ isPlaying: playing });
       setNowPlayingPlaybackState(playing ? "playing" : "paused");
-      setNowPlayingPositionState(engine.duration, engine.currentTime, true);
+      setNowPlayingPositionState(engine.duration, engine.currentTime, true, engine.playbackRate);
     },
 
     engineState: "idle",
@@ -676,6 +716,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         const nextMuted = !state.isMuted;
         engine.setVolume(nextMuted ? 0 : state.volume);
         return { isMuted: nextMuted };
+      }),
+
+    pitch: 0,
+    setPitch: (percent) => {
+      const clamped = Math.min(PITCH_MAX_PERCENT, Math.max(PITCH_MIN_PERCENT, percent));
+      engine.setPlaybackRate(1 + clamped / 100);
+      set({ pitch: clamped });
+      storage.set(PITCH_STORAGE_KEY, clamped);
+    },
+    resetPitch: () => {
+      engine.setPlaybackRate(1);
+      set({ pitch: 0 });
+      storage.set(PITCH_STORAGE_KEY, 0);
+    },
+    showPitchMenu: false,
+    togglePitchMenu: () => set((state) => ({ showPitchMenu: !state.showPitchMenu })),
+
+    masterTempo: false,
+    toggleMasterTempo: () =>
+      set((state) => {
+        const masterTempo = !state.masterTempo;
+        engine.setPreservePitch(masterTempo);
+        storage.set(MASTER_TEMPO_STORAGE_KEY, masterTempo);
+        return { masterTempo };
       }),
 
     showQueue: false,

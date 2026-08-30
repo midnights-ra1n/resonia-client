@@ -1,12 +1,20 @@
 import { detectEdgeSilence, logicalDuration, type SilenceTrim } from "./silenceTrim";
 import type { EngineError, EngineState, EngineStateListener } from "./types";
 import { debugLog } from "../debug/audioDebugLogger";
-import { isTauri } from "../../platform";
 
 // Fondu très court, uniquement pour masquer le point de jonction entre deux sources
 // (natif→buffer, ou deux AudioBufferSourceNode consécutifs) — pas pour compenser un
-// écart de timing : la planification elle-même est sample-accurate.
-const SWAP_FADE_SECONDS = 0.008;
+// écart de timing : la planification elle-même est sample-accurate. Porté de 8ms à 25ms
+// car WebKit (donc l'app de bureau compilée) peut démarrer un AudioBufferSourceNode
+// planifié avec un jitter de quelques millisecondes par rapport à l'instant demandé —
+// avec une fenêtre trop courte, ce jitter suffisait à laisser passer un blanc audible
+// entre la fin du fondu sortant et le début réel du fondu entrant.
+const SWAP_FADE_SECONDS = 0.025;
+
+// Avance de démarrage "silencieuse" de la piste suivante avant le début réel du fondu (voir
+// `trySchedulePending`) : absorbe le jitter de démarrage d'un AudioBufferSourceNode planifié
+// à l'avance sous WebKit, indépendamment de la largeur du fondu lui-même.
+const PRESTART_MARGIN_SECONDS = 0.15;
 
 // Fondu d'entrée appliqué à tout démarrage "à froid" d'un AudioBufferSourceNode
 // (loadAndPlay depuis le cache décodé, resume(), seek()) — distinct de SWAP_FADE_SECONDS
@@ -92,28 +100,37 @@ export class GaplessEngine {
   private nativeAudio: HTMLAudioElement;
   private nativeGain: GainNode;
 
-  /** Sur WebKit/macOS (navigateur uniquement — voir `isTauri()` ci-dessous), l'intégration Now
+  /** Sur WebKit (Safari et la webview macOS de l'app de bureau — WKWebView), l'intégration Now
    *  Playing (MPNowPlayingInfoCenter/MPRemoteCommandCenter) ne reste active que tant qu'un vrai
    *  élément <audio>/<video> est dans l'état "playing" — `navigator.mediaSession.playbackState`
    *  fixé manuellement ne suffit pas. Or dès qu'une piste bascule en mode buffer (voir
    *  `attachDecodedActive`), `nativeAudio` est mis en pause : plus aucun élément média ne joue
    *  réellement, WebKit gèle alors le widget système sur "lecture" et ignore les commandes
    *  distantes. Cet élément silencieux, indépendant du graphe audio, reste actif exactement en
-   *  même temps que la lecture logique pour maintenir cette session vivante.
-   *
-   *  Sur l'app de bureau (Tauri), le Now Playing système est piloté nativement côté Rust (voir
-   *  src-tauri/src/media_controls.rs), indépendamment de tout élément <audio> — cette astuce y
-   *  est non seulement inutile mais activement nuisible : WebKit enregistre AUTOMATIQUEMENT sa
-   *  propre entrée Now Playing (process WebContent séparé) pour tout élément <audio>/<video>
-   *  réellement en train de jouer, qu'on utilise ou non la MediaSession API. Garder cet ancrage
-   *  actif sur desktop créait donc une seconde entrée "Resonia" fantôme dans le Centre de
-   *  contrôle, non reliée à nos handlers Rust. D'où le `startSessionAnchor`/`stopSessionAnchor`
-   *  no-op sur desktop ci-dessous. */
+   *  même temps que la lecture logique pour maintenir cette session vivante — nécessaire aussi
+   *  bien en navigateur que sur desktop, puisque les deux s'appuient désormais uniquement sur
+   *  `navigator.mediaSession` (voir `nowPlaying.ts`). */
   private sessionAnchor: HTMLAudioElement;
 
   private trackState: TrackState | null = null;
   private pendingNext: PendingNext | null = null;
   private onEndedCallback: (() => void) | null = null;
+
+  /** Vitesse de lecture façon "pitch fader" de platine DJ : couple systématiquement vitesse
+   *  et hauteur (aucun pitch-shifting indépendant — Web Audio n'offre pas de time-stretching
+   *  natif). S'applique à `nativeAudio.playbackRate` en streaming, et à
+   *  `AudioBufferSourceNode.playbackRate` une fois en mode buffer — voir `setPlaybackRate`
+   *  pour le ré-ancrage de position et la replanification que ce second cas exige. */
+  private _playbackRate = 1;
+
+  /** "Master Tempo" : demande au navigateur de préserver la hauteur pendant que la vitesse
+   *  change, via l'algorithme natif de l'élément <audio> (`preservesPitch`) — réel, mais
+   *  seulement pour la brève phase de streaming natif en début de piste (voir
+   *  `applyRateToNativeAudio`). Web Audio n'a pas d'équivalent pour
+   *  AudioBufferSourceNode (mode buffer, l'essentiel de la lecture une fois la piste
+   *  décodée) : la hauteur y redérive avec la vitesse, sans base technique pour l'en
+   *  empêcher — limitation connue et acceptée, pas un bug. */
+  private _preservePitch = false;
 
   // Contexte du dernier appel loadAndPlay en streaming natif, uniquement pour permettre au
   // handler "error" de retenter un démarrage progressif via MediaSource (voir
@@ -154,6 +171,7 @@ export class GaplessEngine {
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
     this.nativeGain.connect(this.masterGain);
+    this.applyRateToNativeAudio();
 
     this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
     this.sessionAnchor.loop = true;
@@ -310,12 +328,18 @@ export class GaplessEngine {
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
     this.nativeGain.connect(this.masterGain);
+    this.applyRateToNativeAudio();
 
     this.trackState = null;
 
     if (mode === "native" && nativeUrl) {
       this.nativeAudio.src = nativeUrl;
       this.nativeAudio.currentTime = position;
+      // Certains moteurs (WebKit en tête) réinitialisent playbackRate/preservesPitch au
+      // moment où `src` est réassigné (l'algorithme de "chargement de ressource média" du
+      // spec HTML remet certains attributs à leur valeur par défaut) — on les réapplique
+      // donc systématiquement APRÈS toute assignation de `src`, jamais seulement avant.
+      this.applyRateToNativeAudio();
       this.trackState = {
         mode: "native",
         contextStartTime: this.context.currentTime - position,
@@ -448,12 +472,10 @@ export class GaplessEngine {
   }
 
   private startSessionAnchor() {
-    if (isTauri()) return;
     this.setSessionAnchorPlaying(true);
   }
 
   private stopSessionAnchor() {
-    if (isTauri()) return;
     this.setSessionAnchorPlaying(false);
   }
 
@@ -480,6 +502,54 @@ export class GaplessEngine {
     // de l'élément est ignoré une fois routé vers Web Audio, donc ceci n'a aucun effet double.
     this.nativeAudio.volume = clamped;
     this.nativeAudio.muted = clamped <= 0;
+  }
+
+  get playbackRate(): number {
+    return this._playbackRate;
+  }
+
+  private applyRateToNativeAudio() {
+    this.nativeAudio.playbackRate = this._playbackRate;
+    // `false` par défaut (pitch fader "platine DJ" : vitesse et hauteur couplées) ; `true`
+    // quand Master Tempo est actif, voir le commentaire sur `_preservePitch`.
+    this.nativeAudio.preservesPitch = this._preservePitch;
+    (this.nativeAudio as unknown as { webkitPreservesPitch?: boolean }).webkitPreservesPitch = this._preservePitch;
+    (this.nativeAudio as unknown as { mozPreservesPitch?: boolean }).mozPreservesPitch = this._preservePitch;
+  }
+
+  /** Voir le commentaire sur `_preservePitch`. N'affecte que la phase de streaming natif —
+   *  n'a aucun effet une fois la piste basculée en mode buffer (attachDecodedActive). */
+  setPreservePitch(preserve: boolean) {
+    if (preserve === this._preservePitch) return;
+    this._preservePitch = preserve;
+    this.applyRateToNativeAudio();
+  }
+
+  /** Change vitesse ET hauteur ensemble (façon pitch fader de platine DJ) — voir le
+   *  commentaire sur `_playbackRate`. En mode buffer, la source active est ré-ancrée
+   *  (nouveau couple temps-contexte/position-piste à la vitesse précédente) avant que sa
+   *  propre vitesse ne change, sans quoi `currentTime` deviendrait faux instantanément ;
+   *  la piste suivante déjà planifiée (`trySchedulePending`) l'a été sur la base de
+   *  l'ancienne vitesse, elle est donc annulée puis replanifiée. */
+  setPlaybackRate(rate: number) {
+    const clamped = Math.min(2, Math.max(0.5, rate));
+    if (clamped === this._playbackRate) return;
+
+    if (this.trackState?.mode === "buffer" && this.trackState.playback && !this.trackState.isPaused) {
+      const position = this.currentTime;
+      const now = this.context.currentTime;
+      this.trackState.playback.scheduledStartContextTime = now;
+      this.trackState.playback.startOffsetInTrim = position;
+      this.trackState.playback.source.playbackRate.setValueAtTime(clamped, now);
+    }
+
+    this._playbackRate = clamped;
+    this.applyRateToNativeAudio();
+
+    if (this.trackState?.mode === "buffer" && !this.trackState.isPaused) {
+      if (this.pendingNext?.scheduled) this.unschedulePending();
+      this.trySchedulePending();
+    }
   }
 
   // ---- décodage ----
@@ -531,6 +601,11 @@ export class GaplessEngine {
 
     this.nativeAudio.src = url;
     this.nativeAudio.currentTime = offset;
+    // Voir le commentaire équivalent dans rebuildAudioGraph : à réappliquer après CHAQUE
+    // changement de `src`, pas seulement à la création de l'élément — sans quoi un
+    // changement rapide de piste peut silencieusement retomber sur une vitesse/hauteur
+    // par défaut malgré un pitch fader ou un Master Tempo actifs.
+    this.applyRateToNativeAudio();
     this.nativeAudio.play().catch((err) => {
       this.context
         .resume()
@@ -607,6 +682,7 @@ export class GaplessEngine {
 
     this.nativeAudio.src = objectUrl;
     this.nativeAudio.currentTime = 0;
+    this.applyRateToNativeAudio();
     this.nativeAudio.play().catch((err) => {
       this.context
         .resume()
@@ -727,7 +803,7 @@ export class GaplessEngine {
     }
     if (this.trackState.isPaused || !this.trackState.playback) return this.trackState.pauseOffset;
     const { scheduledStartContextTime, startOffsetInTrim } = this.trackState.playback;
-    return startOffsetInTrim + (this.context.currentTime - scheduledStartContextTime);
+    return startOffsetInTrim + (this.context.currentTime - scheduledStartContextTime) * this._playbackRate;
   }
 
   get duration(): number {
@@ -759,13 +835,14 @@ export class GaplessEngine {
 
     const source = this.context.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.setValueAtTime(this._playbackRate, now);
     source.connect(gain);
     debugLog("buffer:start", { offset, trimStartSec: trim.start, bufferPositionSec: trim.start + offset });
     source.start(now, trim.start + offset);
 
     const remaining = Math.max(logicalDuration(buffer, trim) - offset, 0);
     try {
-      source.stop(now + remaining);
+      source.stop(now + remaining / this._playbackRate);
     } catch {
       /* noop */
     }
@@ -811,34 +888,74 @@ export class GaplessEngine {
    *  AudioBufferSourceNode démarré/arrêté au même instant s'enchaînent déjà sample-accurate ;
    *  WebKit (moteur de l'app desktop compilée) est en pratique moins fiable sur cet
    *  alignement pile-à-pile et peut laisser un micro-gap au raccord — un vrai chevauchement
-   *  audible absorbe cette imprécision des deux côtés. `endTime` reste la référence
-   *  logique (position 0 de la piste suivante, bascule d'état) : seul le début physique de
-   *  `nextSource` est avancé de SWAP_FADE_SECONDS pour ce chevauchement. */
+   *  audible absorbe cette imprécision des deux côtés. `endTime` reste la référence logique
+   *  (position 0 de la piste suivante, bascule d'état) : le début physique de `nextSource`
+   *  est avancé de PRESTART_MARGIN_SECONDS + SWAP_FADE_SECONDS pour ce chevauchement — voir
+   *  le commentaire sur `prerollMargin` ci-dessous pour la raison des deux marges distinctes. */
   private trySchedulePending() {
     if (!this.pendingNext || this.pendingNext.scheduled) return;
     if (!this.trackState || this.trackState.mode !== "buffer" || this.trackState.isPaused || !this.trackState.playback) return;
 
     const { buffer: curBuffer, trim: curTrim, playback } = this.trackState;
     const { source: curSource, gain: curGain, scheduledStartContextTime, startOffsetInTrim } = playback;
-    const endTime = scheduledStartContextTime - startOffsetInTrim + logicalDuration(curBuffer, curTrim);
-    const crossfadeStart = endTime - SWAP_FADE_SECONDS;
+    const rate = this._playbackRate;
+    // Temps-piste et temps-contexte divergent dès que `rate !== 1` : la source consomme
+    // `logicalDuration - startOffsetInTrim` secondes de piste en
+    // `(logicalDuration - startOffsetInTrim) / rate` secondes réelles.
+    const naturalEndTime = scheduledStartContextTime + (logicalDuration(curBuffer, curTrim) - startOffsetInTrim) / rate;
+    const now = this.context.currentTime;
+    // Si la piste suivante n'a fini d'être préparée (téléchargement + décodage) qu'après le
+    // début de fenêtre de fondu prévue — voire après la fin naturelle de la piste courante —
+    // planifier le fondu sur `naturalEndTime` produirait des instants d'automation déjà dans
+    // le passé : Web Audio les applique alors instantanément, ce qui écrase le fondu en une
+    // coupure sèche (le défaut même qu'on cherche à masquer). On ancre donc systématiquement
+    // la fenêtre de fondu à un instant futur garanti, quitte à raccourcir le chevauchement.
+    const endTime = Math.max(naturalEndTime, now + SWAP_FADE_SECONDS);
+    const crossfadeStart = Math.max(endTime - SWAP_FADE_SECONDS, now);
 
-    curGain.gain.setValueAtTime(1, crossfadeStart);
+    if (endTime > naturalEndTime) {
+      // `startBufferAt` avait déjà programmé l'arrêt de `curSource` à `naturalEndTime` (fin
+      // exacte, silence de bord compris) : repousser cet arrêt pour qu'il ne coupe pas le son
+      // avant la fin du fondu qu'on vient d'étendre au-delà de cette échéance d'origine.
+      try {
+        curSource.stop(endTime);
+      } catch {
+        /* noop */
+      }
+    }
+
+    curGain.gain.setValueAtTime(curGain.gain.value, crossfadeStart);
     curGain.gain.linearRampToValueAtTime(0, endTime);
 
     const { buffer: nextBuffer, trim: nextTrim } = this.pendingNext;
 
+    // `start(t)` planifié loin à l'avance reste sample-accurate sur l'horloge audio, mais
+    // WebKit peut avoir plusieurs ms de jitter entre l'instant demandé et l'instant où le
+    // noeud commence RÉELLEMENT à émettre des échantillons (constaté empiriquement : élargir
+    // SWAP_FADE_SECONDS réduisait le trou sans l'éliminer). On démarre donc `nextSource` en
+    // avance sur `crossfadeStart` — à gain nul, donc inaudible — pour que ce démarrage ait le
+    // temps de "se stabiliser" avant que la rampe de volume ne débute ; la position lue dans
+    // le buffer est décalée d'autant pour que la piste soit toujours exactement à `trim.start`
+    // au moment où `crossfadeStart` (donc la rampe) arrive réellement.
+    // `prerollMargin` est un délai réel (temps-contexte) ; la quantité de piste qu'il
+    // consomme avant `crossfadeStart` est `prerollMargin * rate` (voir `naturalEndTime`
+    // ci-dessus) — la borne sur `nextTrim.start` doit donc elle aussi passer en temps réel.
+    const prerollMargin = Math.max(0, Math.min(PRESTART_MARGIN_SECONDS, nextTrim.start / rate, crossfadeStart - now));
+    const physicalStart = crossfadeStart - prerollMargin;
+
     const nextGain = this.context.createGain();
+    nextGain.gain.setValueAtTime(0, physicalStart);
     nextGain.gain.setValueAtTime(0, crossfadeStart);
     nextGain.gain.linearRampToValueAtTime(1, endTime);
     nextGain.connect(this.masterGain);
 
     const nextSource = this.context.createBufferSource();
     nextSource.buffer = nextBuffer;
+    nextSource.playbackRate.setValueAtTime(rate, physicalStart);
     nextSource.connect(nextGain);
-    nextSource.start(crossfadeStart, nextTrim.start);
+    nextSource.start(physicalStart, nextTrim.start - prerollMargin * rate);
     try {
-      nextSource.stop(endTime + logicalDuration(nextBuffer, nextTrim));
+      nextSource.stop(endTime + logicalDuration(nextBuffer, nextTrim) / rate);
     } catch {
       /* noop */
     }

@@ -37,7 +37,7 @@ let _lastPositionState: { duration: number; position: number } | null = null;
 let _currentPosition: number = 0;
 const POSITION_UPDATE_THRESHOLD = 0.25;
 
-export function setMediaSessionPositionState(duration: number, position: number, force = false) {
+export function setMediaSessionPositionState(duration: number, position: number, force = false, playbackRate = 1) {
   if (!isSupported() || !("setPositionState" in navigator.mediaSession)) return;
   if (!isFinite(duration) || duration <= 0) return;
 
@@ -60,7 +60,10 @@ export function setMediaSessionPositionState(duration: number, position: number,
     navigator.mediaSession.setPositionState({
       duration: adjustedDuration,
       position: adjustedPosition,
-      playbackRate: 1,
+      // Reflète le pitch fader (voir GaplessEngine.setPlaybackRate) : sans ça, le widget
+      // Now Playing système extrapole la position entre deux mises à jour en supposant une
+      // vitesse de 1x, et dérive visiblement si la piste tourne plus vite/lentement.
+      playbackRate,
     });
   } catch {
   }

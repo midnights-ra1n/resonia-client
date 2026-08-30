@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
 import { usePlayerStore } from "../../stores/playerStore";
+import { PitchMenu } from "./PitchMenu";
 
 export function PlayerSectionRight() {
   // Sélecteurs fins : ce panneau n'a rien à voir avec currentTime mais un `usePlayerStore()`
@@ -10,6 +11,9 @@ export function PlayerSectionRight() {
   const isMuted = usePlayerStore((s) => s.isMuted);
   const setVolume = usePlayerStore((s) => s.setVolume);
   const toggleMute = usePlayerStore((s) => s.toggleMute);
+  const pitch = usePlayerStore((s) => s.pitch);
+  const showPitchMenu = usePlayerStore((s) => s.showPitchMenu);
+  const togglePitchMenu = usePlayerStore((s) => s.togglePitchMenu);
   const showQueue = usePlayerStore((s) => s.showQueue);
   const toggleQueue = usePlayerStore((s) => s.toggleQueue);
   const showLyrics = usePlayerStore((s) => s.showLyrics);
@@ -18,6 +22,18 @@ export function PlayerSectionRight() {
   const toggleConnect = usePlayerStore((s) => s.toggleConnect);
 
   const [isDragging, setIsDragging] = useState(false);
+  const pitchMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showPitchMenu) return;
+    const handleClickOutside = (e: PointerEvent) => {
+      if (pitchMenuRef.current && !pitchMenuRef.current.contains(e.target as Node)) {
+        togglePitchMenu();
+      }
+    };
+    window.addEventListener("pointerdown", handleClickOutside);
+    return () => window.removeEventListener("pointerdown", handleClickOutside);
+  }, [showPitchMenu, togglePitchMenu]);
 
   const effectiveVolume = isMuted ? 0 : volume;
   const volumePercent = Math.round(effectiveVolume * 100);
@@ -59,6 +75,21 @@ export function PlayerSectionRight() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Pitch / vitesse */}
+      <div className="relative" ref={pitchMenuRef}>
+        <button
+          onClick={togglePitchMenu}
+          className={`text-[11px] font-semibold tabular-nums min-w-9 h-9 px-2 rounded-full flex items-center justify-center transition-colors ${pitch !== 0 || showPitchMenu
+            ? "text-green-400"
+            : "text-neutral-400 hover:text-white"
+            }`}
+          title="Pitch / Master Tempo"
+        >
+          {pitch === 0 ? "1x" : `${pitch > 0 ? "+" : ""}${pitch}%`}
+        </button>
+        {showPitchMenu && <PitchMenu />}
       </div>
 
       {/* Queue */}

@@ -536,11 +536,28 @@ export class GaplessEngine {
     if (clamped === this._playbackRate) return;
 
     if (this.trackState?.mode === "buffer" && this.trackState.playback && !this.trackState.isPaused) {
+      const { buffer, trim, playback } = this.trackState;
       const position = this.currentTime;
       const now = this.context.currentTime;
-      this.trackState.playback.scheduledStartContextTime = now;
-      this.trackState.playback.startOffsetInTrim = position;
-      this.trackState.playback.source.playbackRate.setValueAtTime(clamped, now);
+      playback.scheduledStartContextTime = now;
+      playback.startOffsetInTrim = position;
+      playback.source.playbackRate.setValueAtTime(clamped, now);
+
+      // `startBufferAt`/`trySchedulePending` avaient programmé un `stop()` dur à un instant
+      // de contexte absolu calculé sous l'ancienne vitesse. Sans le replanifier ici, ralentir
+      // la lecture (rate < ancienne valeur) laisse cet ancien arrêt tomber AVANT que la piste
+      // n'ait réellement fini de jouer à la nouvelle vitesse : la source est coupée en plein
+      // milieu, son `onended` se déclenche, et le moteur croit la piste terminée — coupure
+      // brutale suivie d'un passage à la piste suivante sans aucune action de l'utilisateur.
+      // `trySchedulePending` ci-dessous ne corrige ce cas que si une piste suivante est déjà
+      // prête (`pendingNext` non nul) ; on réancre donc systématiquement ce `stop()` ici,
+      // indépendamment de l'état du préchargement.
+      const remaining = Math.max(logicalDuration(buffer, trim) - position, 0);
+      try {
+        playback.source.stop(now + remaining / clamped);
+      } catch {
+        /* noop */
+      }
     }
 
     this._playbackRate = clamped;

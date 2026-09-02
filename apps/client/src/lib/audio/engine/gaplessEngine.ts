@@ -835,8 +835,19 @@ export class GaplessEngine {
     return state.isPaused;
   }
 
-  private startBufferAt(buffer: AudioBuffer, trim: SilenceTrim, offset: number, startPaused = false) {
+  private startBufferAt(buffer: AudioBuffer, trim: SilenceTrim, offsetRaw: number, startPaused = false) {
     this.stopCurrentBufferPlayback();
+
+    // `offsetRaw` peut dépasser la durée logique (ex: `attachDecodedActive` le dérive de la
+    // position BRUTE de l'élément <audio> natif, qui peut avoir déjà avancé dans le silence de
+    // fin — jusqu'à `trim.end`, borné à MAX_TRIM_SECONDS — que le mode buffer, lui, rogne). Sans
+    // ce clamp, `remaining` ci-dessous tombe à 0 et la source démarrée à l'instant est stoppée
+    // quasi immédiatement : son `onended` se déclenche aussitôt, déclenchant soit la coupure
+    // prématurée de la piste (si aucune suivante prête), soit un crossfade vers la piste
+    // suivante bien avant la fin réelle perçue — coupure/saccade au moment précis de la bascule
+    // streaming natif → buffer, plus probable quand le pitch fader raccourcit la fenêtre réelle
+    // de lecture restante (rate > 1).
+    const offset = Math.min(Math.max(0, offsetRaw), logicalDuration(buffer, trim));
 
     if (startPaused) {
       this.trackState = { mode: "buffer", buffer, trim, isPaused: true, pauseOffset: offset, playback: null };

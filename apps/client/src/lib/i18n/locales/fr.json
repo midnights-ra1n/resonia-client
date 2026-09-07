@@ -80,6 +80,16 @@
     "emptySubtitle": "Ajoute des titres pour commencer à écouter.",
     "emptySuggestions": "Tu pourrais ajouter..."
   },
+  "favorites": {
+    "title": "Titres likés",
+    "trackCount": "{{count}} titres",
+    "play": "Lecture",
+    "shuffle": "Lecture aléatoire",
+    "unlike": "Retirer des favoris",
+    "addToLiked": "Ajouter aux titres likés",
+    "emptyTitle": "Aucun titre liké pour le moment",
+    "emptySubtitle": "Clique sur le cœur d'un titre pour l'ajouter à tes favoris."
+  },
   "contextMenu": {
     "addToQueue": "Ajouter à la file d'attente",
     "addToPlaylist": "Ajouter à une playlist",

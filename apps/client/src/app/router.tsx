@@ -8,6 +8,7 @@ import { AppLayout } from "./layout/AppLayout";
 
 import { AlbumPage } from "../features/album/AlbumPage";
 import { ArtistPage } from "../features/artist/ArtistPage";
+import { FavoritesPage } from "../features/favorites/FavoritesPage";
 import { PlaylistPage } from "../features/playlist/PlaylistPage";
 
 export const router = createBrowserRouter([
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: "downloads", element: <DownloadsPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "search", element: <SearchPage /> },
+      { path: "favorites", element: <FavoritesPage /> },
       { path: "albums/:id", element: <AlbumPage /> },
       { path: "artists/:id", element: <ArtistPage /> },
       { path: "playlists/:id", element: <PlaylistPage /> },

@@ -6,7 +6,9 @@ import { QueuePanel } from "../../features/player/QueuePanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
+import { useFavoritesStore } from "../../stores/favoritesStore";
 import { usePlayerStore } from "../../stores/playerStore";
+import { useServersStore } from "../../stores/serversStore";
 import { Sidebar } from "./Sidebar";
 
 const MIN_QUERY_LENGTH = 2;
@@ -29,8 +31,14 @@ export function AppLayout() {
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const debouncedQuery = useDebouncedValue(query, 300);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const activeServerId = useServersStore((s) => s.activeServerId);
+  const loadFavorites = useFavoritesStore((s) => s.load);
   const mainRef = useRef<HTMLElement>(null);
   useScrollingClass(mainRef);
+
+  useEffect(() => {
+    if (activeServerId) loadFavorites();
+  }, [activeServerId, loadFavorites]);
 
   // Espace = play/pause partout dans l'app, sauf pendant une saisie (recherche, modales,
   // champs de formulaire...) où l'espace doit rester un espace normal.

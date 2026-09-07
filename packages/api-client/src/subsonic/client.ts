@@ -226,6 +226,19 @@ async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
     return result.album;
   }
 
+  async getStarred2(): Promise<SongDTO[]> {
+    const result = await this.request<{ starred2: { song?: SongDTO[] } }>("getStarred2");
+    return result.starred2.song ?? [];
+  }
+
+  async star(songId: string): Promise<void> {
+    await this.request("star", { id: songId });
+  }
+
+  async unstar(songId: string): Promise<void> {
+    await this.request("unstar", { id: songId });
+  }
+
   getCoverArtUrl(coverArtId: string, size = 300): string {
     const params = new URLSearchParams({
       u: this.username,

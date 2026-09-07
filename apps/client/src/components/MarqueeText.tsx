@@ -82,8 +82,10 @@ export function MarqueeText({ text, to, className = "", onClick, draggable }: Ma
 
   return (
     <div ref={containerRef} className="relative overflow-hidden">
-      {/* Élément invisible servant uniquement à mesurer la largeur réelle (jamais tronquée) du texte. */}
-      <span ref={measureRef} className="invisible absolute whitespace-nowrap">
+      {/* Élément invisible servant uniquement à mesurer la largeur réelle (jamais tronquée) du
+          texte — doit reprendre `className` (taille/graisse de police...) sinon la mesure ne
+          correspond pas au rendu réel et peut déclencher un défilement à tort. */}
+      <span ref={measureRef} className={`invisible absolute whitespace-nowrap ${className}`}>
         {text}
       </span>
 

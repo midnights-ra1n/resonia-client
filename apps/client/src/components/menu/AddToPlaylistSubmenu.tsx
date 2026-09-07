@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { usePlaylists } from "../../hooks/usePlaylists";
@@ -10,15 +10,22 @@ interface AddToPlaylistSubmenuProps {
    *  de la liste complète des titres. */
   getSongIds: () => Promise<string[]>;
   close: () => void;
+  /** Si true, le menu reste ouvert après un ajout (chaque playlist cliquée se coche) —
+   *  permet d'ajouter à plusieurs playlists d'affilée sans rouvrir le menu. */
+  stayOpen?: boolean;
 }
 
-export function AddToPlaylistSubmenu({ client, getSongIds, close }: AddToPlaylistSubmenuProps) {
+export function AddToPlaylistSubmenu({ client, getSongIds, close, stayOpen }: AddToPlaylistSubmenuProps) {
   const { t } = useTranslation();
   const { playlists, loading } = usePlaylists();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Suivi purement local des playlists auxquelles on a ajouté pendant cette session du
+  // menu (pas l'appartenance réelle côté serveur, qu'on ne récupère pas ici) — juste pour
+  // donner un retour visuel immédiat quand le menu reste ouvert.
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
   async function handleAdd(playlistId: string) {
     setBusy(true);
@@ -26,7 +33,12 @@ export function AddToPlaylistSubmenu({ client, getSongIds, close }: AddToPlaylis
     try {
       const songIds = await getSongIds();
       await client.addSongsToPlaylist(playlistId, songIds);
-      close();
+      if (stayOpen) {
+        setAddedIds((prev) => new Set(prev).add(playlistId));
+        setBusy(false);
+      } else {
+        close();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("contextMenu.addToPlaylistError"));
       setBusy(false);
@@ -44,7 +56,14 @@ export function AddToPlaylistSubmenu({ client, getSongIds, close }: AddToPlaylis
       const playlist = await client.createPlaylist(trimmed);
       const songIds = await getSongIds();
       await client.addSongsToPlaylist(playlist.id, songIds);
-      close();
+      if (stayOpen) {
+        setAddedIds((prev) => new Set(prev).add(playlist.id));
+        setCreating(false);
+        setNewName("");
+        setBusy(false);
+      } else {
+        close();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("contextMenu.addToPlaylistError"));
       setBusy(false);
@@ -92,17 +111,21 @@ export function AddToPlaylistSubmenu({ client, getSongIds, close }: AddToPlaylis
         <p className="px-3 py-2 text-sm text-neutral-500">{t("contextMenu.noPlaylists")}</p>
       ) : (
         <div className="px-1.5">
-          {playlists.map((playlist) => (
-            <button
-              key={playlist.id}
-              type="button"
-              disabled={busy}
-              onClick={() => handleAdd(playlist.id)}
-              className="flex w-full items-center gap-2.5 truncate rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:opacity-50"
-            >
-              <span className="truncate">{playlist.name}</span>
-            </button>
-          ))}
+          {playlists.map((playlist) => {
+            const added = addedIds.has(playlist.id);
+            return (
+              <button
+                key={playlist.id}
+                type="button"
+                disabled={busy}
+                onClick={() => handleAdd(playlist.id)}
+                className="flex w-full items-center gap-2.5 truncate rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:opacity-50"
+              >
+                <span className="flex-1 truncate">{playlist.name}</span>
+                {added && <Check size={14} className="shrink-0 text-emerald-400" />}
+              </button>
+            );
+          })}
         </div>
       )}
 

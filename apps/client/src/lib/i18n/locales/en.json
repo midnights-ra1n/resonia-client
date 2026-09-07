@@ -80,6 +80,16 @@
     "emptySubtitle": "Add songs to start listening.",
     "emptySuggestions": "You could add..."
   },
+  "favorites": {
+    "title": "Liked Songs",
+    "trackCount": "{{count}} songs",
+    "play": "Play",
+    "shuffle": "Shuffle",
+    "unlike": "Remove from Liked Songs",
+    "addToLiked": "Add to Liked Songs",
+    "emptyTitle": "No liked songs yet",
+    "emptySubtitle": "Click the heart on a song to add it to your favorites."
+  },
   "contextMenu": {
     "addToQueue": "Add to queue",
     "addToPlaylist": "Add to playlist",

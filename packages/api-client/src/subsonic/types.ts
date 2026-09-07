@@ -73,6 +73,8 @@ export interface SongDTO {
   copyright?: string;
   suffix?: string;
   bitRate?: number;
+  /** Présent (date ISO) si le titre est marqué favori sur le serveur ; absent sinon. */
+  starred?: string;
 }
 
 export interface AlbumWithSongsDTO extends AlbumSummary {

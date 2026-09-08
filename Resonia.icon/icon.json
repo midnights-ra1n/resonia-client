@@ -1,0 +1,38 @@
+{
+  "fill" : {
+    "solid" : "display-p3:0.00000,0.00000,0.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "glass" : true,
+          "image-name" : "Frame 1.svg",
+          "name" : "Frame 1",
+          "position" : {
+            "scale" : 0.8,
+            "translation-in-points" : [
+              5.684341886080802e-14,
+              -8.965481811173959e-06
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

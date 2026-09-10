@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
+import { DebugPanel } from "../../features/player/debug/DebugPanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
@@ -133,6 +134,7 @@ export function AppLayout() {
         </div>
         <QueuePanel />
       </div>
+      <DebugPanel />
       <PlayerBar />
     </div>
   );

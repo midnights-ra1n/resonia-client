@@ -8,6 +8,7 @@ import { getPlatform } from "../lib/platform";
 import { storage } from "../lib/storage";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
 import { setCoverCacheMaxBytes } from "../lib/image/coverCache";
+import { setAudioDebugEnabled } from "../lib/audio/debug/audioDebugLogger";
 
 export type PlaylistSortBy = "default" | "title" | "artist" | "album";
 export type PlaylistSortDirection = "asc" | "desc";
@@ -19,6 +20,7 @@ interface SettingsState {
   cacheMaxBytes: number;
   playlistSortBy: PlaylistSortBy;
   playlistSortDirection: PlaylistSortDirection;
+  devModeEnabled: boolean;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setAudioQuality: (id: string) => Promise<void>;
@@ -29,6 +31,7 @@ interface SettingsState {
     by: PlaylistSortBy,
     direction: PlaylistSortDirection,
   ) => Promise<void>;
+  setDevModeEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const STORAGE_KEY = "resonia:settings:audioQuality";
@@ -39,6 +42,7 @@ const CACHE_MAX_BYTES_STORAGE_KEY = "resonia:settings:cacheMaxBytes";
 const PLAYLIST_SORT_BY_STORAGE_KEY = "resonia:settings:playlistSortBy";
 const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
+const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
 
 export const GIGABYTE = 1024 * 1024 * 1024;
 export const DEFAULT_CACHE_MAX_BYTES = 2 * GIGABYTE;
@@ -74,6 +78,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   cacheMaxBytes: DEFAULT_CACHE_MAX_BYTES,
   playlistSortBy: "default",
   playlistSortDirection: "asc",
+  devModeEnabled: false,
   hydrated: false,
 
   hydrate: async () => {
@@ -84,6 +89,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       cacheMaxBytes,
       playlistSortBy,
       playlistSortDirection,
+      devModeEnabled,
     ] = await Promise.all([
       storage.get<string>(STORAGE_KEY),
       storage.get<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -91,6 +97,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.get<number>(CACHE_MAX_BYTES_STORAGE_KEY),
       storage.get<PlaylistSortBy>(PLAYLIST_SORT_BY_STORAGE_KEY),
       storage.get<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
+      storage.get<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
     ]);
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -100,6 +107,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const resolvedCacheMaxBytes = cacheMaxBytes ?? DEFAULT_CACHE_MAX_BYTES;
 
     applyCacheMaxBytes(resolvedCacheMaxBytes);
+    setAudioDebugEnabled(devModeEnabled ?? false);
 
     set({
       audioQualityId: isValid ? stored! : DEFAULT_QUALITY_ID,
@@ -108,6 +116,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       cacheMaxBytes: resolvedCacheMaxBytes,
       playlistSortBy: playlistSortBy ?? "default",
       playlistSortDirection: playlistSortDirection ?? "asc",
+      devModeEnabled: devModeEnabled ?? false,
       hydrated: true,
     });
   },
@@ -142,5 +151,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.set(PLAYLIST_SORT_DIRECTION_STORAGE_KEY, direction),
     ]);
     set({ playlistSortBy: by, playlistSortDirection: direction });
+  },
+
+  setDevModeEnabled: async (enabled) => {
+    await storage.set(DEV_MODE_ENABLED_STORAGE_KEY, enabled);
+    setAudioDebugEnabled(enabled);
+    set({ devModeEnabled: enabled });
   },
 }));

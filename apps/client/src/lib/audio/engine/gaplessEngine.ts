@@ -581,9 +581,17 @@ export class GaplessEngine {
   }
 
   async decodeAndTrim(arrayBuffer: ArrayBuffer): Promise<DecodedTrack> {
+    // Capturé avant l'appel : `decodeAudioData` détache/transfère `arrayBuffer`, sa
+    // `byteLength` redevient 0 une fois la promesse résolue.
+    const bytes = arrayBuffer.byteLength;
+    const decodeStart = performance.now();
     const buffer = await this.decode(arrayBuffer);
+    const durationMs = performance.now() - decodeStart;
     const trim = detectEdgeSilence(buffer);
     debugLog("decode:trim", { durationSec: buffer.duration, trimStartSec: trim.start, trimEndSec: trim.end });
+    // Débit de décodage ("ffmpeg-like") consommé par l'historique 60s du panneau développeur —
+    // voir `getBandwidthHistory` dans audioDebugLogger.ts.
+    debugLog("decode:throughput", { bytes, durationMs });
     return { buffer, trim };
   }
 

@@ -175,6 +175,10 @@
     "cacheClear": "Clear cache",
     "cacheClearing": "Clearing...",
     "unitGb": "GB",
-    "unitMb": "MB"
+    "unitMb": "MB",
+    "developer": "Developer",
+    "developerDescription": "Advanced diagnostics for the audio engine.",
+    "developerMode": "Developer mode",
+    "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events."
   }
 }

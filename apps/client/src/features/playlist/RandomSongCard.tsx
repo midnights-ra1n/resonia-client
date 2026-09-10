@@ -38,6 +38,7 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
     albumId: song.albumId,
     duration: song.duration,
     coverUrl,
+    coverArtId: song.coverArt,
   };
 
   function handlePlay(e: React.MouseEvent) {

@@ -12,6 +12,7 @@ import {
   updateNowPlayingMetadata,
 } from "../lib/audio/nowPlaying";
 import { getQualityById } from "../lib/audio/qualityOptions";
+import { getCachedCoverUrl, loadAndCacheCover } from "../lib/image/coverCache";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { storage } from "../lib/storage";
 import { useServersStore } from "./serversStore";
@@ -40,6 +41,9 @@ export interface Track {
   albumId?: string;
   duration: number;
   coverUrl?: string;
+  /** Identifiant Subsonic de la pochette (distinct de `coverUrl`, déjà résolue en URL) :
+   *  nécessaire pour clé de cache indépendante de l'URL (jeton d'auth, host…). */
+  coverArtId?: string;
 }
 
 const DEFAULT_COVER_URL = "/default-cover.svg";
@@ -226,8 +230,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const track = queue[queueIndex];
       const streamUrl = resolveStreamUrl(track);
       if (streamUrl) upcoming.push({ trackId: track.id, streamUrl });
+      prefetchTrackCover(track);
     }
     prefetchScheduler.setUpcoming(upcoming);
+  }
+
+  /** Met en cache disque la pochette d'une piste en tâche de fond, sans bloquer la
+   *  navigation/lecture : appelé pour la piste active et les PREFETCH_COUNT suivantes,
+   *  en miroir du préchargement audio, pour que la pochette soit déjà disponible
+   *  localement au moment où la piste devient active (évite l'attente réseau et l'affichage
+   *  de l'ancienne pochette pendant que la nouvelle charge). */
+  function prefetchTrackCover(track: Track) {
+    if (!track.coverArtId) return;
+    const { servers, activeServerId } = useServersStore.getState();
+    if (!activeServerId) return;
+    const server = servers.find((s) => s.id === activeServerId);
+    const client = server ? getClientForServer(server) : null;
+    if (!client) return;
+
+    const fetchUrl = client.getCoverArtUrl(track.coverArtId, 300);
+    getCachedCoverUrl(activeServerId, track.coverArtId, 300)
+      .then((cached) => {
+        if (cached) {
+          URL.revokeObjectURL(cached);
+          return;
+        }
+        return loadAndCacheCover(activeServerId, track.coverArtId!, 300, fetchUrl).then((url) => {
+          if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+        });
+      })
+      .catch((err) => console.warn("[player] Préchargement de pochette échoué", err));
   }
 
   /** Démarre la mise en cache en tâche de fond de la piste en cours. Volontairement
@@ -243,6 +275,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     prefetchScheduler.setQuality(resolved.qualityId);
     prefetchScheduler.setActive({ trackId: currentTrack.id, streamUrl: resolved.streamUrl });
     cacheStore.request(currentTrack.id, resolved.qualityId, resolved.streamUrl, "active");
+    prefetchTrackCover(currentTrack);
   }
 
   /** Attend que la piste (déjà demandée en cache "active") soit intégralement

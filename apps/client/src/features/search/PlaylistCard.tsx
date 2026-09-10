@@ -54,6 +54,7 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
         albumId: s.albumId,
         duration: s.duration,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : coverUrl,
+        coverArtId: s.coverArt ?? playlist.coverArt,
       }));
       if (queue.length > 0) await playFromStart(queue);
     } catch (err) {

@@ -67,6 +67,7 @@ export function FavoritesPage() {
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : undefined,
+      coverArtId: song.coverArt,
     };
   }
 

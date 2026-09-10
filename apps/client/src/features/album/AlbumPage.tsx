@@ -18,6 +18,7 @@ import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
+import { useDominantColor } from "../../hooks/useDominantColor";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -103,6 +104,12 @@ export function AlbumPage() {
     album?.name,
   );
 
+  const headerCoverUrl =
+    album?.coverArt && client
+      ? client.getCoverArtUrl(album.coverArt, 300)
+      : undefined;
+  const dominantColor = useDominantColor(headerCoverUrl);
+
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
   }
@@ -131,6 +138,7 @@ export function AlbumPage() {
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : coverUrl,
+      coverArtId: song.coverArt ?? album!.coverArt,
     };
   }
 
@@ -170,7 +178,16 @@ export function AlbumPage() {
 
   return (
     <div>
-      <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
+      <div
+        className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16"
+        style={
+          dominantColor
+            ? {
+                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #171717))`,
+              }
+            : undefined
+        }
+      >
         <div className="relative h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
           {/* Pochette statique toujours présente en dessous : la pochette animée (voir plus bas)
              est empilée par-dessus plutôt que substituée, pour qu'il n'y ait jamais rien d'autre

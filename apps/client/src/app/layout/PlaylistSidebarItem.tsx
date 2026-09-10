@@ -64,6 +64,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
         album: s.album,
         duration: s.duration,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : undefined,
+        coverArtId: s.coverArt,
       }));
 
       if (queue.length > 0) {

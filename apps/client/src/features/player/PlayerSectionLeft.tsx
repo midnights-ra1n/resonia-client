@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, DEFAULT_COVER_URL } from "../../stores/playerStore";
+import { useServersStore } from "../../stores/serversStore";
+import { useCoverArt } from "../../hooks/useCoverArt";
 import { LikeButton } from "./LikeButton";
 
 // Bouton like : 20px (h-5 w-5) + 8px d'écart avant le texte.
@@ -10,8 +12,21 @@ const BUTTON_RESERVED = BUTTON_WIDTH + BUTTON_GAP;
 
 export function PlayerSectionLeft() {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
+  const activeServerId = useServersStore((s) => s.activeServerId);
 
-  const coverUrl = currentTrack?.coverUrl ?? DEFAULT_COVER_URL;
+  // Passe par le cache disque des pochettes (même mécanisme que les grilles/cartes) : évite
+  // un nouveau téléchargement réseau à chaque changement de piste, source du délai et de
+  // l'affichage transitoire de la pochette précédente que l'on cherche à corriger ici. Le
+  // préchargement des pistes à venir (voir playerStore.refreshUpcomingPrefetch) alimente ce
+  // même cache en avance, donc au moment où la piste devient active la pochette est déjà
+  // disponible localement la plupart du temps.
+  const cachedCoverUrl = useCoverArt(
+    activeServerId ?? undefined,
+    currentTrack?.coverArtId,
+    300,
+    currentTrack?.coverUrl,
+  );
+  const coverUrl = cachedCoverUrl ?? DEFAULT_COVER_URL;
   const title = currentTrack?.title ?? "—";
   const artist = currentTrack?.artist ?? "—";
 
@@ -46,7 +61,13 @@ export function PlayerSectionLeft() {
 
   return (
     <div className="flex items-center gap-3 h-full min-w-0">
-      <img src={coverUrl} alt="Cover" className="w-12 h-12 rounded-md object-cover shrink-0" />
+      <img
+        key={currentTrack?.id ?? "empty"}
+        src={coverUrl}
+        alt="Cover"
+        className="w-12 h-12 rounded-md object-cover shrink-0 bg-neutral-800"
+        decoding="async"
+      />
 
       <div
         ref={containerRef}

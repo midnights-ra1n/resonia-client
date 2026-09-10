@@ -32,6 +32,7 @@ async function fetchPlaylistTracks(client: SubsonicClient, playlist: PlaylistLik
     albumId: s.albumId,
     duration: s.duration,
     coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : coverUrl,
+    coverArtId: s.coverArt ?? playlist.coverArt,
   }));
 }
 

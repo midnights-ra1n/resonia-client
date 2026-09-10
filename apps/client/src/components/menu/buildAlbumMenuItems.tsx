@@ -27,6 +27,7 @@ async function fetchAlbumTracks(client: SubsonicClient, album: AlbumSummary): Pr
     albumId: s.albumId ?? album.id,
     duration: s.duration,
     coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : coverUrl,
+    coverArtId: s.coverArt ?? album.coverArt,
   }));
 }
 

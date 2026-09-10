@@ -73,6 +73,7 @@ export function ArtistPage() {
       albumId: song.albumId,
       duration: song.duration,
       coverUrl: song.coverArt ? client?.getCoverArtUrl(song.coverArt, 300) : undefined,
+      coverArtId: song.coverArt,
     };
   }
 

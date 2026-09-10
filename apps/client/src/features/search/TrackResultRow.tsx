@@ -61,6 +61,7 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
       albumId: s.albumId,
       duration: s.duration,
       coverUrl: client && s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : undefined,
+      coverArtId: s.coverArt,
     };
   }
 

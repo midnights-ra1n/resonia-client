@@ -35,6 +35,7 @@ import { usePlaylist } from "./usePlaylist";
 import { useRandomSongs } from "./useRandomSongs";
 import { RandomSongsCarousel } from "./RandomSongsCarousel";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
+import { useDominantColor } from "../../hooks/useDominantColor";
 
 const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
 
@@ -135,6 +136,12 @@ export function PlaylistPage() {
     registerRow: registerTrackRow,
   } = useTrackListSelection(playlist?.entry.length ?? 0);
 
+  const headerCoverUrl =
+    playlist?.coverArt && client
+      ? client.getCoverArtUrl(playlist.coverArt, 300)
+      : undefined;
+  const dominantColor = useDominantColor(headerCoverUrl);
+
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
   }
@@ -164,6 +171,7 @@ export function PlaylistPage() {
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : coverUrl,
+      coverArtId: song.coverArt ?? playlist!.coverArt,
     };
   }
 
@@ -277,7 +285,16 @@ export function PlaylistPage() {
 
   return (
     <div>
-      <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
+      <div
+        className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16"
+        style={
+          dominantColor
+            ? {
+                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #171717))`,
+              }
+            : undefined
+        }
+      >
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
           {coverUrl ? (
             <img

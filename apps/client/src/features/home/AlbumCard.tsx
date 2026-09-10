@@ -49,6 +49,7 @@ export function AlbumCard({ album }: AlbumCardProps) {
         albumId: s.albumId ?? album.id,
         duration: s.duration,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : coverUrl,
+        coverArtId: s.coverArt ?? album.coverArt,
       }));
 
       if (queue.length > 0) {

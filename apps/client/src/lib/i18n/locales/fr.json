@@ -175,6 +175,10 @@
     "cacheClear": "Vider le cache",
     "cacheClearing": "Suppression...",
     "unitGb": "Go",
-    "unitMb": "Mo"
+    "unitMb": "Mo",
+    "developer": "Développeur",
+    "developerDescription": "Diagnostics avancés du moteur audio.",
+    "developerMode": "Mode développeur",
+    "developerModeDescription": "Ajoute un débogueur réseau et décodage au lecteur, avec le débit de téléchargement en direct, l'usage du cache et les événements de buffer/décodage."
   }
 }

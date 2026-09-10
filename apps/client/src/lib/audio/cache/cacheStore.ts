@@ -3,7 +3,24 @@ import { TrackDownloader, type ChunkListener } from "./trackDownloader";
 import { cacheKeyFor, type CacheEntryMeta, type DownloadPriority, type ProgressListener } from "./types";
 import { opfsDelete, opfsReadAll } from "./opfsStore";
 
-const META_KEY = "resonia:cache:meta";
+// Ancien format (un seul tableau sous une seule clé) — encore lu pour migrer les installations
+// existantes vers le format par-entrée ci-dessous, jamais plus écrit (voir `loadMeta`).
+const LEGACY_META_KEY = "resonia:cache:meta";
+// Format par-entrée : un index léger (juste les clés) + une entrée par piste sous sa propre
+// clé `storage`. Sur le backend web (localStorage, synchrone — voir localStorageAdapter.ts),
+// l'ancien format sérialisait et réécrivait TOUT le tableau à chaque flush, donc un JSON de
+// plus en plus gros au fil des pistes mises en cache au fil des mois : sur une session de
+// téléchargement actif (flush ~1x/s, voir persistMeta), ce `localStorage.setItem` synchrone
+// pouvait geler le thread principal une fraction de seconde — perçu comme un petit décrochage
+// de lecture. Avec une entrée par clé, chaque flush ne réécrit que les quelques pistes dont
+// l'état a réellement changé depuis le dernier flush (typiquement une seule, ~100 octets),
+// quelle que soit la taille totale de l'historique de cache.
+const META_INDEX_KEY = "resonia:cache:meta:index";
+const META_ENTRY_PREFIX = "resonia:cache:meta:entry:";
+function metaEntryKey(key: string): string {
+  return `${META_ENTRY_PREFIX}${key}`;
+}
+
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 Go
 
 const SIZE_NOTIFY_THROTTLE_MS = 300;
@@ -20,6 +37,10 @@ class CacheStore {
   private sizeListeners = new Set<(bytes: number) => void>();
   private sizeNotifyTimer: number | null = null;
   private metaWriteTimer: number | null = null;
+  // Entrées modifiées depuis le dernier flush (voir persistMeta/flushMetaToDisk) — seules
+  // celles-ci sont réécrites, jamais l'intégralité du cache.
+  private dirtyKeys = new Set<string>();
+  private indexDirty = false;
 
   setMaxBytes(bytes: number) {
     this.maxBytes = bytes;
@@ -50,8 +71,28 @@ class CacheStore {
     if (this.metaCache) return this.metaCache;
     if (!this.metaLoad) {
       this.metaLoad = (async () => {
-        const entries = (await storage.get<CacheEntryMeta[]>(META_KEY)) ?? [];
-        const map = new Map(entries.map((e) => [e.key, e]));
+        const index = await storage.get<string[]>(META_INDEX_KEY);
+        let map: Map<string, CacheEntryMeta>;
+
+        if (index) {
+          const entries = await Promise.all(index.map((k) => storage.get<CacheEntryMeta>(metaEntryKey(k))));
+          map = new Map(
+            index
+              .map((k, i) => [k, entries[i]] as const)
+              .filter((pair): pair is [string, CacheEntryMeta] => pair[1] !== null),
+          );
+        } else {
+          // Migration ponctuelle depuis l'ancien format tableau unique (voir LEGACY_META_KEY) :
+          // ne s'exécute qu'une fois, à la première ouverture après la mise à jour.
+          const legacy = (await storage.get<CacheEntryMeta[]>(LEGACY_META_KEY)) ?? [];
+          map = new Map(legacy.map((e) => [e.key, e]));
+          if (legacy.length > 0) {
+            await Promise.all(legacy.map((e) => storage.set(metaEntryKey(e.key), e)));
+            await storage.set(META_INDEX_KEY, legacy.map((e) => e.key));
+            await storage.remove(LEGACY_META_KEY);
+          }
+        }
+
         this.metaCache = map;
         return map;
       })();
@@ -62,9 +103,9 @@ class CacheStore {
   /** Planifie l'écriture des métadonnées vers `storage` (throttled) — appelée à chaque
    *  chunk téléchargé (~24-32 fois par piste). `this.metaCache` est déjà à jour en
    *  mémoire à l'appel : tout ce qui lit l'état du cache (currentCacheSize, enforceLimit,
-   *  isFullyCached...) reste donc exact immédiatement. Sérialiser tout le tableau et
-   *  l'envoyer en IPC à `storage.set` sur CHAQUE chunk gelait l'UI plusieurs fois par
-   *  piste ; un throttle ramène ça à ~1 appel/seconde en téléchargement continu. */
+   *  isFullyCached...) reste donc exact immédiatement. Le flush lui-même ne réécrit que les
+   *  entrées marquées "dirty" (voir touch/enforceLimit) ; un throttle ramène en plus sa
+   *  fréquence à ~1 appel/seconde en téléchargement continu. */
   private persistMeta() {
     if (!this.metaCache) return;
     this.scheduleSizeNotify();
@@ -75,21 +116,38 @@ class CacheStore {
     }, META_PERSIST_THROTTLE_MS);
   }
 
+  /** N'écrit que ce qui a changé depuis le dernier flush (voir `dirtyKeys`/`indexDirty`) —
+   *  jamais l'intégralité de l'historique de cache, quelle que soit sa taille. */
   private flushMetaToDisk(): Promise<void> {
     if (!this.metaCache) return Promise.resolve();
-    return storage.set(META_KEY, Array.from(this.metaCache.values()));
+    const writes: Promise<void>[] = [];
+
+    if (this.indexDirty) {
+      this.indexDirty = false;
+      writes.push(storage.set(META_INDEX_KEY, Array.from(this.metaCache.keys())));
+    }
+
+    const keys = Array.from(this.dirtyKeys);
+    this.dirtyKeys.clear();
+    for (const key of keys) {
+      const entry = this.metaCache.get(key);
+      writes.push(entry ? storage.set(metaEntryKey(key), entry) : storage.remove(metaEntryKey(key)));
+    }
+
+    return Promise.all(writes).then(() => undefined);
   }
 
   private async touch(key: string, patch: Partial<CacheEntryMeta>) {
     const meta = await this.loadMeta();
-    const existing = meta.get(key) ?? {
+    const existing = meta.get(key);
+    if (!existing) this.indexDirty = true;
+    meta.set(
       key,
-      totalBytes: -1,
-      bytesCached: 0,
-      complete: false,
-      lastAccessedAt: Date.now(),
-    };
-    meta.set(key, { ...existing, ...patch, lastAccessedAt: Date.now() });
+      existing
+        ? { ...existing, ...patch, lastAccessedAt: Date.now() }
+        : { key, totalBytes: -1, bytesCached: 0, complete: false, lastAccessedAt: Date.now(), ...patch },
+    );
+    this.dirtyKeys.add(key);
     this.persistMeta();
   }
 
@@ -181,6 +239,8 @@ class CacheStore {
       this.tasks.delete(entry.key);
       await opfsDelete(entry.key);
       meta.delete(entry.key);
+      this.dirtyKeys.add(entry.key); // flush écrira sa suppression (voir flushMetaToDisk)
+      this.indexDirty = true;
       currentTotal -= entry.bytesCached;
     }
     this.persistMeta();
@@ -191,19 +251,45 @@ class CacheStore {
     return Array.from(meta.values()).reduce((sum, e) => sum + e.bytesCached, 0);
   }
 
+  get maxCacheBytes(): number {
+    return this.maxBytes;
+  }
+
+  /** Instantané des téléchargements suivis (actifs ou terminés depuis le dernier `clearAll`) —
+   *  consommé uniquement par le panneau développeur (voir features/player/debug), en polling :
+   *  pas la peine d'un mécanisme réactif dédié pour un outil de diagnostic. */
+  debugListTasks(): Array<{
+    key: string;
+    bytesCached: number;
+    totalBytes: number;
+    complete: boolean;
+    protected: boolean;
+    error: string | null;
+  }> {
+    return Array.from(this.tasks.entries()).map(([key, task]) => ({
+      key,
+      ...task.progress,
+      protected: this.protectedKeys.has(key),
+      error: task.error?.message ?? null,
+    }));
+  }
+
   async clearAll() {
     const meta = await this.loadMeta();
-    for (const key of meta.keys()) {
+    const keys = Array.from(meta.keys());
+    for (const key of keys) {
       this.tasks.get(key)?.cancel();
       await opfsDelete(key);
     }
     this.tasks.clear();
     this.metaCache = new Map();
+    this.dirtyKeys.clear();
+    this.indexDirty = false;
     if (this.metaWriteTimer !== null) {
       window.clearTimeout(this.metaWriteTimer);
       this.metaWriteTimer = null;
     }
-    await this.flushMetaToDisk();
+    await Promise.all([storage.set(META_INDEX_KEY, []), ...keys.map((key) => storage.remove(metaEntryKey(key)))]);
     this.scheduleSizeNotify();
   }
 }

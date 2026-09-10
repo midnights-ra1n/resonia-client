@@ -1,3 +1,5 @@
+import { networkDebugLog } from "../debug/audioDebugLogger";
+
 const CHUNK_SIZE = 256 * 1024; // 256 Ko
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 500;
@@ -83,8 +85,14 @@ export async function fetchRange(
     try {
       return await fetchRangeOnce(url, start, signal, chunkSize);
     } catch (err) {
-      if (!isTransient(err) || attempt >= MAX_RETRIES) throw err;
+      if (!isTransient(err) || attempt >= MAX_RETRIES) {
+        if (isTransient(err)) {
+          networkDebugLog("chunk:lost", { url, start, attempt, error: String((err as Error)?.message ?? err) });
+        }
+        throw err;
+      }
       attempt++;
+      networkDebugLog("chunk:retry", { url, start, attempt, error: String((err as Error)?.message ?? err) });
       await sleep(BASE_RETRY_DELAY_MS * 2 ** (attempt - 1), signal);
     }
   }

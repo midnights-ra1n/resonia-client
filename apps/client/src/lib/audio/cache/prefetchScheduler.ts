@@ -1,6 +1,6 @@
 import { cacheStore } from "./cacheStore";
 import { cacheKeyFor } from "./types";
-import { debugLog } from "../debug/audioDebugLogger";
+import { networkDebugLog } from "../debug/audioDebugLogger";
 
 const PREFETCH_COUNT = 3;
 
@@ -104,7 +104,7 @@ class PrefetchScheduler {
         continue;
       }
 
-      debugLog("prefetch:request", { trackId: slot.trackId, position: this.cursor, priority: slot.priority });
+      networkDebugLog("prefetch:request", { trackId: slot.trackId, position: this.cursor, priority: slot.priority });
       const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority);
 
       await this.waitForTaskSettled(task);

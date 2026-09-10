@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
+import { Bug, ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
 import { usePlayerStore } from "../../stores/playerStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { PitchMenu } from "./PitchMenu";
 
 export function PlayerSectionRight() {
@@ -20,6 +21,9 @@ export function PlayerSectionRight() {
   const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
   const showConnect = usePlayerStore((s) => s.showConnect);
   const toggleConnect = usePlayerStore((s) => s.toggleConnect);
+  const showDebugPanel = usePlayerStore((s) => s.showDebugPanel);
+  const toggleDebugPanel = usePlayerStore((s) => s.toggleDebugPanel);
+  const devModeEnabled = useSettingsStore((s) => s.devModeEnabled);
 
   const [isDragging, setIsDragging] = useState(false);
   const pitchMenuRef = useRef<HTMLDivElement>(null);
@@ -127,6 +131,20 @@ export function PlayerSectionRight() {
       >
         <Plug size={18} />
       </button>
+
+      {/* Débogueur réseau/décodage — réservé au mode développeur (voir SettingsPage) */}
+      {devModeEnabled && (
+        <button
+          onClick={toggleDebugPanel}
+          className={`transition-colors ${showDebugPanel
+            ? "text-green-400"
+            : "text-neutral-400 hover:text-white"
+            }`}
+          title="Network & decode debugger"
+        >
+          <Bug size={18} />
+        </button>
+      )}
     </div>
   );
 }

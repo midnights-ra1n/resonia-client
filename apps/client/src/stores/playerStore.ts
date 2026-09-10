@@ -156,6 +156,9 @@ export interface PlayerState {
 
   showTimeRemaining: boolean;
   toggleTimeDisplay: () => void;
+
+  showDebugPanel: boolean;
+  toggleDebugPanel: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
@@ -808,6 +811,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         storage.set(TIME_DISPLAY_STORAGE_KEY, showTimeRemaining);
         return { showTimeRemaining };
       }),
+
+    showDebugPanel: false,
+    toggleDebugPanel: () => set((state) => ({ showDebugPanel: !state.showDebugPanel })),
   };
 });
 

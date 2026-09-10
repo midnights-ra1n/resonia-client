@@ -69,6 +69,8 @@ export function SettingsPage() {
   );
   const cacheMaxBytes = useSettingsStore((s) => s.cacheMaxBytes);
   const setCacheMaxBytes = useSettingsStore((s) => s.setCacheMaxBytes);
+  const devModeEnabled = useSettingsStore((s) => s.devModeEnabled);
+  const setDevModeEnabled = useSettingsStore((s) => s.setDevModeEnabled);
 
   const [lastfmInput, setLastfmInput] = useState(lastfmApiKey);
   const [animatedArtworkBaseUrlInput, setAnimatedArtworkBaseUrlInput] =
@@ -386,6 +388,39 @@ export function SettingsPage() {
           </div>
         </section>
       )}
+
+      <section className="mt-10 max-w-xl">
+        <h2 className="text-lg font-semibold">{t("settings.developer")}</h2>
+        <p className="mt-1 text-sm text-neutral-400">
+          {t("settings.developerDescription")}
+        </p>
+
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => setDevModeEnabled(!devModeEnabled)}
+            className="flex w-full items-center justify-between gap-2"
+          >
+            <span>
+              <span className="block text-sm font-medium text-white">
+                {t("settings.developerMode")}
+              </span>
+              <span className="mt-1 block text-xs text-neutral-500">
+                {t("settings.developerModeDescription")}
+              </span>
+            </span>
+            <span
+              className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${devModeEnabled ? "bg-emerald-500" : "bg-neutral-700"
+                }`}
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${devModeEnabled ? "translate-x-4" : "translate-x-0"
+                  }`}
+              />
+            </span>
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

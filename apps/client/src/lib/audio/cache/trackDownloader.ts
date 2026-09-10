@@ -2,7 +2,7 @@ import { EndOfStreamError, fetchRange } from "./rangeFetcher";
 import { createOpfsWriter, opfsFileSize } from "./opfsStore";
 import type { DownloadPriority, ProgressListener } from "./types";
 import type { BlobWriter } from "../../storage/blobStore";
-import { debugLog } from "../debug/audioDebugLogger";
+import { networkDebugLog } from "../debug/audioDebugLogger";
 
 export interface ChunkEvent {
   data: ArrayBuffer;
@@ -25,6 +25,17 @@ export class TrackDownloader {
   private running = false;
   private budgetBytes: number | null = null; // null = illimité (piste active)
   private lastError: Error | null = null;
+  // Se résout une fois le writer OPFS du run() en cours refermé — voir le commentaire dans
+  // `run()` : `pause()` remet `running` à `false` de façon SYNCHRONE alors que la fermeture
+  // du writer (dans le `finally` ci-dessous) reste asynchrone. Sans cette barrière, un
+  // pause() suivi d'un resume() très rapproché (ex: pression réseau qui se relâche presque
+  // aussitôt pendant la lecture de la piste active) peut ouvrir un DEUXIÈME writer OPFS sur
+  // le même fichier avant que le premier n'ait fini de se refermer — deux flux `createWritable`
+  // concurrents sur le même fichier peuvent silencieusement s'écraser l'un l'autre à la
+  // fermeture (sémantique "fichier miroir" de l'API), corrompant les derniers octets déjà en
+  // cache. Perçu à la lecture comme un bref retour en arrière (~0,2s) puis une reprise
+  // normale — précisément quand du réseau est sollicité en tâche de fond pendant la lecture.
+  private closing: Promise<void> | null = null;
 
   constructor(key: string, streamUrl: string) {
     this.key = key;
@@ -84,8 +95,18 @@ export class TrackDownloader {
 
   async run(): Promise<void> {
     if (this.running || this.complete) return;
+    // Attend la fermeture d'un éventuel writer encore en cours de fermeture (pause() très
+    // récent) avant d'en ouvrir un nouveau — voir le commentaire sur `closing`.
+    if (this.closing) await this.closing;
+    if (this.running || this.complete) return; // état ayant pu changer pendant l'attente
+
     this.running = true;
     this.lastError = null;
+
+    let resolveClosing: () => void = () => {};
+    this.closing = new Promise((resolve) => {
+      resolveClosing = resolve;
+    });
 
     // L'ouverture OPFS elle-même doit être dans le try : si elle échoue (permission,
     // support partiel du navigateur/webview...), `running` doit repasser à `false` dans le
@@ -102,7 +123,7 @@ export class TrackDownloader {
 
       while (this.running) {
         if (this.isBudgetExhausted) {
-          debugLog("download:budget-exhausted", { key: this.key, bytesCached: this.bytesCached, budgetBytes: this.budgetBytes });
+          networkDebugLog("download:budget-exhausted", { key: this.key, bytesCached: this.bytesCached, budgetBytes: this.budgetBytes });
           break;
         }
 
@@ -113,11 +134,12 @@ export class TrackDownloader {
         await writer.write(chunk.data);
         this.bytesCached += chunk.data.byteLength;
 
+        networkDebugLog("chunk:read", { key: this.key, bytes: chunk.data.byteLength, rangeStart, bytesCached: this.bytesCached });
         this.chunkListeners.forEach((cb) => cb({ data: chunk.data, rangeStart }));
 
         if (this.totalBytes > 0 && this.bytesCached >= this.totalBytes) {
           this.complete = true;
-          debugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
+          networkDebugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
         }
 
         this.emit();
@@ -132,6 +154,7 @@ export class TrackDownloader {
         this.emit();
       } else if ((err as Error).name !== "AbortError") {
         this.lastError = err as Error;
+        networkDebugLog("download:error", { key: this.key, error: (err as Error).message, bytesCached: this.bytesCached });
         console.warn(
           `[cache] Téléchargement interrompu pour ${this.key} (${(err as Error).name}: ${(err as Error).message}) — ${this.bytesCached} octets déjà écrits`,
           err,
@@ -140,6 +163,8 @@ export class TrackDownloader {
     } finally {
       if (writer) await writer.close();
       this.running = false;
+      this.closing = null;
+      resolveClosing();
     }
   }
 }

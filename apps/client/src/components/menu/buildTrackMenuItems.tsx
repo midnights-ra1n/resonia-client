@@ -1,9 +1,10 @@
-import { Disc, Info, ListMusic, ListPlus, User } from "lucide-react";
+import { Disc, Download, Info, ListMusic, ListPlus, User } from "lucide-react";
 import type { SubsonicClient } from "@resonia/api-client";
 import type { NavigateFunction } from "react-router-dom";
 import type { MenuItem } from "./ContextMenu";
 import type { Track } from "../../stores/playerStore";
 import { AddToPlaylistSubmenu } from "./AddToPlaylistSubmenu";
+import { downloadStore } from "../../lib/downloads/downloadStore";
 
 interface BuildTrackMenuItemsParams {
   track: Track;
@@ -62,6 +63,12 @@ export function buildTrackMenuItems({
           close={close}
         />
       ),
+    },
+    {
+      type: "action",
+      label: t("contextMenu.download"),
+      icon: Download,
+      onClick: () => downloadStore.enqueueTrackAuto(track),
     },
     { type: "separator" },
     {

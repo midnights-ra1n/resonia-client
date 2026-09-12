@@ -3,7 +3,8 @@ import { getPlatform } from "../../platform";
 
 const ROOT_DIR = "resonia-audio-cache";
 
-const store = createBlobStore(ROOT_DIR);
+export const audioCacheBlobStore = createBlobStore(ROOT_DIR);
+const store = audioCacheBlobStore;
 
 /** Demande le stockage persistant (une seule fois, au démarrage) — web uniquement : sur
  *  desktop le cache écrit directement sur disque via le plugin Tauri `fs` (voir

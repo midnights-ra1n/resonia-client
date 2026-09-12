@@ -1,12 +1,14 @@
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
 import { DebugPanel } from "../../features/player/debug/DebugPanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
+import { useOnlineStore } from "../../lib/network/onlineStatus";
 import { useFavoritesStore } from "../../stores/favoritesStore";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
@@ -36,6 +38,7 @@ export function AppLayout() {
   const loadFavorites = useFavoritesStore((s) => s.load);
   const mainRef = useRef<HTMLElement>(null);
   useScrollingClass(mainRef);
+  const isOnline = useOnlineStore((s) => s.isOnline);
 
   useEffect(() => {
     if (activeServerId) loadFavorites();
@@ -99,7 +102,13 @@ export function AppLayout() {
               lecture...) — un coût GPU permanent pour un gain visuel marginal. Fond quasi-opaque
               à la place, même lisibilité sans recomposition continue. */}
           <header className="sticky top-0 z-10 bg-neutral-950/95 border-b border-neutral-800">
-            <form onSubmit={handleSubmit} className="flex items-center justify-center px-4 py-3 gap-2">
+            {!isOnline && (
+              <div className="flex items-center justify-center gap-2 bg-amber-500/10 px-4 py-1.5 text-xs font-medium text-amber-400">
+                <WifiOff size={14} />
+                {t("common.offline")}
+              </div>
+            )}
+            <form onSubmit={handleSubmit} className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3 gap-2">
               {/* Boutons navigation à gauche de la barre de recherche */}
               <div className="flex items-center gap-1 pr-2">
                 <button onClick={handleGoBack} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page précédente">
@@ -110,7 +119,7 @@ export function AppLayout() {
                 </button>
               </div>
 
-              <div className="relative w-full max-w-xl">
+              <div className="relative mx-auto w-full max-w-xl">
                 <input
                   type="text"
                   value={query}
@@ -124,6 +133,11 @@ export function AppLayout() {
                   data-lpignore="true"
                   className="w-full rounded-full bg-neutral-900 border border-neutral-700 px-5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                 />
+              </div>
+
+              {/* Indicateur de téléchargements en cours, à droite */}
+              <div className="flex items-center justify-end pl-2">
+                <DownloadsIndicator />
               </div>
             </form>
           </header>

@@ -1,7 +1,7 @@
 import { storage } from "../../storage";
 import { TrackDownloader, type ChunkListener } from "./trackDownloader";
 import { cacheKeyFor, type CacheEntryMeta, type DownloadPriority, type ProgressListener } from "./types";
-import { opfsDelete, opfsReadAll } from "./opfsStore";
+import { audioCacheBlobStore, opfsDelete, opfsReadAll } from "./opfsStore";
 
 // Ancien format (un seul tableau sous une seule clé) — encore lu pour migrer les installations
 // existantes vers le format par-entrée ci-dessous, jamais plus écrit (voir `loadMeta`).
@@ -156,7 +156,7 @@ class CacheStore {
     const key = cacheKeyFor(trackId, qualityId);
     let task = this.tasks.get(key);
     if (!task) {
-      task = new TrackDownloader(key, streamUrl);
+      task = new TrackDownloader(key, streamUrl, audioCacheBlobStore);
       task.onProgress((progress) => {
         // enforceLimit() à chaque chunk (pas seulement en fin de téléchargement) : si le
         // cache est déjà plein pendant qu'on écrit une nouvelle piste, les entrées les plus

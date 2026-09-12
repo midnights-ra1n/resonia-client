@@ -19,6 +19,7 @@ vi.mock("./opfsStore", () => ({
     opfsDeleted.push(key);
   }),
   opfsReadAll: vi.fn(async () => null),
+  audioCacheBlobStore: {},
 }));
 
 class FakeTrackDownloader {

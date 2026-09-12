@@ -1,10 +1,14 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MarqueeText } from "../../components/MarqueeText";
-import { Play, Pause, Shuffle } from "lucide-react";
+import { Check, Download, Loader2, Play, Pause, Shuffle } from "lucide-react";
 import { useAlbum } from "./useAlbum";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { downloadStore } from "../../lib/downloads/downloadStore";
+import { useTracksDownloadStatus } from "../../lib/downloads/useTracksDownloadStatus";
+import { useDownloadedTrackIds } from "../../lib/downloads/useDownloadedTrackIds";
 import { useTranslation } from "../../lib/i18n";
 import { useArtistAlbums } from "./useArtistAlbums";
 import { AlbumCarousel } from "./AlbumCarousel";
@@ -19,6 +23,7 @@ import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useDominantColor } from "../../hooks/useDominantColor";
+import { useCoverArt } from "../../hooks/useCoverArt";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -52,6 +57,9 @@ export function AlbumPage() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const audioQualityId = useSettingsStore((s) => s.audioQualityId);
+  const downloadStatus = useTracksDownloadStatus(album?.song ?? [], audioQualityId);
+  const downloadedTrackIds = useDownloadedTrackIds((album?.song ?? []).map((s) => s.id));
   const rowMenu = useContextMenu();
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [rowInfoOpen, setRowInfoOpen] = useState(false);
@@ -108,7 +116,12 @@ export function AlbumPage() {
     album?.coverArt && client
       ? client.getCoverArtUrl(album.coverArt, 300)
       : undefined;
-  const dominantColor = useDominantColor(headerCoverUrl);
+  // Passe par le cache disque des pochettes plutôt que l'URL réseau directe : celle-ci peut
+  // être lente à charger (chargement redondant avec la pochette déjà affichée) et échoue
+  // silencieusement en extraction de couleur si le serveur ne renvoie pas les en-têtes CORS
+  // requis par `crossOrigin="anonymous"` — un blob: du cache n'a ni l'un ni l'autre problème.
+  const cachedHeaderCoverUrl = useCoverArt(activeServerId ?? undefined, album?.coverArt, 300, headerCoverUrl);
+  const dominantColor = useDominantColor(cachedHeaderCoverUrl);
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -165,6 +178,10 @@ export function AlbumPage() {
 
   function handleShuffleToggle() {
     toggleShuffle();
+  }
+
+  function handleDownloadAlbum() {
+    downloadStore.enqueueTracksAuto(album!.song.map(toTrack));
   }
 
   function handleTrackClick(song: AlbumSong) {
@@ -260,10 +277,30 @@ export function AlbumPage() {
         >
           <Shuffle size={24} />
         </button>
+
+        <button
+          onClick={handleDownloadAlbum}
+          disabled={downloadStatus === "complete" || downloadStatus === "downloading"}
+          className={`transition-colors ${
+            downloadStatus === "complete"
+              ? "text-emerald-400"
+              : "text-neutral-400 hover:text-white disabled:cursor-default disabled:hover:text-neutral-400"
+          }`}
+          title={downloadStatus === "complete" ? t("album.downloaded") : downloadStatus === "downloading" ? t("album.downloading") : t("album.download")}
+        >
+          {downloadStatus === "downloading" ? (
+            <Loader2 size={24} className="animate-spin" />
+          ) : downloadStatus === "complete" ? (
+            <Check size={24} />
+          ) : (
+            <Download size={24} />
+          )}
+        </button>
       </div>
 
       <div className="px-8 pb-12">
-        <div className="grid grid-cols-[32px_1fr_72px_96px_64px] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+        <div className="grid grid-cols-[16px_32px_1fr_72px_96px_64px] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+          <span />
           <span className="text-center">#</span>
           <span>{t("album.columnTitle")}</span>
           <span className="text-right">{t("album.columnFormat")}</span>
@@ -291,10 +328,14 @@ export function AlbumPage() {
                   setActiveSongId(song.id);
                   rowMenu.handleContextMenu(e);
                 }}
-                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[32px_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
                   isSelected ? "bg-neutral-800/70" : ""
                 }`}
               >
+                <div className="flex items-center justify-center text-emerald-400" title={downloadedTrackIds.has(song.id) ? t("album.downloaded") : undefined}>
+                  {downloadedTrackIds.has(song.id) && <Download size={12} />}
+                </div>
+
                 <div className="flex items-center justify-center text-sm text-neutral-400">
                   {isCurrent && isPlaying ? (
                     <Pause

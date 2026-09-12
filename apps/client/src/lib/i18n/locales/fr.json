@@ -5,7 +5,8 @@
     "cancel": "Annuler",
     "save": "Enregistrer",
     "confirm": "Confirmer",
-    "error": "Une erreur est survenue"
+    "error": "Une erreur est survenue",
+    "offline": "Hors ligne — seules les musiques téléchargées et en cache sont proposées"
   },
   "auth": {
     "login": {
@@ -78,7 +79,10 @@
     "shuffle": "Lecture aléatoire",
     "emptyTitle": "Cette playlist est vide",
     "emptySubtitle": "Ajoute des titres pour commencer à écouter.",
-    "emptySuggestions": "Tu pourrais ajouter..."
+    "emptySuggestions": "Tu pourrais ajouter...",
+    "download": "Télécharger",
+    "downloaded": "Téléchargé",
+    "downloading": "Téléchargement..."
   },
   "favorites": {
     "title": "Titres likés",
@@ -103,7 +107,9 @@
     "delete": "Supprimer",
     "noPlaylists": "Aucune playlist pour le moment",
     "loadingPlaylists": "Chargement...",
-    "addToPlaylistError": "Échec de l'ajout à la playlist"
+    "addToPlaylistError": "Échec de l'ajout à la playlist",
+    "download": "Télécharger",
+    "removeDownload": "Supprimer le téléchargement"
   },
   "album": {
   "labelAlbum": "Album",
@@ -119,7 +125,10 @@
   "notFound": "Album introuvable",
   "moreFromArtist": "Plus de {{artist}}",
   "similarAlbums": "Vous aimerez peut-être aussi",
-  "yearLabel": "Année"
+  "yearLabel": "Année",
+  "download": "Télécharger",
+  "downloaded": "Téléchargé",
+  "downloading": "Téléchargement..."
 },
   "search": {
     "placeholder": "Rechercher titres, artistes, albums...",
@@ -176,9 +185,32 @@
     "cacheClearing": "Suppression...",
     "unitGb": "Go",
     "unitMb": "Mo",
+    "downloads": "Téléchargements",
+    "downloadsDescription": "Les musiques que tu as explicitement téléchargées sont conservées jusqu'à ce que tu les supprimes, aucun nettoyage automatique.",
+    "downloadsSize": "Espace utilisé",
+    "downloadsCount": "{{count}} titres téléchargés",
+    "downloadsClear": "Supprimer tous les téléchargements",
+    "downloadsClearing": "Suppression...",
     "developer": "Développeur",
     "developerDescription": "Diagnostics avancés du moteur audio.",
     "developerMode": "Mode développeur",
     "developerModeDescription": "Ajoute un débogueur réseau et décodage au lecteur, avec le débit de téléchargement en direct, l'usage du cache et les événements de buffer/décodage."
+  },
+  "downloads": {
+    "title": "Téléchargements",
+    "emptyTitle": "Aucun téléchargement pour le moment",
+    "emptySubtitle": "Télécharge un album, une playlist ou un titre pour l'écouter hors ligne.",
+    "queuedSection": "En cours",
+    "columnTitle": "Titre",
+    "columnAlbum": "Album",
+    "columnDuration": "Durée",
+    "statusQueued": "En attente",
+    "statusDownloading": "Téléchargement...",
+    "statusError": "Échec",
+    "unitKb": "Ko",
+    "unitMb": "Mo",
+    "indicatorHeading": "Téléchargements en cours",
+    "indicatorTracks": "{{done}}/{{total}} titres",
+    "viewAll": "Voir tous les téléchargements"
   }
 }

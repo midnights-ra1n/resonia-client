@@ -1,9 +1,10 @@
-import { Info, ListMusic, ListPlus, User } from "lucide-react";
+import { Download, Info, ListMusic, ListPlus, User } from "lucide-react";
 import type { AlbumSummary, SubsonicClient } from "@resonia/api-client";
 import type { NavigateFunction } from "react-router-dom";
 import type { MenuItem } from "./ContextMenu";
 import type { Track } from "../../stores/playerStore";
 import { AddToPlaylistSubmenu } from "./AddToPlaylistSubmenu";
+import { downloadStore } from "../../lib/downloads/downloadStore";
 
 interface BuildAlbumMenuItemsParams {
   album: AlbumSummary;
@@ -61,6 +62,15 @@ export function buildAlbumMenuItems({
           close={close}
         />
       ),
+    },
+    {
+      type: "action",
+      label: t("contextMenu.download"),
+      icon: Download,
+      onClick: async () => {
+        const tracks = await fetchAlbumTracks(client, album);
+        downloadStore.enqueueTracksAuto(tracks);
+      },
     },
     { type: "separator" },
     {

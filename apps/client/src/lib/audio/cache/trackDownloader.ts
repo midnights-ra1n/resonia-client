@@ -1,7 +1,6 @@
 import { EndOfStreamError, fetchRange } from "./rangeFetcher";
-import { createOpfsWriter, opfsFileSize } from "./opfsStore";
 import type { DownloadPriority, ProgressListener } from "./types";
-import type { BlobWriter } from "../../storage/blobStore";
+import type { BlobStore, BlobWriter } from "../../storage/blobStore";
 import { networkDebugLog } from "../debug/audioDebugLogger";
 
 export interface ChunkEvent {
@@ -16,6 +15,7 @@ export type ChunkListener = (chunk: ChunkEvent) => void;
 export class TrackDownloader {
   readonly key: string;
   private streamUrl: string;
+  private store: BlobStore;
   private controller = new AbortController();
   private listeners = new Set<ProgressListener>();
   private chunkListeners = new Set<ChunkListener>();
@@ -37,9 +37,10 @@ export class TrackDownloader {
   // normale — précisément quand du réseau est sollicité en tâche de fond pendant la lecture.
   private closing: Promise<void> | null = null;
 
-  constructor(key: string, streamUrl: string) {
+  constructor(key: string, streamUrl: string, store: BlobStore) {
     this.key = key;
     this.streamUrl = streamUrl;
+    this.store = store;
   }
 
   get progress(): { bytesCached: number; totalBytes: number; complete: boolean } {
@@ -114,8 +115,8 @@ export class TrackDownloader {
     // n'est jamais mis en cache pour elle (ni retry possible).
     let writer: BlobWriter | null = null;
     try {
-      this.bytesCached = await opfsFileSize(this.key);
-      writer = await createOpfsWriter(this.key);
+      this.bytesCached = await this.store.fileSize(this.key);
+      writer = await this.store.createWriter(this.key);
       // .seek() une fois puis des write(data) séquentiels : support plus large/fiable
       // (notamment WebKit) que la forme composite { type: "write", position, data }
       // pour un flux qui n'a de toute façon jamais besoin d'écritures aléatoires.

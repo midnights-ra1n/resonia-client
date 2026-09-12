@@ -3,6 +3,8 @@ import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCallback, useRef, useState } from "react";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
+import { useCoverArt } from "../../hooks/useCoverArt";
+import { useServersStore } from "../../stores/serversStore";
 
 const MAX_QUEUE_DISPLAY = 50;
 
@@ -143,7 +145,13 @@ function QueueItem({
   onDragOverItem: (e: React.DragEvent, localIndex: number) => void;
   onDragEnd: () => void;
 }) {
-  const coverUrl = track.coverUrl ?? "/default-cover.svg";
+  const activeServerId = useServersStore((s) => s.activeServerId);
+  // Passe par le cache disque des pochettes (voir coverCache.ts / useCoverArt) plutôt que
+  // l'URL réseau directe : sans ça, chaque montage/réaffichage de la liste d'attente
+  // retapait le réseau pour une pochette déjà téléchargée (perçu comme un défilement
+  // saccadé/lent dans la file d'attente).
+  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, track.coverArtId, 80, track.coverUrl);
+  const coverUrl = cachedCoverUrl ?? "/default-cover.svg";
 
   return (
     <li className="relative">
@@ -170,6 +178,7 @@ function QueueItem({
           draggable={false}
           className="h-10 w-10 shrink-0 rounded object-cover"
           loading="lazy"
+          decoding="async"
         />
 
         <div className="min-w-0 flex-1">

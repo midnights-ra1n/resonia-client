@@ -12,6 +12,7 @@ import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import type { PlaylistItem } from "../../hooks/usePlaylists";
+import { useCoverArt } from "../../hooks/useCoverArt";
 import { RenamePlaylistModal } from "./RenamePlaylistModal";
 
 interface PlaylistSidebarItemProps {
@@ -38,6 +39,10 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
 
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
+  // Passe par le cache disque des pochettes plutôt que l'URL réseau directe (voir
+  // coverCache.ts) : cette ligne reste montée en permanence dans la barre latérale, un
+  // re-render ne doit jamais retaper le réseau pour une pochette déjà téléchargée.
+  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, playlist.coverArtId, 80, playlist.coverArt);
 
   // La playlist est "en cours" si le titre actif fait partie de sa dernière tracklist jouée.
   const isThisPlaylistPlaying =
@@ -85,8 +90,8 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
         className="group flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition hover:bg-neutral-900"
       >
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
-          {playlist.coverArt ? (
-            <img src={playlist.coverArt} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" />
+          {cachedCoverUrl ? (
+            <img src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-neutral-600 group-hover:hidden">
               <Library size={16} />
@@ -133,7 +138,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       {infoOpen && (
         <InfoModal
           title={playlist.name}
-          coverUrl={playlist.coverArt}
+          coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
           rows={[{ label: t("playlist.songCountLabel"), value: String(playlist.songCount) }]}
         />

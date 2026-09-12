@@ -8,6 +8,9 @@ export interface PlaylistItem {
   name: string;
   songCount: number;
   coverArt?: string;
+  /** Identifiant Subsonic de la pochette (distinct de `coverArt`, déjà résolue en URL) :
+   *  nécessaire pour clé de cache indépendante de l'URL (jeton d'auth, host…). */
+  coverArtId?: string;
   lastPlayedTrackIds?: Set<string>;
 }
 
@@ -43,6 +46,7 @@ export function usePlaylists() {
             name: p.name,
             songCount: p.songCount,
             coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
+            coverArtId: p.coverArt,
           })),
         );
       })
@@ -78,6 +82,7 @@ export function usePlaylists() {
             name: p.name,
             songCount: p.songCount,
             coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
+            coverArtId: p.coverArt,
           })),
         );
       });

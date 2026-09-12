@@ -26,11 +26,23 @@ export function updateMediaSessionMetadata(track: MediaSessionTrackInfo) {
       ]
       : [],
   });
+
+  // WebKit a un comportement observé où réassigner `metadata` peut désarmer les
+  // gestionnaires "play"/"pause" déjà posés (previoustrack/nexttrack semblent y survivre,
+  // ce qui expliquait que ces deux-là continuent de fonctionner après un changement de
+  // piste alors que play/pause se figent) — on les réapplique donc systématiquement juste
+  // après chaque mise à jour des métadonnées plutôt qu'une seule fois à l'initialisation.
+  if (_lastHandlers) applyActionHandlers(_lastHandlers);
 }
 
 export function setMediaSessionPlaybackState(state: "playing" | "paused" | "none") {
   if (!isSupported()) return;
   navigator.mediaSession.playbackState = state;
+  // Voir le commentaire dans updateMediaSessionMetadata : ce désarmement de play/pause a
+  // aussi été observé après un enchaînement gapless vers la piste suivante (aucun
+  // changement de `metadata` synchrone à cet instant précis dans certains chemins), donc on
+  // réapplique ici aussi plutôt que de dépendre d'un seul point de réapplication.
+  if (_lastHandlers) applyActionHandlers(_lastHandlers);
 }
 
 let _lastPositionState: { duration: number; position: number } | null = null;
@@ -67,6 +79,12 @@ export function setMediaSessionPositionState(duration: number, position: number,
     });
   } catch {
   }
+
+  // Filet de sécurité supplémentaire (voir updateMediaSessionMetadata) : appelé à chaque
+  // tick pendant la lecture (donc plusieurs fois par seconde), ce qui rattrape aussi tout
+  // désarmement de play/pause survenu entre deux mises à jour de métadonnées, notamment
+  // pendant un enchaînement gapless vers la piste suivante.
+  if (_lastHandlers) applyActionHandlers(_lastHandlers);
 }
 
 export function clearMediaSessionPositionState() {
@@ -85,9 +103,9 @@ export interface MediaSessionHandlers {
 
 const SEEK_INTERVAL = 10;
 
-export function registerMediaSessionHandlers(handlers: MediaSessionHandlers) {
-  if (!isSupported()) return;
+let _lastHandlers: MediaSessionHandlers | null = null;
 
+function applyActionHandlers(handlers: MediaSessionHandlers) {
   navigator.mediaSession.setActionHandler("play", handlers.onPlay);
   navigator.mediaSession.setActionHandler("pause", handlers.onPause);
   navigator.mediaSession.setActionHandler("nexttrack", handlers.onNext);
@@ -114,6 +132,12 @@ export function registerMediaSessionHandlers(handlers: MediaSessionHandlers) {
   }
 }
 
+export function registerMediaSessionHandlers(handlers: MediaSessionHandlers) {
+  if (!isSupported()) return;
+  _lastHandlers = handlers;
+  applyActionHandlers(handlers);
+}
+
 export function updateCurrentPositionForSeek(currentTime: number) {
   _currentPosition = currentTime;
 }
@@ -122,6 +146,7 @@ export function resetMediaSession() {
 
   navigator.mediaSession.metadata = null;
   navigator.mediaSession.playbackState = "none";
+  _lastHandlers = null;
 
   try {
     navigator.mediaSession.setActionHandler("play", null);

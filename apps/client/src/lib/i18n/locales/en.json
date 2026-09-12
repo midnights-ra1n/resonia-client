@@ -5,7 +5,8 @@
     "cancel": "Cancel",
     "save": "Save",
     "confirm": "Confirm",
-    "error": "An error occurred"
+    "error": "An error occurred",
+    "offline": "Offline — showing downloaded and cached tracks only"
   },
   "auth": {
     "login": {
@@ -78,7 +79,10 @@
     "shuffle": "Shuffle play",
     "emptyTitle": "This playlist is empty",
     "emptySubtitle": "Add songs to start listening.",
-    "emptySuggestions": "You could add..."
+    "emptySuggestions": "You could add...",
+    "download": "Download",
+    "downloaded": "Downloaded",
+    "downloading": "Downloading..."
   },
   "favorites": {
     "title": "Liked Songs",
@@ -103,7 +107,9 @@
     "delete": "Delete",
     "noPlaylists": "No playlists yet",
     "loadingPlaylists": "Loading...",
-    "addToPlaylistError": "Failed to add to playlist"
+    "addToPlaylistError": "Failed to add to playlist",
+    "download": "Download",
+    "removeDownload": "Remove download"
   },
   "album": {
   "labelAlbum": "Album",
@@ -119,7 +125,10 @@
   "notFound": "Album not found",
   "moreFromArtist": "More from {{artist}}",
   "similarAlbums": "You might also like",
-  "yearLabel": "Year"
+  "yearLabel": "Year",
+  "download": "Download",
+  "downloaded": "Downloaded",
+  "downloading": "Downloading..."
 },
   "search": {
     "placeholder": "Search titles, artists, albums...",
@@ -176,9 +185,32 @@
     "cacheClearing": "Clearing...",
     "unitGb": "GB",
     "unitMb": "MB",
+    "downloads": "Downloads",
+    "downloadsDescription": "Tracks you've explicitly downloaded are kept until you remove them, no automatic cleanup.",
+    "downloadsSize": "Space used",
+    "downloadsCount": "{{count}} downloaded tracks",
+    "downloadsClear": "Remove all downloads",
+    "downloadsClearing": "Removing...",
     "developer": "Developer",
     "developerDescription": "Advanced diagnostics for the audio engine.",
     "developerMode": "Developer mode",
     "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events."
+  },
+  "downloads": {
+    "title": "Downloads",
+    "emptyTitle": "No downloads yet",
+    "emptySubtitle": "Download an album, a playlist, or a single track to listen offline.",
+    "queuedSection": "In progress",
+    "columnTitle": "Title",
+    "columnAlbum": "Album",
+    "columnDuration": "Duration",
+    "statusQueued": "Queued",
+    "statusDownloading": "Downloading...",
+    "statusError": "Failed",
+    "unitKb": "KB",
+    "unitMb": "MB",
+    "indicatorHeading": "Downloads in progress",
+    "indicatorTracks": "{{done}}/{{total}} tracks",
+    "viewAll": "See all downloads"
   }
 }

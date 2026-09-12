@@ -37,20 +37,94 @@ function useClampedPosition(
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const clampedX =
-      x + rect.width > window.innerWidth
-        ? Math.max(0, window.innerWidth - rect.width)
-        : x;
-    const clampedY =
-      y + rect.height > window.innerHeight
-        ? Math.max(0, window.innerHeight - rect.height)
-        : y;
-    setPos({ x: clampedX, y: clampedY });
+
+    // Recalcule à chaque changement de taille du panneau, pas seulement à l'ouverture :
+    // un contenu qui grandit après coup (ex. liste chargée de façon asynchrone) doit
+    // repousser le panneau plutôt que de le laisser déborder de la fenêtre.
+    function recompute() {
+      const rect = el!.getBoundingClientRect();
+      const clampedX =
+        x + rect.width > window.innerWidth
+          ? Math.max(0, window.innerWidth - rect.width)
+          : x;
+      const clampedY =
+        y + rect.height > window.innerHeight
+          ? Math.max(0, window.innerHeight - rect.height)
+          : y;
+      setPos({ x: clampedX, y: clampedY });
+    }
+
+    recompute();
+    const observer = new ResizeObserver(recompute);
+    observer.observe(el);
+    return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [x, y]);
 
   return pos;
+}
+
+/** Position d'un sous-menu ancré à un élément (bord droit par défaut) : bascule à gauche
+ *  de l'ancre si l'espace à droite est insuffisant, et clampe verticalement — sans ça un
+ *  sous-menu ouvert près d'un bord de fenêtre se retrouvait partiellement hors écran.
+ *  Recalcule aussi au redimensionnement du contenu (ex. AddToPlaylistSubmenu, dont la
+ *  liste de playlists arrive après coup et peut faire grandir le panneau une fois déjà
+ *  positionné). */
+function useClampedSubmenuPosition(
+  anchorRect: { left: number; right: number; top: number } | null,
+  ref: React.RefObject<HTMLElement | null>,
+) {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !anchorRect) return;
+
+    function recompute() {
+      const rect = el!.getBoundingClientRect();
+      const fitsRight = anchorRect!.right + rect.width <= window.innerWidth;
+      const x = fitsRight
+        ? anchorRect!.right
+        : Math.max(0, anchorRect!.left - rect.width);
+      const y =
+        anchorRect!.top + rect.height > window.innerHeight
+          ? Math.max(0, window.innerHeight - rect.height)
+          : anchorRect!.top;
+      setPos({ x, y });
+    }
+
+    recompute();
+    const observer = new ResizeObserver(recompute);
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorRect]);
+
+  return pos;
+}
+
+function SubmenuPanel({
+  anchorRect,
+  children,
+}: {
+  anchorRect: { left: number; right: number; top: number };
+  children: React.ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const pos = useClampedSubmenuPosition(anchorRect, panelRef);
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      data-context-menu-panel
+      style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1001 }}
+      className="min-w-[220px] max-w-[280px] rounded-xl border border-white/10 bg-neutral-900/95 py-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 function MenuPanel({
@@ -63,8 +137,11 @@ function MenuPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const pos = useClampedPosition(x, y, panelRef);
   const [openSubmenuIndex, setOpenSubmenuIndex] = useState<number | null>(null);
-  const submenuAnchorRef = useRef<HTMLButtonElement | null>(null);
-  const [submenuPos, setSubmenuPos] = useState({ x: 0, y: 0 });
+  const [submenuAnchorRect, setSubmenuAnchorRect] = useState<{
+    left: number;
+    right: number;
+    top: number;
+  } | null>(null);
   // Petite transition d'apparition (fondu + zoom léger) plutôt qu'un pop-in instantané —
   // c'est ce qui donnait au menu un rendu "natif du navigateur" plutôt qu'intégré à
   // l'app. Positionné avant le premier paint (useLayoutEffect), donc pas de flash.
@@ -101,8 +178,7 @@ function MenuPanel({
 
   function openSubmenu(index: number, anchor: HTMLButtonElement) {
     const rect = anchor.getBoundingClientRect();
-    submenuAnchorRef.current = anchor;
-    setSubmenuPos({ x: rect.right, y: rect.top });
+    setSubmenuAnchorRect({ left: rect.left, right: rect.right, top: rect.top });
     setOpenSubmenuIndex(index);
   }
 
@@ -141,23 +217,11 @@ function MenuPanel({
                 <span className="flex-1 truncate">{item.label}</span>
                 <ChevronRight size={14} className="shrink-0 text-neutral-500" />
               </button>
-              {isOpen &&
-                createPortal(
-                  <div
-                    data-context-menu-panel
-                    style={{
-                      position: "fixed",
-                      left: submenuPos.x,
-                      top: submenuPos.y,
-                      zIndex: 1001,
-                    }}
-                    className="min-w-[220px] max-w-[280px] rounded-xl border border-white/10 bg-neutral-900/95 py-1.5 shadow-2xl shadow-black/50 backdrop-blur-xl"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {item.renderSubmenu(onClose)}
-                  </div>,
-                  document.body,
-                )}
+              {isOpen && submenuAnchorRect && (
+                <SubmenuPanel anchorRect={submenuAnchorRect}>
+                  {item.renderSubmenu(onClose)}
+                </SubmenuPanel>
+              )}
             </div>
           );
         }

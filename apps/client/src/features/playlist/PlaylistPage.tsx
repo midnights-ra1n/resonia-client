@@ -3,7 +3,9 @@ import {
   ArrowUpAZ,
   Check,
   ChevronDown,
+  Download,
   GripVertical,
+  Loader2,
   Pause,
   Play,
   Shuffle,
@@ -36,6 +38,10 @@ import { useRandomSongs } from "./useRandomSongs";
 import { RandomSongsCarousel } from "./RandomSongsCarousel";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useDominantColor } from "../../hooks/useDominantColor";
+import { useCoverArt } from "../../hooks/useCoverArt";
+import { downloadStore } from "../../lib/downloads/downloadStore";
+import { useTracksDownloadStatus } from "../../lib/downloads/useTracksDownloadStatus";
+import { useDownloadedTrackIds } from "../../lib/downloads/useDownloadedTrackIds";
 
 const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
 
@@ -104,6 +110,9 @@ export function PlaylistPage() {
 
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
+  const audioQualityId = useSettingsStore((s) => s.audioQualityId);
+  const downloadStatus = useTracksDownloadStatus(playlist?.entry ?? [], audioQualityId);
+  const downloadedTrackIds = useDownloadedTrackIds((playlist?.entry ?? []).map((s) => s.id));
 
   const isEmpty =
     !loading && !error && !!playlist && playlist.entry.length === 0;
@@ -140,7 +149,12 @@ export function PlaylistPage() {
     playlist?.coverArt && client
       ? client.getCoverArtUrl(playlist.coverArt, 300)
       : undefined;
-  const dominantColor = useDominantColor(headerCoverUrl);
+  // Passe par le cache disque des pochettes plutôt que l'URL réseau directe : celle-ci peut
+  // être lente à charger (chargement redondant avec la pochette déjà affichée) et échoue
+  // silencieusement en extraction de couleur si le serveur ne renvoie pas les en-têtes CORS
+  // requis par `crossOrigin="anonymous"` — un blob: du cache n'a ni l'un ni l'autre problème.
+  const cachedHeaderCoverUrl = useCoverArt(activeServerId ?? undefined, playlist?.coverArt, 300, headerCoverUrl);
+  const dominantColor = useDominantColor(cachedHeaderCoverUrl);
 
   if (loading) {
     return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
@@ -243,6 +257,10 @@ export function PlaylistPage() {
     }
     const queue = sortedEntries.map(toTrack);
     if (queue.length > 0) playFromStart(queue);
+  }
+
+  function handleDownloadPlaylist() {
+    downloadStore.enqueueTracksAuto(sortedEntries.map(toTrack));
   }
 
   function handleTrackClick(song: PlaylistWithSongsDTO["entry"][number]) {
@@ -362,6 +380,31 @@ export function PlaylistPage() {
             </button>
 
             <button
+              onClick={handleDownloadPlaylist}
+              disabled={downloadStatus === "complete" || downloadStatus === "downloading"}
+              className={`transition-colors ${
+                downloadStatus === "complete"
+                  ? "text-emerald-400"
+                  : "text-neutral-400 hover:text-white disabled:cursor-default disabled:hover:text-neutral-400"
+              }`}
+              title={
+                downloadStatus === "complete"
+                  ? t("playlist.downloaded")
+                  : downloadStatus === "downloading"
+                    ? t("playlist.downloading")
+                    : t("playlist.download")
+              }
+            >
+              {downloadStatus === "downloading" ? (
+                <Loader2 size={24} className="animate-spin" />
+              ) : downloadStatus === "complete" ? (
+                <Check size={24} />
+              ) : (
+                <Download size={24} />
+              )}
+            </button>
+
+            <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 setSortMenu({ open: true, x: rect.left, y: rect.bottom + 4 });
@@ -404,7 +447,8 @@ export function PlaylistPage() {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-[32px_1fr_1fr_72px_96px_64px] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+            <div className="grid grid-cols-[16px_32px_1fr_1fr_72px_96px_64px] gap-3 border-b border-neutral-800 px-2 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+              <span />
               <span className="text-center">#</span>
               <span>{t("playlist.columnTitle")}</span>
               <span>{t("playlist.columnAlbum")}</span>
@@ -445,7 +489,7 @@ export function PlaylistPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[16px_32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
                       dragIndex === index ? "opacity-40" : ""
                     } ${isSelected ? "bg-neutral-800/70" : ""}`}
                   >
@@ -454,6 +498,10 @@ export function PlaylistPage() {
                       dropPosition === "before" && (
                         <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
                       )}
+
+                    <div className="flex items-center justify-center text-emerald-400" title={downloadedTrackIds.has(song.id) ? t("playlist.downloaded") : undefined}>
+                      {downloadedTrackIds.has(song.id) && <Download size={12} />}
+                    </div>
 
                     <div className="flex items-center justify-center text-sm text-neutral-400">
                       {isCurrent && isPlaying ? (

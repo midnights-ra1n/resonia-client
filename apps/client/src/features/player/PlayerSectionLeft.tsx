@@ -1,8 +1,16 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { InfoModal } from "../../components/InfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
+import { ContextMenu } from "../../components/menu/ContextMenu";
+import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
+import { useContextMenu } from "../../components/menu/useContextMenu";
 import { usePlayerStore, DEFAULT_COVER_URL } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { formatTrackDuration } from "../../lib/format/duration";
+import { useTranslation } from "../../lib/i18n";
+import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { LikeButton } from "./LikeButton";
 
 // Bouton like : 20px (h-5 w-5) + 8px d'écart avant le texte.
@@ -12,7 +20,16 @@ const BUTTON_RESERVED = BUTTON_WIDTH + BUTTON_GAP;
 
 export function PlayerSectionLeft() {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
+  const addToQueue = usePlayerStore((state) => state.addToQueue);
   const activeServerId = useServersStore((s) => s.activeServerId);
+  const servers = useServersStore((s) => s.servers);
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const menu = useContextMenu();
+  const [infoOpen, setInfoOpen] = useState(false);
+
+  const server = servers.find((s) => s.id === activeServerId);
+  const client = server ? getClientForServer(server) : null;
 
   // Passe par le cache disque des pochettes (même mécanisme que les grilles/cartes) : évite
   // un nouveau téléchargement réseau à chaque changement de piste, source du délai et de
@@ -73,6 +90,10 @@ export function PlayerSectionLeft() {
         ref={containerRef}
         className="relative min-w-0 flex-1"
         style={{ paddingRight: BUTTON_RESERVED }}
+        onContextMenu={(e) => {
+          if (!currentTrack) return;
+          menu.handleContextMenu(e);
+        }}
       >
         {/* Éléments invisibles servant uniquement à mesurer la largeur naturelle (non
             tronquée) du titre et de l'artiste, pour positionner le bouton like. N'affecte
@@ -105,6 +126,35 @@ export function PlayerSectionLeft() {
           </div>
         )}
       </div>
+
+      {menu.open && currentTrack && client && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={menu.close}
+          items={buildTrackMenuItems({
+            track: currentTrack,
+            client,
+            t,
+            navigate,
+            addToQueue,
+            onOpenInfo: () => setInfoOpen(true),
+          })}
+        />
+      )}
+
+      {infoOpen && currentTrack && (
+        <InfoModal
+          title={currentTrack.title}
+          coverUrl={cachedCoverUrl ?? undefined}
+          onClose={() => setInfoOpen(false)}
+          rows={[
+            { label: t("search.artistLabel"), value: currentTrack.artist },
+            { label: t("album.labelAlbum"), value: currentTrack.album },
+            { label: t("playlist.columnDuration"), value: formatTrackDuration(currentTrack.duration) },
+          ]}
+        />
+      )}
     </div>
   );
 }

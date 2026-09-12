@@ -62,6 +62,32 @@ describe("fetchRange — reprise face à un serveur qui ignore les Range", () =>
     );
   });
 
+  it("chunk qui ne répond jamais : abandonné après un délai puis retenté, jamais bloqué indéfiniment", async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_url: string, init: { signal: AbortSignal }) => {
+        callCount++;
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      }),
+    );
+
+    const promise = fetchRange("https://x/stream", 0, new AbortController().signal, 4);
+    const assertion = expect(promise).rejects.toThrow(/délai réseau/i);
+
+    // Avance au-delà du timeout par tentative (20s) + du backoff entre tentatives (3 retries).
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(25_000);
+    }
+
+    await assertion;
+    expect(callCount).toBe(4); // 1er essai + 3 retries, jamais figé indéfiniment
+    vi.useRealTimers();
+  });
+
   it("206 classique (serveur supportant Range) : comportement inchangé", async () => {
     const chunkBody = new Uint8Array([6, 7, 8, 9]).buffer;
     vi.stubGlobal(

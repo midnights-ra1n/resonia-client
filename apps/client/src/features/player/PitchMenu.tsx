@@ -39,19 +39,26 @@ export function PitchMenu() {
           appearance: none;
           outline: none;
         }
+        /* Capsule façon cap de pitch fader de platine (CDJ/Serato) plutôt qu'un rond : une
+           fois l'input tourné à 90deg (voir le transform plus bas), "width" devient l'axe de
+           déplacement (fin) et "height" l'axe perpendiculaire (large) — d'où les valeurs
+           inversées par rapport à une pilule verticale classique. */
         input.pitch-fader::-webkit-slider-thumb {
           -webkit-appearance: none;
-          width: 14px;
-          height: 14px;
-          border-radius: 9999px;
+          width: 10px;
+          height: 26px;
+          border-radius: 3px;
           background: #fff;
           cursor: pointer;
-          margin-top: -5px;
+          /* Pas de margin-top de centrage ici : le WebKit récent (WKWebView de Tauri
+             compris) centre déjà nativement un thumb stylé sur la piste. Le vieil hack
+             margin-top = (trackHeight - thumbHeight) / 2, hérité du thumb rond d'origine,
+             décalait la capsule hors de l'axe de la piste une fois cumulé au centrage natif. */
         }
         input.pitch-fader::-moz-range-thumb {
-          width: 14px;
-          height: 14px;
-          border-radius: 9999px;
+          width: 10px;
+          height: 26px;
+          border-radius: 3px;
           background: #fff;
           border: none;
           cursor: pointer;

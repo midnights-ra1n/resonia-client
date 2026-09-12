@@ -1,7 +1,8 @@
-import { Info, ListPlus, Pencil, Play, Trash2 } from "lucide-react";
+import { Download, Info, ListPlus, Pencil, Play, Trash2 } from "lucide-react";
 import type { SubsonicClient } from "@resonia/api-client";
 import type { MenuItem } from "./ContextMenu";
 import type { Track } from "../../stores/playerStore";
+import { downloadStore } from "../../lib/downloads/downloadStore";
 
 interface PlaylistLike {
   id: string;
@@ -63,6 +64,15 @@ export function buildPlaylistMenuItems({
       onClick: async () => {
         const tracks = await fetchPlaylistTracks(client, playlist);
         addToQueue(tracks, "next");
+      },
+    },
+    {
+      type: "action",
+      label: t("contextMenu.download"),
+      icon: Download,
+      onClick: async () => {
+        const tracks = await fetchPlaylistTracks(client, playlist);
+        downloadStore.enqueueTracksAuto(tracks);
       },
     },
     { type: "separator" },

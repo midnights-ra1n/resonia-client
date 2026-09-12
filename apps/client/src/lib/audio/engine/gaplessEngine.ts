@@ -175,12 +175,17 @@ export class GaplessEngine {
 
     this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
     this.sessionAnchor.loop = true;
-    // `muted = true` suffit à garantir le silence (et reste exempté des restrictions
-    // autoplay du navigateur). `volume = 0` en plus est redondant — et suspect : WebKit
-    // semble parfois exclure un élément à volume 0 de son heuristique "est-ce vraiment en
-    // train de jouer" pour MPNowPlayingInfoCenter, ce qui expliquerait un widget Now
-    // Playing système bloqué sur "en pause" malgré une lecture bien réelle. Retiré.
-    this.sessionAnchor.muted = true;
+    // Ni `muted` ni `volume` ne sont nécessaires pour garantir le silence : le WAV
+    // lui-même ne contient que du silence numérique (PCM au point médian). Les deux ont
+    // pourtant été évités : `volume = 0` d'abord (voir historique), et `muted = true` s'est
+    // révélé avoir le même défaut à l'usage — WebKit semble exclure un élément
+    // muet/à volume nul de son heuristique "y a-t-il vraiment un flux audio actif", ce qui
+    // dégrade le contrôle interactif du widget Now Playing système : le bouton play/pause
+    // reste figé (non cliquable) après un enchaînement gapless vers la piste suivante, alors
+    // que la piste réelle (elle, jouée via le graphe Web Audio) continue normalement.
+    // Un volume non nul et non muet — mais imperceptible — contourne les deux heuristiques.
+    this.sessionAnchor.muted = false;
+    this.sessionAnchor.volume = 0.01;
     this.sessionAnchor.preload = "auto";
 
     this.installAutoplayUnlock();
@@ -433,8 +438,12 @@ export class GaplessEngine {
     debugLog("engine:setState", { from: this._state, to: state });
     this._state = state;
     this._error = error;
-    if (state === "playing") this.startSessionAnchor();
-    else if (state === "paused" || state === "idle") this.stopSessionAnchor();
+    // L'ancre reste active tant qu'une piste est chargée, pause comprise : la couper en
+    // pause fait perdre à l'app son statut de cible valide pour les commandes distantes
+    // système (macOS/Windows/Linux), et le bouton play du widget Now Playing cesse alors de
+    // répondre — seul un retour à `idle` (rien de chargé) doit vraiment l'arrêter.
+    if (state === "playing" || state === "paused") this.startSessionAnchor();
+    else if (state === "idle") this.stopSessionAnchor();
     this.stateListeners.forEach((cb) => cb(state, error));
   }
 
@@ -960,6 +969,17 @@ export class GaplessEngine {
       }
     }
 
+    // Cette fonction est ré-invoquée à chaque changement de vitesse (voir setPlaybackRate) —
+    // potentiellement des dizaines de fois par seconde pendant qu'on glisse le pitch fader.
+    // Sans `cancelScheduledValues`, chaque appel EMPILE un nouveau couple
+    // setValueAtTime/linearRampToValueAtTime sur la timeline d'automation de `curGain` par
+    // dessus les précédents (jamais nettoyés) : plusieurs rampes concurrentes vers des
+    // échéances légèrement différentes se chevauchent alors, et le volume réellement rendu
+    // devient imprévisible (creux audibles qui reviennent aussitôt) au lieu de suivre la
+    // dernière rampe demandée. On repart donc toujours d'une timeline propre, ancrée sur la
+    // valeur réelle au temps présent.
+    curGain.gain.cancelScheduledValues(now);
+    curGain.gain.setValueAtTime(curGain.gain.value, now);
     curGain.gain.setValueAtTime(curGain.gain.value, crossfadeStart);
     curGain.gain.linearRampToValueAtTime(0, endTime);
 

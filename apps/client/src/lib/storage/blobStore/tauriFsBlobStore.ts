@@ -11,10 +11,11 @@ function safeName(key: string): string {
  *  maturité de l'implémentation OPFS de la webview (WebView2, WKWebView, WebKitGTK sur
  *  Linux — support historiquement incomplet, notamment pour l'écriture positionnée) ni
  *  d'un quota de stockage "best-effort" propre à l'origine `tauri://localhost` : les
- *  fichiers sont écrits directement dans `$APPCACHE/<rootDir>`, avec le quota disque réel
- *  de l'utilisateur. */
-export function createTauriFsBlobStore(rootDir: string): BlobStore {
-  const baseDir = BaseDirectory.AppCache;
+ *  fichiers sont écrits directement dans `$<baseDir>/<rootDir>`, avec le quota disque réel
+ *  de l'utilisateur.
+ *  `baseDir` par défaut `AppCache` (purgeable par l'OS, adapté au cache transitoire) —
+ *  les téléchargements persistants passent explicitement `BaseDirectory.AppData`. */
+export function createTauriFsBlobStore(rootDir: string, baseDir: BaseDirectory = BaseDirectory.AppCache): BlobStore {
   let dirReady: Promise<void> | null = null;
 
   function ensureDir(): Promise<void> {

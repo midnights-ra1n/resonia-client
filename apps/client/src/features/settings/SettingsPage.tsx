@@ -8,6 +8,7 @@ import { useTranslation, type Locale } from "../../lib/i18n";
 import { useSettingsStore, GIGABYTE } from "../../stores/settingsStore";
 import { getPlatform, isTauri } from "../../lib/platform";
 import { cacheStore } from "../../lib/audio/cache/cacheStore";
+import { downloadStore } from "../../lib/downloads/downloadStore";
 import {
   currentCoverCacheSize,
   clearCoverCache,
@@ -86,6 +87,10 @@ export function SettingsPage() {
   const [coverCacheBytes, setCoverCacheBytes] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
 
+  const [downloadsBytes, setDownloadsBytes] = useState<number | null>(null);
+  const [downloadsCount, setDownloadsCount] = useState(0);
+  const [clearingDownloads, setClearingDownloads] = useState(false);
+
   // Abonnement temps réel : cacheStore/coverCache notifient (throttled) à chaque téléchargement,
   // éviction ou purge, donc la taille affichée reste à jour sans polling. Les pochettes animées ne
   // sont plus mises en cache sur disque (voir useAnimatedAlbumCover.ts / AnimatedAlbumCoverVideo.tsx :
@@ -111,6 +116,24 @@ export function SettingsPage() {
     };
   }, [isDesktop]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const syncDownloads = (bytes: number) => {
+      if (!cancelled) setDownloadsBytes(bytes);
+    };
+    downloadStore.currentDownloadsSize().then(syncDownloads);
+    downloadStore.listDownloaded().then((list) => !cancelled && setDownloadsCount(list.length));
+    const unsubSize = downloadStore.onSizeChange(syncDownloads);
+    const unsubQueue = downloadStore.onQueueChange(() => {
+      downloadStore.listDownloaded().then((list) => !cancelled && setDownloadsCount(list.length));
+    });
+    return () => {
+      cancelled = true;
+      unsubSize();
+      unsubQueue();
+    };
+  }, []);
+
   const cacheSize =
     audioCacheBytes === null || coverCacheBytes === null
       ? null
@@ -128,6 +151,15 @@ export function SettingsPage() {
       await Promise.all([cacheStore.clearAll(), clearCoverCache()]);
     } finally {
       setClearing(false);
+    }
+  };
+
+  const handleClearDownloads = async () => {
+    setClearingDownloads(true);
+    try {
+      await downloadStore.clearAll();
+    } finally {
+      setClearingDownloads(false);
     }
   };
 
@@ -388,6 +420,44 @@ export function SettingsPage() {
           </div>
         </section>
       )}
+
+      <section className="mt-10 max-w-xl">
+        <h2 className="text-lg font-semibold">{t("settings.downloads")}</h2>
+        <p className="mt-1 text-sm text-neutral-400">
+          {t("settings.downloadsDescription")}
+        </p>
+
+        <div className="mt-6 flex flex-col gap-6">
+          <div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-medium text-white">
+                {t("settings.downloadsSize")}
+              </span>
+              <span className="text-xs text-neutral-500">
+                {downloadsBytes === null
+                  ? t("common.loading")
+                  : formatBytes(downloadsBytes, unitGb, unitMb)}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-neutral-500">
+              {t("settings.downloadsCount", { count: downloadsCount })}
+            </p>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={handleClearDownloads}
+              disabled={clearingDownloads || downloadsCount === 0}
+              className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {clearingDownloads
+                ? t("settings.downloadsClearing")
+                : t("settings.downloadsClear")}
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section className="mt-10 max-w-xl">
         <h2 className="text-lg font-semibold">{t("settings.developer")}</h2>

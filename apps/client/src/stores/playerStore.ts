@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
+import { downloadStore } from "../lib/downloads/downloadStore";
 import { prefetchScheduler } from "../lib/audio/cache/prefetchScheduler";
 import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
 import { getGaplessEngine } from "../lib/audio/engine/gaplessEngine";
@@ -31,6 +32,31 @@ const MASTER_TEMPO_STORAGE_KEY = "resonia:settings:masterTempo";
  *  pitch/100. */
 const PITCH_MIN_PERCENT = -16;
 const PITCH_MAX_PERCENT = 16;
+
+// Un <input type="range"> émet un événement "change" à chaque pixel parcouru pendant le
+// glissé (jusqu'à plusieurs dizaines par seconde) : répercuter chacun tel quel jusqu'à
+// GaplessEngine.setPlaybackRate y déclenche à chaque fois une replanification complète du
+// crossfade vers la piste suivante (nouveaux noeuds Web Audio créés/détruits) — coûteux, et
+// la cause des coupures observées lors d'un glissé rapide du pitch fader. On garde le
+// curseur et l'affichage du pourcentage parfaitement réactifs (mise à jour immédiate du
+// store), mais on ne répercute la valeur au moteur audio qu'une fois par frame, en ne
+// gardant que la dernière valeur demandée entre deux frames.
+let pitchRafId: number | null = null;
+let pitchRafValue: number | null = null;
+function applyPitchToEngineThrottled(engine: ReturnType<typeof getGaplessEngine>, rate: number) {
+  pitchRafValue = rate;
+  if (pitchRafId !== null) return;
+  pitchRafId = requestAnimationFrame(() => {
+    pitchRafId = null;
+    if (pitchRafValue !== null) engine.setPlaybackRate(pitchRafValue);
+    pitchRafValue = null;
+  });
+}
+function cancelThrottledPitch() {
+  if (pitchRafId !== null) cancelAnimationFrame(pitchRafId);
+  pitchRafId = null;
+  pitchRafValue = null;
+}
 
 export interface Track {
   id: string;
@@ -266,7 +292,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
    *  déclenché une fois la lecture réellement démarrée — jamais au moment du clic : une
    *  deuxième connexion réseau vers la même piste concurrencerait le flux de lecture et
    *  retarderait le démarrage audible. */
-  function activateCurrentTrackCaching() {
+  async function activateCurrentTrackCaching() {
     const { currentTrack } = get();
     if (!currentTrack) return;
     const resolved = resolvePlayableTrack(currentTrack);
@@ -274,13 +300,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     prefetchScheduler.setQuality(resolved.qualityId);
     prefetchScheduler.setActive({ trackId: currentTrack.id, streamUrl: resolved.streamUrl });
-    cacheStore.request(currentTrack.id, resolved.qualityId, resolved.streamUrl, "active");
     prefetchTrackCover(currentTrack);
+
+    // Piste déjà téléchargée : inutile de retélécharger les mêmes octets dans le cache LRU.
+    if (await downloadStore.isDownloaded(currentTrack.id, resolved.qualityId)) return;
+    cacheStore.request(currentTrack.id, resolved.qualityId, resolved.streamUrl, "active");
   }
 
   /** Attend que la piste (déjà demandée en cache "active") soit intégralement
-   *  téléchargée, puis en lit les octets. */
+   *  téléchargée, puis en lit les octets — le fichier téléchargé (permanent) est préféré
+   *  au cache LRU quand il existe déjà, exactement comme pour l'URL de lecture instantanée. */
   async function waitForActiveCached(trackId: string, qualityId: string): Promise<ArrayBuffer | null> {
+    if (await downloadStore.isDownloaded(trackId, qualityId)) {
+      const downloaded = await downloadStore.readDownloadedFull(trackId, qualityId);
+      if (downloaded && downloaded.byteLength > 0) return downloaded;
+    }
     const already = await cacheStore.isFullyCached(trackId, qualityId);
     if (already) return cacheStore.readCachedFull(trackId, qualityId);
     return new Promise((resolve) => {
@@ -363,7 +397,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     try {
       let decoded = decodedCache.get(key);
       if (!decoded) {
-        const cachedBytes = await cacheStore.readCachedFull(nextTrackData.id, resolved.qualityId);
+        const downloadedBytes = (await downloadStore.isDownloaded(nextTrackData.id, resolved.qualityId))
+          ? await downloadStore.readDownloadedFull(nextTrackData.id, resolved.qualityId)
+          : null;
+        const cachedBytes =
+          downloadedBytes && downloadedBytes.byteLength > 0
+            ? downloadedBytes
+            : await cacheStore.readCachedFull(nextTrackData.id, resolved.qualityId);
         const arrayBuffer =
           cachedBytes && cachedBytes.byteLength > 0
             ? cachedBytes
@@ -518,11 +558,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     onNext: () => get().nextTrack(),
     onPrevious: () => get().prevTrack(),
     onSeekTo: (time) => get().setCurrentTime(time),
-    // Simples drapeaux de présence pour mediaSession.ts (voir son commentaire sur
-    // `onSeekForward`/`onSeekBackward`) : le décalage réel est calculé en interne et repasse
-    // par `onSeekTo` ci-dessus, ces callbacks ne sont jamais appelées directement.
-    onSeekForward: () => {},
-    onSeekBackward: () => {},
+    // Ne PAS enregistrer onSeekForward/onSeekBackward : leur seule présence fait que les
+    // widgets Now Playing système (macOS/Windows/Linux) affichent des boutons "avance/retour
+    // de 10s" à la place de précédent/suivant. On veut précédent/suivant partout.
   }).catch((err) => console.error("[player] Échec d'initialisation du Now Playing système", err));
 
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
@@ -538,16 +576,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     const key = decodedCacheKey(track.id, resolved.qualityId);
     const decoded = decodedCache.get(key);
-    const cachedUrl = decoded ? null : await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format);
+    // Le fichier téléchargé (permanent, choix explicite de l'utilisateur) est toujours
+    // préféré au cache (LRU transitoire) quand les deux existent pour cette piste/qualité.
+    const localUrl = decoded
+      ? null
+      : (await downloadStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format)) ??
+        (await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format));
 
     // Un appel plus récent a déjà pris le dessus pendant cette attente : ne rien committer,
     // engine et Now Playing reflètent déjà la piste voulue.
     if (myGeneration !== loadGeneration) return;
 
-    const instantUrl = cachedUrl ?? resolved.streamUrl;
-    // Un blob OPFS local n'a ni Range HTTP ni CORS à satisfaire : le repli MediaSource ne
-    // s'applique qu'au vrai flux réseau.
-    const mimeType = cachedUrl ? undefined : MSE_MIME_TYPE[resolved.format];
+    const instantUrl = localUrl ?? resolved.streamUrl;
+    // Un blob local (téléchargement ou cache) n'a ni Range HTTP ni CORS à satisfaire : le
+    // repli MediaSource ne s'applique qu'au vrai flux réseau.
+    const mimeType = localUrl ? undefined : MSE_MIME_TYPE[resolved.format];
 
     engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
 
@@ -757,11 +800,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     pitch: 0,
     setPitch: (percent) => {
       const clamped = Math.min(PITCH_MAX_PERCENT, Math.max(PITCH_MIN_PERCENT, percent));
-      engine.setPlaybackRate(1 + clamped / 100);
+      applyPitchToEngineThrottled(engine, 1 + clamped / 100);
       set({ pitch: clamped });
       storage.set(PITCH_STORAGE_KEY, clamped);
     },
     resetPitch: () => {
+      // Action ponctuelle (bouton, pas un glissé) : pas besoin de throttle, et on veut que
+      // le reset soit immédiat — on annule au passage une application throttlée en attente
+      // pour qu'elle n'écrase pas ce reset une frame plus tard.
+      cancelThrottledPitch();
       engine.setPlaybackRate(1);
       set({ pitch: 0 });
       storage.set(PITCH_STORAGE_KEY, 0);

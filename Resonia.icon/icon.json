@@ -6,15 +6,13 @@
     {
       "layers" : [
         {
-          "blend-mode" : "normal",
-          "glass" : true,
-          "image-name" : "Frame 1.svg",
-          "name" : "Frame 1",
+          "image-name" : "Rectangle 4.svg",
+          "name" : "Rectangle 4",
           "position" : {
             "scale" : 0.8,
             "translation-in-points" : [
-              5.684341886080802e-14,
-              -8.965481811173959e-06
+              0,
+              0
             ]
           }
         }

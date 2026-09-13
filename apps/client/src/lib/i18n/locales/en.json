@@ -196,6 +196,15 @@
     "developerMode": "Developer mode",
     "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events."
   },
+  "update": {
+    "title": "Update available — {{version}}",
+    "currentVersion": "You're currently on {{version}}.",
+    "install": "Install now",
+    "downloading": "Downloading... {{percent}}%",
+    "later": "Later",
+    "restart": "Restart to apply",
+    "error": "The update couldn't be downloaded. Try again later."
+  },
   "downloads": {
     "title": "Downloads",
     "emptyTitle": "No downloads yet",

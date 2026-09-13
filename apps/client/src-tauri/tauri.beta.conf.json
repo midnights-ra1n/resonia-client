@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/midnights-ra1n/resonia-client/releases/download/beta/latest.json"
+      ]
+    }
+  }
+}

@@ -27,7 +27,14 @@ pub fn run() {
         )
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_process::init());
+
+    // Le plugin updater n'existe que pour desktop (pas de mobile_entry_point côté mise à jour
+    // autonome sur les stores) : on le garde derrière ce cfg pour ne pas casser une éventuelle
+    // cible mobile future.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     // Sur macOS uniquement : fermer la fenêtre principale (croix rouge) ne doit pas quitter
     // l'app, comme c'est la convention native de la plateforme (Safari, Mail, Musique...) —

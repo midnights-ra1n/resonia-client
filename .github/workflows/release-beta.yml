@@ -1,0 +1,120 @@
+name: Release (beta)
+
+# Déclenché par un tag "vX.Y.Z-beta.N" poussé sur la branche beta
+# (ex: git tag v1.4.0-beta.1 && git push origin v1.4.0-beta.1).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: ${{ contains(github.ref_name, '-beta') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-13
+            target: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extraire la version depuis le tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Les notes de version affichées dans l'app viennent de la même release GitHub que celle
+      # créée ici : le message du tag annoté est la seule source de vérité pour les deux.
+      - name: Lire les notes de version (message du tag annoté)
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo "notes<<EOF_NOTES"
+            git tag -l --format='%(contents)' "${GITHUB_REF_NAME}"
+            echo "EOF_NOTES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Dépendances système (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Fixer la version applicative depuis le tag
+        run: node scripts/set-version.mjs "${{ steps.version.outputs.version }}"
+
+      - name: Build + publication de la release (préversion)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/client
+          tauriScript: pnpm tauri
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.beta.conf.json
+          tagName: ${{ github.ref_name }}
+          releaseName: "Resonia ${{ github.ref_name }} (beta)"
+          releaseBody: ${{ steps.notes.outputs.notes }}
+          releaseDraft: false
+          prerelease: true
+
+  # L'updater du canal beta pointe vers une release à tag fixe ("beta") pour ne jamais avoir à
+  # changer l'URL de l'endpoint dans tauri.beta.conf.json à chaque nouvelle préversion — seul le
+  # fichier latest.json y est republié à chaque run, ses URLs internes pointant vers les binaires
+  # de la vraie release versionnée créée ci-dessus (immuable, jamais réécrite).
+  publish-beta-pointer:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Republier latest.json sur la release pointeur "beta"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dl
+          gh release download "${GITHUB_REF_NAME}" -R "${GITHUB_REPOSITORY}" -D dl --clobber -p 'latest.json'
+
+          if gh release view beta -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload beta dl/latest.json -R "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create beta dl/latest.json \
+              -R "${GITHUB_REPOSITORY}" \
+              --title "Beta (pointeur de mise à jour)" \
+              --notes "Release technique : ne contient que le manifeste utilisé par l'auto-updater du canal beta. Voir la release ${GITHUB_REF_NAME} pour les notes de version." \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+          fi

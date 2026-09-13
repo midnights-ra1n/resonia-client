@@ -1,7 +1,13 @@
 name: Release (stable)
 
-# Déclenché par un tag "vX.Y.Z" poussé sur la branche stable (ex: git tag v1.4.0 && git push origin v1.4.0).
-# Les tags "vX.Y.Z-beta.N" sont ignorés ici — voir release-beta.yml.
+# Déclenché à chaque push sur la branche stable. La version vient de package.json (racine) : si
+# son contenu correspond à un tag "vX.Y.Z" qui existe déjà, rien ne se passe (push sans bump de
+# version = pas de nouvelle release). Bump la version dans package.json avant de merger/push sur
+# stable pour publier.
+#
+# Notes de version : générées automatiquement par GitHub à partir des commits/PR depuis la
+# dernière release (mêmes notes sur la page GitHub et dans l'app, l'app lisant le corps de cette
+# même release — voir lib/update/updateService.ts).
 #
 # Artefacts produits par run : Windows (.exe NSIS, x86_64), macOS (.dmg + .pkg, arm64 et x86_64),
 # Linux (.deb + .rpm + .AppImage, x86_64 et arm64). Le .pkg n'est pas un format Tauri natif : il
@@ -9,15 +15,55 @@ name: Release (stable)
 # certificat Apple Developer configuré) — Gatekeeper avertira à l'ouverture, comme pour le .app.
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - stable
 
 permissions:
   contents: write
 
 jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      should_release: ${{ steps.resolve.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Déterminer la version et si une release est nécessaire
+        id: resolve
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+
+          if [[ "$VERSION" == *-beta* ]]; then
+            echo "::error::package.json contient une version beta ($VERSION) sur la branche stable."
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} déjà publié, rien à faire."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Créer et pousser le tag
+        if: steps.resolve.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.resolve.outputs.tag }}" -m "Release ${{ steps.resolve.outputs.tag }}"
+          git push origin "${{ steps.resolve.outputs.tag }}"
+
   release:
-    if: ${{ !contains(github.ref_name, '-beta') }}
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -46,23 +92,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extraire la version depuis le tag
-        id: version
-        shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      # Les notes de version affichées dans l'app viennent de la même release GitHub que celle
-      # créée ici : le message du tag annoté est la seule source de vérité pour les deux.
-      - name: Lire les notes de version (message du tag annoté)
-        id: notes
-        shell: bash
-        run: |
-          {
-            echo "notes<<EOF_NOTES"
-            git tag -l --format='%(contents)' "${GITHUB_REF_NAME}"
-            echo "EOF_NOTES"
-          } >> "$GITHUB_OUTPUT"
-
       - name: pnpm
         uses: pnpm/action-setup@v4
 
@@ -88,8 +117,8 @@ jobs:
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
-      - name: Fixer la version applicative depuis le tag
-        run: node scripts/set-version.mjs "${{ steps.version.outputs.version }}"
+      - name: Synchroniser tauri.conf.json / Cargo.toml sur la version de package.json
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
 
       - name: Build + publication de la release
         uses: tauri-apps/tauri-action@v0
@@ -101,9 +130,10 @@ jobs:
           projectPath: apps/client
           tauriScript: pnpm tauri
           args: --target ${{ matrix.target }} ${{ matrix.extraArgs }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "Resonia ${{ github.ref_name }}"
-          releaseBody: ${{ steps.notes.outputs.notes }}
+          tagName: ${{ needs.resolve-version.outputs.tag }}
+          releaseName: "Resonia ${{ needs.resolve-version.outputs.tag }}"
+          generateReleaseNotes: true
+          updaterJsonPreferNsis: true
           releaseDraft: false
           prerelease: false
 
@@ -112,13 +142,13 @@ jobs:
         run: |
           BUNDLE_DIR="apps/client/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
           APP_PATH=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app')
-          PKG_PATH="$BUNDLE_DIR/Resonia_${{ steps.version.outputs.version }}_${{ matrix.target }}.pkg"
+          PKG_PATH="$BUNDLE_DIR/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
           pkgbuild --install-location /Applications --component "$APP_PATH" \
-            --identifier com.resonia.client --version "${{ steps.version.outputs.version }}" "$PKG_PATH"
+            --identifier com.resonia.client --version "${{ needs.resolve-version.outputs.version }}" "$PKG_PATH"
           echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"
 
       - name: Publier le .pkg sur la release
         if: startsWith(matrix.platform, 'macos')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" "${{ env.PKG_PATH }}" --clobber -R "${{ github.repository }}"
+        run: gh release upload "${{ needs.resolve-version.outputs.tag }}" "${{ env.PKG_PATH }}" --clobber -R "${{ github.repository }}"

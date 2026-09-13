@@ -6,7 +6,7 @@ import {
   SkipBack,
   SkipForward,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../../stores/playerStore";
 
 // 0 est une valeur d'écoulement légitime (tout début de piste, y compris juste après un
@@ -99,17 +99,35 @@ export function PlayerSectionCenter() {
 function ProgressBar() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const currentTime = usePlayerStore((s) => s.currentTime);
+  const engineDuration = usePlayerStore((s) => s.duration);
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
   const showTimeRemaining = usePlayerStore((s) => s.showTimeRemaining);
   const toggleTimeDisplay = usePlayerStore((s) => s.toggleTimeDisplay);
 
-  const duration = currentTrack?.duration ?? 0;
+  // La métadonnée serveur (`currentTrack.duration`) prime sur `engine.duration` pour
+  // L'AFFICHAGE : en streaming natif, tant que le fichier n'est pas encore en cache,
+  // `HTMLMediaElement.duration` peut être temporairement `Infinity` (transfert chunked sans
+  // Content-Length) ou une estimation grossière qui grandit au fil du téléchargement —
+  // utilisée telle quelle, elle faisait osciller/geler la barre de progression (largeur qui
+  // dépasse ou stagne près de 100%) et figeait les libellés de temps sur "--:--" (`isFinite`
+  // rejette `Infinity`) jusqu'à ce que le buffer complet soit disponible. La métadonnée
+  // serveur, elle, est connue dès le chargement de la piste et ne bouge plus.
+  // `engine.seek()` clampe déjà lui-même sur SA propre durée réelle (voir gaplessEngine.ts) :
+  // scruter/cliquer par rapport à la métadonnée ne risque donc plus de cibler un point que le
+  // moteur ne peut pas satisfaire, contrairement à avant ce correctif.
+  const trackDuration = currentTrack?.duration ?? 0;
+  const duration =
+    trackDuration > 0
+      ? trackDuration
+      : Number.isFinite(engineDuration) && engineDuration > 0
+        ? engineDuration
+        : 0;
 
   const [hoverProgress, setHoverProgress] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
 
   const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!barRef.current || !duration) return;
@@ -124,6 +142,40 @@ function ProgressBar() {
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setHoverProgress(pct * duration);
   };
+
+  // Un vrai geste de scrub (mousedown sur la barre puis glissé) sort très vite du <div> lui-
+  // même : sans écouteurs sur window, `onMouseMove`/`onMouseUp` posés sur la barre cessent de
+  // se déclencher dès que le curseur en sort, ce qui gelait le seek en plein glissé et pouvait
+  // laisser `isDragging` bloqué à `true` si le relâchement se produisait hors de la barre
+  // (le clic ne se déclenchant, lui, que si le mouseup retombe sur le même élément).
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const clampPct = (clientX: number) => {
+      if (!barRef.current) return null;
+      const rect = barRef.current.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    };
+
+    const onMove = (e: MouseEvent) => {
+      if (!duration) return;
+      const pct = clampPct(e.clientX);
+      if (pct !== null) setHoverProgress(pct * duration);
+    };
+    const onUp = (e: MouseEvent) => {
+      setIsDragging(false);
+      if (!duration) return;
+      const pct = clampPct(e.clientX);
+      if (pct !== null) setCurrentTime(pct * duration);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isDragging, duration, setCurrentTime]);
 
   return (
     <div className="flex items-center gap-2 w-full">

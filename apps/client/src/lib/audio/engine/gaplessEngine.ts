@@ -792,7 +792,13 @@ export class GaplessEngine {
 
   seek(time: number) {
     if (!this.trackState) return;
-    const clamped = Math.max(0, Math.min(time, this.duration));
+    // `this.duration` vaut 0 tant que les métadonnées natives n'ont pas encore chargé
+    // (tout début de streaming, piste pas encore en cache) : clamper sans condition sur
+    // cette valeur forçait alors TOUT seek à atterrir sur 0, quel que soit l'endroit cliqué
+    // — c'est précisément le cas où les défilements rapides dans la barre semblaient ne
+    // rien faire. Ne clamper vers le haut que si une durée réelle est déjà connue.
+    const duration = this.duration;
+    const clamped = duration > 0 ? Math.max(0, Math.min(time, duration)) : Math.max(0, time);
 
     if (this.trackState.mode === "native") {
       this.nativeAudio.currentTime = clamped;

@@ -145,6 +145,19 @@ export interface PlayerState {
   currentTime: number;
   setCurrentTime: (time: number) => void;
 
+  /** Durée RÉELLE côté moteur (`engine.duration`), pas la métadonnée serveur de
+   *  `currentTrack.duration` : les deux peuvent diverger (rognage du silence de bord une
+   *  fois basculé en mode buffer, léger écart de métadonnées) — voir le commentaire sur
+   *  `setCurrentTime` ci-dessous. La barre de progression doit seeker par rapport à CETTE
+   *  valeur pour qu'un clic proche de la fin visuelle ne dépasse jamais la fin réelle que
+   *  `GaplessEngine.seek()` peut satisfaire (ce qui déclenchait un `onended` immédiat et un
+   *  saut prématuré à la piste suivante). Recalée à chaque tick et à chaque transition qui
+   *  change la durée exposée par le moteur (chargement, bascule native→buffer, swap
+   *  gapless) ; retombe sur `currentTrack.duration` tant qu'elle vaut encore 0 (avant que le
+   *  moteur ait une durée connue, ex. tout début de piste native).
+   */
+  duration: number;
+
   isShuffle: boolean;
   toggleShuffle: () => void;
   isRepeat: boolean;
@@ -347,6 +360,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (get().currentTrack?.id !== track.id) return;
       decodedCache.set(key, decoded);
       engine.attachDecodedActive(decoded);
+      // La bascule native→buffer change `engine.duration` (silence de bord rogné) : recaler
+      // immédiatement plutôt que d'attendre le prochain tick, sans quoi un seek lancé juste
+      // après la bascule pourrait encore cibler l'ancienne durée (métadonnée serveur).
+      set({ duration: engine.duration });
     } catch (err) {
       console.warn("[player] Décodage de la piste active impossible, lecture native conservée", err);
     }
@@ -385,6 +402,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         playOrderPosition: isRepeat ? get().playOrderPosition : nextPos,
         queueIndex: nextQueueIndex,
         currentTime: 0,
+        duration: engine.duration,
       });
       updateNowPlayingMetadata(nextTrackData);
       setNowPlayingPlaybackState("playing");
@@ -535,7 +553,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     if (track && isPlaying && pendingSeekTime === null) {
       const time = engine.currentTime;
       const duration = engine.duration;
-      set({ currentTime: time });
+      set({ currentTime: time, duration });
       setNowPlayingPositionState(duration, time, false, engine.playbackRate);
 
       if (!scrobbledNowPlaying && time > 1) {
@@ -594,7 +612,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
 
-    set({ currentTrack: track, queue, currentTime: offset, isPlaying: true });
+    // En mode buffer (piste déjà décodée), `engine.duration` est connue immédiatement ; en
+    // streaming natif, elle vaut encore 0 tant que les métadonnées n'ont pas chargé —
+    // `tickProgress` la recale dès qu'elle devient disponible.
+    set({ currentTrack: track, queue, currentTime: offset, duration: engine.duration, isPlaying: true });
     updateNowPlayingMetadata(track);
     setNowPlayingPlaybackState("playing");
     setNowPlayingPositionState(engine.duration, offset, true, engine.playbackRate);
@@ -669,6 +690,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     engineState: "idle",
 
     currentTime: 0,
+    duration: 0,
     setCurrentTime: (time) => {
       // Le swap gapless est désormais planifié à l'avance (horloge exacte), pas déclenché
       // en réaction à un événement : un seek à l'intérieur de la piste courante n'invalide
@@ -677,8 +699,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       //
       // Le seek réel sur le moteur est débounced (voir SEEK_DEBOUNCE_MS) : la position
       // affichée, elle, suit le clic instantanément pour rester réactive.
-      pendingSeekTime = time;
-      set({ currentTime: time });
+      //
+      // Clampé sur `engine.duration` (via `get().duration`), pas sur la durée demandée par
+      // l'appelant (qui, côté UI, dérive de `currentTrack.duration` — la métadonnée serveur) :
+      // les deux peuvent diverger une fois en mode buffer (silence de bord rogné), et un
+      // clic proche de la fin visuelle qui dépasserait la fin réelle atterrissait pile sur
+      // (ou au-delà de) la fin du buffer décodé — arrêt immédiat de la source, `onended`
+      // aussitôt déclenché, saut prématuré à la piste suivante avant que l'utilisateur
+      // n'entende la fin.
+      const engineDuration = get().duration;
+      const clamped = engineDuration > 0 ? Math.max(0, Math.min(time, engineDuration)) : Math.max(0, time);
+      pendingSeekTime = clamped;
+      set({ currentTime: clamped });
       if (seekDebounceTimer !== null) window.clearTimeout(seekDebounceTimer);
       seekDebounceTimer = window.setTimeout(() => {
         seekDebounceTimer = null;

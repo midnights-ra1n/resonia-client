@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
+import { LyricsView } from "../../features/lyrics/LyricsView";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
 import { DebugPanel } from "../../features/player/debug/DebugPanel";
@@ -34,6 +35,7 @@ export function AppLayout() {
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const debouncedQuery = useDebouncedValue(query, 300);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const showLyrics = usePlayerStore((s) => s.showLyrics);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const loadFavorites = useFavoritesStore((s) => s.load);
   const mainRef = useRef<HTMLElement>(null);
@@ -95,7 +97,7 @@ export function AppLayout() {
   return (
     <div className="flex h-screen flex-col bg-neutral-950">
       <div className="flex flex-1 min-h-0">
-        <Sidebar />
+        {!showLyrics && <Sidebar />}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Pas de backdrop-blur ici : un filtre de flou d'arrière-plan sticky force WKWebView à
               recomposer le flou à chaque peinture sous le header (scroll, pochette animée en
@@ -142,11 +144,15 @@ export function AppLayout() {
             </form>
           </header>
 
-          <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto">
-            <Outlet />
-          </main>
+          {showLyrics ? (
+            <LyricsView />
+          ) : (
+            <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto">
+              <Outlet />
+            </main>
+          )}
         </div>
-        <QueuePanel />
+        {!showLyrics && <QueuePanel />}
       </div>
       <DebugPanel />
       <PlayerBar />

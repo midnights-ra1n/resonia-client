@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumSummary, AlbumWithSongsDTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumSummary, AlbumWithSongsDTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -253,6 +253,17 @@ async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
 
   async unstar(songId: string): Promise<void> {
     await this.request("unstar", { id: songId });
+  }
+
+  /** Paroles structurées (OpenSubsonic) : Navidrome les résout depuis un fichier .lrc local
+   *  posé à côté du morceau, ou depuis les tags embarqués s'il n'y a pas de .lrc. Renvoie un
+   *  tableau vide si le serveur n'a trouvé aucune parole (jamais une erreur). */
+  async getLyricsBySongId(songId: string): Promise<StructuredLyricsDTO[]> {
+    const result = await this.request<{ lyricsList: { structuredLyrics?: StructuredLyricsDTO[] } }>(
+      "getLyricsBySongId",
+      { id: songId },
+    );
+    return result.lyricsList.structuredLyrics ?? [];
   }
 
   getCoverArtUrl(coverArtId: string, size = 300): string {

@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { TrackDownloader } from "../audio/cache/trackDownloader";
 import { getQualityById } from "../audio/qualityOptions";
+import { prefetchLyrics } from "../lyrics/lyricsService";
 import { downloadBlobStore } from "./downloadBlobStore";
 import { resolveDownloadSource } from "./resolveDownloadSource";
 import { downloadKeyFor, type DownloadedTrackMeta, type DownloadStatus } from "./types";
@@ -350,7 +351,18 @@ class DownloadStore {
       this.processNext();
     };
 
+    // Une seule fois par piste : dès que le téléchargement se termine, on s'assure que ses
+    // paroles sont aussi en cache (mémoire + disque, voir lyricsService) — sans ça, une
+    // piste téléchargée pour l'écoute hors-ligne perdrait ses paroles dès que le réseau
+    // n'est plus là (elles ne sont normalement récupérées qu'à la lecture).
+    let lyricsPrefetchTriggered = false;
+
     task.onProgress((progress) => {
+      if (progress.complete && !lyricsPrefetchTriggered) {
+        lyricsPrefetchTriggered = true;
+        prefetchLyrics(next.track);
+      }
+
       const now = Date.now();
       const elapsedMs = now - speedSampleAt;
       if (elapsedMs >= SPEED_SAMPLE_MIN_MS) {

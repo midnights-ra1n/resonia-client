@@ -212,5 +212,10 @@
     "indicatorHeading": "Downloads in progress",
     "indicatorTracks": "{{done}}/{{total}} tracks",
     "viewAll": "See all downloads"
+  },
+  "lyrics": {
+    "noTrack": "Nothing playing",
+    "loading": "Loading lyrics...",
+    "unavailable": "Lyrics unavailable"
   }
 }

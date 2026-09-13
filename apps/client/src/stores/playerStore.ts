@@ -25,13 +25,20 @@ const TIME_DISPLAY_STORAGE_KEY = "resonia:settings:showTimeRemaining";
 const SHUFFLE_STORAGE_KEY = "resonia:settings:shuffle";
 const REPEAT_STORAGE_KEY = "resonia:settings:repeat";
 const PITCH_STORAGE_KEY = "resonia:settings:pitch";
+const PITCH_RANGE_STORAGE_KEY = "resonia:settings:pitchRange";
 const MASTER_TEMPO_STORAGE_KEY = "resonia:settings:masterTempo";
 
-/** Bornes du pitch fader, en pourcentage — plage type d'une platine DJ (CDJ/Serato : ±8%
- *  par défaut, jusqu'à ±16% en mode étendu). Vitesse effective envoyée au moteur : 1 +
- *  pitch/100. */
+/** Bornes absolues du pitch fader, en pourcentage — plage maximale d'une platine DJ en
+ *  mode étendu (CDJ/Serato). Vitesse effective envoyée au moteur : 1 + pitch/100. La plage
+ *  réellement disponible au curseur est `pitchRange` (voir plus bas), toujours ⊆ à ces
+ *  bornes absolues. */
 const PITCH_MIN_PERCENT = -16;
 const PITCH_MAX_PERCENT = 16;
+
+/** Plages de pitch proposées (±%), façon platine DJ — ±8% est la valeur type par défaut,
+ *  ±16% le mode étendu. */
+export const PITCH_RANGE_OPTIONS = [4, 8, 10, 16] as const;
+const DEFAULT_PITCH_RANGE: (typeof PITCH_RANGE_OPTIONS)[number] = 8;
 
 // Un <input type="range"> émet un événement "change" à chaque pixel parcouru pendant le
 // glissé (jusqu'à plusieurs dizaines par seconde) : répercuter chacun tel quel jusqu'à
@@ -178,6 +185,11 @@ export interface PlayerState {
   resetPitch: () => void;
   showPitchMenu: boolean;
   togglePitchMenu: () => void;
+
+  /** Plage disponible au curseur de pitch, ±%, une des valeurs de PITCH_RANGE_OPTIONS
+   *  (±8% par défaut). Changer la plage reclampe `pitch` s'il la dépasse. */
+  pitchRange: (typeof PITCH_RANGE_OPTIONS)[number];
+  setPitchRange: (range: (typeof PITCH_RANGE_OPTIONS)[number]) => void;
 
   /** Interrupteur "Master Tempo" : demande au moteur de préserver la hauteur pendant que la
    *  vitesse change (voir GaplessEngine.setPreservePitch), via l'algorithme natif du
@@ -474,10 +486,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     if (stored === null) return;
     set({ isRepeat: stored });
   });
+  storage.get<number>(PITCH_RANGE_STORAGE_KEY).then((stored) => {
+    if (stored === null || !PITCH_RANGE_OPTIONS.includes(stored as (typeof PITCH_RANGE_OPTIONS)[number])) return;
+    set({ pitchRange: stored as (typeof PITCH_RANGE_OPTIONS)[number] });
+  });
   storage.get<number>(PITCH_STORAGE_KEY).then((stored) => {
     if (stored === null || !isFinite(stored) || stored < PITCH_MIN_PERCENT || stored > PITCH_MAX_PERCENT) return;
-    engine.setPlaybackRate(1 + stored / 100);
-    set({ pitch: stored });
+    const range = get().pitchRange;
+    const clamped = Math.min(range, Math.max(-range, stored));
+    engine.setPlaybackRate(1 + clamped / 100);
+    set({ pitch: clamped });
   });
   storage.get<boolean>(MASTER_TEMPO_STORAGE_KEY).then((stored) => {
     if (stored === null) return;
@@ -831,7 +849,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     pitch: 0,
     setPitch: (percent) => {
-      const clamped = Math.min(PITCH_MAX_PERCENT, Math.max(PITCH_MIN_PERCENT, percent));
+      const range = get().pitchRange;
+      const clamped = Math.min(range, Math.max(-range, percent));
       applyPitchToEngineThrottled(engine, 1 + clamped / 100);
       set({ pitch: clamped });
       storage.set(PITCH_STORAGE_KEY, clamped);
@@ -847,6 +866,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
     showPitchMenu: false,
     togglePitchMenu: () => set((state) => ({ showPitchMenu: !state.showPitchMenu })),
+
+    pitchRange: DEFAULT_PITCH_RANGE,
+    setPitchRange: (range) => {
+      cancelThrottledPitch();
+      const clampedPitch = Math.min(range, Math.max(-range, get().pitch));
+      engine.setPlaybackRate(1 + clampedPitch / 100);
+      set({ pitchRange: range, pitch: clampedPitch });
+      storage.set(PITCH_RANGE_STORAGE_KEY, range);
+      storage.set(PITCH_STORAGE_KEY, clampedPitch);
+    },
 
     masterTempo: false,
     toggleMasterTempo: () =>

@@ -1,9 +1,7 @@
 import type { CSSProperties } from "react";
 import { RotateCcw } from "lucide-react";
-import { usePlayerStore } from "../../stores/playerStore";
+import { PITCH_RANGE_OPTIONS, usePlayerStore } from "../../stores/playerStore";
 
-const PITCH_MIN = -16;
-const PITCH_MAX = 16;
 const PITCH_STEP = 0.1;
 
 /** Petit menu façon platine DJ : un fader qui couple vitesse et hauteur (voir le commentaire
@@ -14,8 +12,8 @@ const PITCH_STEP = 0.1;
 // balance — la coloration native d'un <input type=range> (accent-color) part toujours du
 // minimum, il faut donc la désactiver (-webkit-appearance: none) et reconstruire la piste
 // à la main via un gradient calculé, entre 50% (0%) et la position courante.
-function trackFillGradient(pitch: number): string {
-  const percent = ((pitch - PITCH_MIN) / (PITCH_MAX - PITCH_MIN)) * 100;
+function trackFillGradient(pitch: number, pitchRange: number): string {
+  const percent = ((pitch - -pitchRange) / (pitchRange - -pitchRange)) * 100;
   const low = Math.min(50, percent);
   const high = Math.max(50, percent);
   return `linear-gradient(to right, #52525b ${low}%, #4ade80 ${low}%, #4ade80 ${high}%, #52525b ${high}%)`;
@@ -25,6 +23,8 @@ export function PitchMenu() {
   const pitch = usePlayerStore((s) => s.pitch);
   const setPitch = usePlayerStore((s) => s.setPitch);
   const resetPitch = usePlayerStore((s) => s.resetPitch);
+  const pitchRange = usePlayerStore((s) => s.pitchRange);
+  const setPitchRange = usePlayerStore((s) => s.setPitchRange);
   const masterTempo = usePlayerStore((s) => s.masterTempo);
   const toggleMasterTempo = usePlayerStore((s) => s.toggleMasterTempo);
 
@@ -76,8 +76,8 @@ export function PitchMenu() {
         <div className="h-44 flex items-center justify-center" style={{ width: 24 }}>
           <input
             type="range"
-            min={PITCH_MIN}
-            max={PITCH_MAX}
+            min={-pitchRange}
+            max={pitchRange}
             step={PITCH_STEP}
             value={pitch}
             onChange={(e) => setPitch(parseFloat(e.target.value))}
@@ -89,7 +89,7 @@ export function PitchMenu() {
               background: "var(--fill)",
               // Piloté en variable CSS (et pas directement `background`) pour que la même
               // valeur atteigne aussi ::-moz-range-track (Firefox) — voir le <style> ci-dessus.
-              "--fill": trackFillGradient(pitch),
+              "--fill": trackFillGradient(pitch, pitchRange),
               // rotate(90deg), pas -90deg : place le + (accélère) en bas et le - (ralentit)
               // en haut, sens inverse de la rotation trigonométrique par défaut.
               transform: "rotate(90deg)",
@@ -110,6 +110,28 @@ export function PitchMenu() {
           >
             <RotateCcw size={14} />
           </button>
+        </div>
+      </div>
+
+      <div className="w-full h-px bg-neutral-700/50" />
+
+      <div className="w-full flex flex-col items-center gap-1">
+        <span className="text-[11px] text-neutral-300 self-start">Plage</span>
+        <div className="w-full grid grid-cols-4 gap-1">
+          {PITCH_RANGE_OPTIONS.map((range) => (
+            <button
+              key={range}
+              onClick={() => setPitchRange(range)}
+              className={`rounded px-1 py-0.5 text-[11px] tabular-nums transition-colors ${
+                pitchRange === range
+                  ? "bg-green-400 text-neutral-900 font-semibold"
+                  : "bg-neutral-700/50 text-neutral-300 hover:bg-neutral-700"
+              }`}
+              title={`Plage de pitch ±${range}%`}
+            >
+              {range}
+            </button>
+          ))}
         </div>
       </div>
 

@@ -163,6 +163,22 @@ export class SubsonicClient {
     await this.request("updatePlaylist", { playlistId, songIdToAdd: songIds });
   }
 
+  /** L'API Subsonic ne retire des titres que par INDEX dans la playlist (`songIndexToRemove`),
+   *  jamais par identifiant de titre : on doit donc d'abord relire son contenu actuel pour
+   *  résoudre les positions à retirer, juste avant l'appel, pour éviter de retirer le mauvais
+   *  titre si la playlist a changé entre-temps (réordonnancement, autre ajout/suppression). */
+  async removeSongsFromPlaylist(playlistId: string, songIds: string[]): Promise<void> {
+    if (songIds.length === 0) return;
+    const { entry } = await this.getPlaylist(playlistId);
+    const idsToRemove = new Set(songIds);
+    const indices = entry.reduce<number[]>((acc, song, index) => {
+      if (idsToRemove.has(song.id)) acc.push(index);
+      return acc;
+    }, []);
+    if (indices.length === 0) return;
+    await this.request("updatePlaylist", { playlistId, songIndexToRemove: indices.map(String) });
+  }
+
   /** L'API Subsonic n'a pas d'opération "déplacer" : on retire toutes les entrées existantes
    *  (par index) puis on les rajoute dans le nouvel ordre voulu, en une seule requête. */
   async reorderPlaylist(playlistId: string, orderedSongIds: string[], currentSongCount: number): Promise<void> {

@@ -59,13 +59,8 @@ export function LikeButton({ track }: LikeButtonProps) {
               type: "submenu",
               label: t("contextMenu.addToPlaylist"),
               icon: ListMusic,
-              renderSubmenu: (close) => (
-                <AddToPlaylistSubmenu
-                  client={client}
-                  getSongIds={async () => [track.id]}
-                  close={close}
-                  stayOpen
-                />
+              renderSubmenu: () => (
+                <AddToPlaylistSubmenu client={client} getSongIds={async () => [track.id]} />
               ),
             },
             { type: "separator" },

@@ -56,12 +56,8 @@ export function buildTrackMenuItems({
         ? t("contextMenu.addToPlaylistCount", { count: targetIds.length })
         : t("contextMenu.addToPlaylist"),
       icon: ListMusic,
-      renderSubmenu: (close) => (
-        <AddToPlaylistSubmenu
-          client={client}
-          getSongIds={async () => targetIds}
-          close={close}
-        />
+      renderSubmenu: () => (
+        <AddToPlaylistSubmenu client={client} getSongIds={async () => targetIds} />
       ),
     },
     {

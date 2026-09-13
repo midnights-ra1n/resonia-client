@@ -1,77 +1,138 @@
-import { Check, Plus } from "lucide-react";
-import { useState } from "react";
+import { Check, Loader2, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { usePlaylists } from "../../hooks/usePlaylists";
 import { useTranslation } from "../../lib/i18n";
+import { emitPlaylistSongsChanged } from "../../lib/playlists/playlistEvents";
 
 interface AddToPlaylistSubmenuProps {
   client: SubsonicClient;
-  /** Résolu au moment de l'ajout (pas au survol) : pour un album, ceci implique un fetch
-   *  de la liste complète des titres. */
+  /** Résolu une seule fois à l'ouverture du menu (pas au survol) : pour un album, ceci
+   *  implique un fetch de la liste complète des titres — nécessaire de toute façon pour
+   *  déterminer l'appartenance aux playlists ci-dessous. */
   getSongIds: () => Promise<string[]>;
-  close: () => void;
-  /** Si true, le menu reste ouvert après un ajout (chaque playlist cliquée se coche) —
-   *  permet d'ajouter à plusieurs playlists d'affilée sans rouvrir le menu. */
-  stayOpen?: boolean;
 }
 
-export function AddToPlaylistSubmenu({ client, getSongIds, close, stayOpen }: AddToPlaylistSubmenuProps) {
+export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmenuProps) {
   const { t } = useTranslation();
   const { playlists, loading } = usePlaylists();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [creatingBusy, setCreatingBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Suivi purement local des playlists auxquelles on a ajouté pendant cette session du
-  // menu (pas l'appartenance réelle côté serveur, qu'on ne récupère pas ici) — juste pour
-  // donner un retour visuel immédiat quand le menu reste ouvert.
+
+  // Résolu une seule fois à l'ouverture (pas à chaque clic) : réutilisé à la fois pour la
+  // vérification d'appartenance ci-dessous et pour les ajouts déclenchés par les cases à
+  // cocher, pour ne pas re-fetcher (ex: titres d'un album) à chaque interaction.
+  const [songIds, setSongIds] = useState<string[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getSongIds().then((ids) => {
+      if (!cancelled) setSongIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cocher/décocher une playlist déclenche immédiatement l'ajout/le retrait du(des)
+  // titre(s) (pas de bouton de validation à part) : `pendingIds` suit les requêtes en vol
+  // par playlist (pour désactiver seulement cette ligne, pas tout le menu, et permettre de
+  // cocher/décocher plusieurs playlists coup sur coup sans attendre la réponse de la
+  // précédente). `addedIds` reflète les playlists qui contiennent déjà le(s) titre(s) —
+  // préchargé via `getPlaylist` ci-dessous, puis tenu à jour au fil des ajouts/retraits
+  // confirmés côté serveur pendant cette session du menu.
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
-  async function handleAdd(playlistId: string) {
-    setBusy(true);
+  // Le menu affichait toutes les cases décochées même quand le titre était déjà dans la
+  // playlist (aucune vérification n'était faite, seul l'historique local de la session du
+  // menu comptait) : on interroge ici le contenu de chaque playlist pour précocher celles
+  // qui contiennent déjà TOUS les titres concernés. Coût : un `getPlaylist` par playlist à
+  // l'ouverture — acceptable vu le nombre de playlists généralement affiché dans ce menu.
+  useEffect(() => {
+    if (songIds === null || playlists.length === 0) return;
+    let cancelled = false;
+
+    Promise.all(
+      playlists.map((playlist) =>
+        client
+          .getPlaylist(playlist.id)
+          .then((full) => {
+            const memberIds = new Set(full.entry.map((song) => song.id));
+            return songIds.every((id) => memberIds.has(id)) ? playlist.id : null;
+          })
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setAddedIds((prev) => {
+        const next = new Set(prev);
+        results.forEach((id) => {
+          if (id) next.add(id);
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songIds, playlists]);
+
+  async function toggle(playlistId: string) {
+    if (songIds === null || pendingIds.has(playlistId)) return;
+    const wasAdded = addedIds.has(playlistId);
     setError(null);
+    setPendingIds((prev) => new Set(prev).add(playlistId));
     try {
-      const songIds = await getSongIds();
-      await client.addSongsToPlaylist(playlistId, songIds);
-      if (stayOpen) {
-        setAddedIds((prev) => new Set(prev).add(playlistId));
-        setBusy(false);
+      if (wasAdded) {
+        await client.removeSongsFromPlaylist(playlistId, songIds);
+        setAddedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(playlistId);
+          return next;
+        });
       } else {
-        close();
+        await client.addSongsToPlaylist(playlistId, songIds);
+        setAddedIds((prev) => new Set(prev).add(playlistId));
       }
+      emitPlaylistSongsChanged(playlistId);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("contextMenu.addToPlaylistError"));
-      setBusy(false);
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(playlistId);
+        return next;
+      });
     }
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = newName.trim();
-    if (!trimmed) return;
+    if (!trimmed || songIds === null) return;
 
-    setBusy(true);
+    setCreatingBusy(true);
     setError(null);
     try {
       const playlist = await client.createPlaylist(trimmed);
-      const songIds = await getSongIds();
       await client.addSongsToPlaylist(playlist.id, songIds);
-      if (stayOpen) {
-        setAddedIds((prev) => new Set(prev).add(playlist.id));
-        setCreating(false);
-        setNewName("");
-        setBusy(false);
-      } else {
-        close();
-      }
+      setAddedIds((prev) => new Set(prev).add(playlist.id));
+      setCreating(false);
+      setNewName("");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("contextMenu.addToPlaylistError"));
-      setBusy(false);
+    } finally {
+      setCreatingBusy(false);
     }
   }
 
   return (
-    <div className="max-h-72 w-64 overflow-y-auto py-1">
+    <div className="max-h-96 w-64 overflow-y-auto py-1">
       {creating ? (
         <form onSubmit={handleCreate} className="px-2.5 py-2">
           <input
@@ -84,7 +145,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds, close, stayOpen }: Ad
           />
           <button
             type="submit"
-            disabled={busy || !newName.trim()}
+            disabled={creatingBusy || !newName.trim()}
             className="mt-2 w-full rounded-md bg-emerald-500 py-1.5 text-sm font-semibold text-black transition-colors hover:bg-emerald-400 disabled:opacity-50"
           >
             {t("playlists.create")}
@@ -113,16 +174,27 @@ export function AddToPlaylistSubmenu({ client, getSongIds, close, stayOpen }: Ad
         <div className="px-1.5">
           {playlists.map((playlist) => {
             const added = addedIds.has(playlist.id);
+            const pending = pendingIds.has(playlist.id);
             return (
               <button
                 key={playlist.id}
                 type="button"
-                disabled={busy}
-                onClick={() => handleAdd(playlist.id)}
-                className="flex w-full items-center gap-2.5 truncate rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:opacity-50"
+                disabled={pending || songIds === null}
+                onClick={() => toggle(playlist.id)}
+                className="flex w-full items-center gap-2.5 truncate rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:cursor-default disabled:hover:bg-transparent"
               >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors ${
+                    added ? "border-emerald-500 bg-emerald-500 text-black" : "border-neutral-500"
+                  }`}
+                >
+                  {pending ? (
+                    <Loader2 size={11} className="animate-spin text-neutral-400" />
+                  ) : (
+                    added && <Check size={11} strokeWidth={3} />
+                  )}
+                </span>
                 <span className="flex-1 truncate">{playlist.name}</span>
-                {added && <Check size={14} className="shrink-0 text-emerald-400" />}
               </button>
             );
           })}

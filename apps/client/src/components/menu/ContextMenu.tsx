@@ -159,19 +159,23 @@ function MenuPanel({
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
-    function handleScrollOrResize() {
+    // Le panneau est en `position: fixed`, indépendant du flux de la liste en dessous : le
+    // laisser en place pendant un défilement (ex. cocher plusieurs playlists dans
+    // AddToPlaylistSubmenu tout en faisant défiler la liste des playlists, ou le menu
+    // contextuel d'un titre pendant qu'on scrolle la liste de morceaux) ne le désynchronise
+    // de rien à l'écran — seul un redimensionnement de fenêtre justifie une fermeture (la
+    // position calculée à l'ouverture n'a alors plus de sens).
+    function handleResize() {
       onClose();
     }
 
     document.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("scroll", handleScrollOrResize, true);
-    window.addEventListener("resize", handleScrollOrResize);
+    window.addEventListener("resize", handleResize);
     return () => {
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("scroll", handleScrollOrResize, true);
-      window.removeEventListener("resize", handleScrollOrResize);
+      window.removeEventListener("resize", handleResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRoot]);

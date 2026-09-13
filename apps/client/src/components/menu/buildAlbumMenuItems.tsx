@@ -55,11 +55,10 @@ export function buildAlbumMenuItems({
       type: "submenu",
       label: t("contextMenu.addToPlaylist"),
       icon: ListMusic,
-      renderSubmenu: (close) => (
+      renderSubmenu: () => (
         <AddToPlaylistSubmenu
           client={client}
           getSongIds={async () => (await fetchAlbumTracks(client, album)).map((track) => track.id)}
-          close={close}
         />
       ),
     },

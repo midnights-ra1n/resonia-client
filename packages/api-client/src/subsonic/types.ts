@@ -95,3 +95,21 @@ export interface PlaylistSummary {
 export interface PlaylistWithSongsDTO extends PlaylistSummary {
   entry: SongDTO[];
 }
+
+/** Une ligne de paroles synchronisées : `start` en millisecondes depuis le début du titre. */
+export interface LyricsLineDTO {
+  start: number;
+  value: string;
+}
+
+/** Renvoyé par `getLyricsBySongId` (OpenSubsonic) : Navidrome y expose les paroles lues
+ *  depuis un fichier .lrc local (à côté du fichier audio) ou embarquées dans les tags,
+ *  avec synchronisation ligne par ligne quand le .lrc en fournit une. */
+export interface StructuredLyricsDTO {
+  lang?: string;
+  synced: boolean;
+  line: LyricsLineDTO[];
+  displayArtist?: string;
+  displayTitle?: string;
+  offset?: number;
+}

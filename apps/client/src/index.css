@@ -89,3 +89,15 @@ img {
 .playlist-listings-scrollable::-webkit-scrollbar-thumb:hover {
   opacity: 0.7;
 }
+
+/* Scrollbar vue paroles : le défilement y est entièrement automatique (synchronisation),
+ * jamais manuel — la scrollbar n'apporte aucune information utile et casse l'immersion
+ * plein écran sur un fond coloré. On la masque complètement, dans tous les moteurs. */
+.lyrics-scrollable {
+  scrollbar-width: none; /* Firefox */
+}
+
+.lyrics-scrollable::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

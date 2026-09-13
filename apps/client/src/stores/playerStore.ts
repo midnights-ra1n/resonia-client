@@ -14,6 +14,8 @@ import {
 } from "../lib/audio/nowPlaying";
 import { getQualityById } from "../lib/audio/qualityOptions";
 import { getCachedCoverUrl, loadAndCacheCover } from "../lib/image/coverCache";
+import { prefetchDominantColor } from "../lib/image/dominantColorCache";
+import { prefetchLyrics } from "../lib/lyrics/lyricsService";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { storage } from "../lib/storage";
 import { useServersStore } from "./serversStore";
@@ -282,6 +284,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       const streamUrl = resolveStreamUrl(track);
       if (streamUrl) upcoming.push({ trackId: track.id, streamUrl });
       prefetchTrackCover(track);
+      prefetchLyrics(track);
     }
     prefetchScheduler.setUpcoming(upcoming);
   }
@@ -290,7 +293,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
    *  navigation/lecture : appelé pour la piste active et les PREFETCH_COUNT suivantes,
    *  en miroir du préchargement audio, pour que la pochette soit déjà disponible
    *  localement au moment où la piste devient active (évite l'attente réseau et l'affichage
-   *  de l'ancienne pochette pendant que la nouvelle charge). */
+   *  de l'ancienne pochette pendant que la nouvelle charge). Prépare aussi sa couleur
+   *  dominante (vue paroles) pendant qu'on a le blob sous la main, pour qu'elle soit
+   *  quasi instantanée à l'ouverture plutôt que recalculée à ce moment-là.
+   */
   function prefetchTrackCover(track: Track) {
     if (!track.coverArtId) return;
     const { servers, activeServerId } = useServersStore.getState();
@@ -299,15 +305,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     const client = server ? getClientForServer(server) : null;
     if (!client) return;
 
-    const fetchUrl = client.getCoverArtUrl(track.coverArtId, 300);
-    getCachedCoverUrl(activeServerId, track.coverArtId, 300)
+    const coverArtId = track.coverArtId;
+    const fetchUrl = client.getCoverArtUrl(coverArtId, 300);
+    getCachedCoverUrl(activeServerId, coverArtId, 300)
       .then((cached) => {
         if (cached) {
-          URL.revokeObjectURL(cached);
-          return;
+          return prefetchDominantColor(activeServerId, coverArtId, cached).finally(() => URL.revokeObjectURL(cached));
         }
-        return loadAndCacheCover(activeServerId, track.coverArtId!, 300, fetchUrl).then((url) => {
-          if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+        return loadAndCacheCover(activeServerId, coverArtId, 300, fetchUrl).then((url) => {
+          if (!url.startsWith("blob:")) return;
+          return prefetchDominantColor(activeServerId, coverArtId, url).finally(() => URL.revokeObjectURL(url));
         });
       })
       .catch((err) => console.warn("[player] Préchargement de pochette échoué", err));
@@ -326,6 +333,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     prefetchScheduler.setQuality(resolved.qualityId);
     prefetchScheduler.setActive({ trackId: currentTrack.id, streamUrl: resolved.streamUrl });
     prefetchTrackCover(currentTrack);
+    prefetchLyrics(currentTrack);
 
     // Piste déjà téléchargée : inutile de retélécharger les mêmes octets dans le cache LRU.
     if (await downloadStore.isDownloaded(currentTrack.id, resolved.qualityId)) return;

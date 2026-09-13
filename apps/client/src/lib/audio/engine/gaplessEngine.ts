@@ -1023,14 +1023,23 @@ export class GaplessEngine {
     }
     nextSource.onended = () => this.handleBufferSourceEnded(nextSource);
 
-    curSource.onended = () => this.commitPendingSwap(nextSource, nextGain, endTime);
+    // `nextSource` continue d'avancer dans le buffer pendant toute la fenêtre de fondu
+    // (`crossfadeStart` → `endTime`, `SWAP_FADE_SECONDS` de temps réel écoulé à `rate`) : sa
+    // position logique vaut `trim.start` à `crossfadeStart` (voir commentaire plus haut), donc
+    // `SWAP_FADE_SECONDS * rate` de plus à `endTime`, jamais 0 — sans ce rattrapage,
+    // `currentTime` sous-évaluait la position réelle de cette quantité pour toute la piste une
+    // fois active (imperceptible à vitesse normale, mais visible sur des paroles synchronisées
+    // dès que `rate` s'éloigne de 1, l'erreur croissant avec le pitch). `rate` est capturé ici
+    // (pas relu sur `this._playbackRate`) : c'est la vitesse réellement appliquée à cette
+    // source précise, qui peut différer si le pitch a encore changé d'ici le commit.
+    curSource.onended = () => this.commitPendingSwap(nextSource, nextGain, endTime, SWAP_FADE_SECONDS * rate);
 
     this.pendingNext.scheduled = true;
     this.pendingNext.scheduledSource = nextSource;
     this.pendingNext.scheduledGain = nextGain;
   }
 
-  private commitPendingSwap(source: AudioBufferSourceNode, gain: GainNode, startTime: number) {
+  private commitPendingSwap(source: AudioBufferSourceNode, gain: GainNode, startTime: number, startOffsetInTrim: number) {
     if (!this.pendingNext) return;
     const { buffer, trim, onSwap } = this.pendingNext;
     this.pendingNext = null;
@@ -1040,7 +1049,7 @@ export class GaplessEngine {
       trim,
       isPaused: false,
       pauseOffset: 0,
-      playback: { source, gain, scheduledStartContextTime: startTime, startOffsetInTrim: 0 },
+      playback: { source, gain, scheduledStartContextTime: startTime, startOffsetInTrim },
     };
     this.setState("playing");
     onSwap();

@@ -212,5 +212,10 @@
     "indicatorHeading": "Téléchargements en cours",
     "indicatorTracks": "{{done}}/{{total}} titres",
     "viewAll": "Voir tous les téléchargements"
+  },
+  "lyrics": {
+    "noTrack": "Aucune lecture en cours",
+    "loading": "Chargement des paroles...",
+    "unavailable": "Paroles indisponibles"
   }
 }

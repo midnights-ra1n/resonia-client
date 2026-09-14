@@ -141,8 +141,20 @@ jobs:
         run: |
           BUNDLE_DIR="apps/client/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
           APP_PATH=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app')
+          PLIST_PATH="$BUNDLE_DIR/component.plist"
           PKG_PATH="$BUNDLE_DIR/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
+
+          # Sans --component-plist, pkgbuild génère un paquet "relocatable" par défaut :
+          # l'installeur macOS ignore alors --install-location dès qu'il trouve, via Launch
+          # Services, N'IMPORTE QUELLE app portant le même identifiant ailleurs sur le disque
+          # (reste d'une install .dmg glissée dans Téléchargements, la Corbeille...) et
+          # installe/écrase là au lieu de /Applications — silencieusement, sans erreur. On
+          # désactive donc explicitement la relocation pour garantir la destination.
+          pkgbuild --analyze --component "$APP_PATH" "$PLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$PLIST_PATH"
+
           pkgbuild --install-location /Applications --component "$APP_PATH" \
+            --component-plist "$PLIST_PATH" \
             --identifier com.resonia.client --version "${{ needs.resolve-version.outputs.version }}" "$PKG_PATH"
           echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"
 

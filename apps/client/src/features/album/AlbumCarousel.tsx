@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import type { AlbumSummary } from "@resonia/api-client";
 import { AlbumCard } from "../home/AlbumCard";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
@@ -28,13 +28,13 @@ export function AlbumCarousel({ title, albums }: AlbumCarouselProps) {
       onClick={() => scrollBy(-600)}
       className="rounded-full bg-neutral-800 p-1.5 text-neutral-300 transition hover:bg-neutral-700 hover:text-white"
     >
-      <ChevronLeft size={18} />
+      <CaretLeft size={18} />
     </button>
     <button
       onClick={() => scrollBy(600)}
       className="rounded-full bg-neutral-800 p-1.5 text-neutral-300 transition hover:bg-neutral-700 hover:text-white"
     >
-      <ChevronRight size={18} />
+      <CaretRight size={18} />
     </button>
   </div>
 </div>

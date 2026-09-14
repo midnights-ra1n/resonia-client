@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play } from "lucide-react";
+import { Play } from "@phosphor-icons/react";
 import type { PlaylistSummary } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
 import { InfoModal } from "../../components/InfoModal";

@@ -1,4 +1,4 @@
-import { Download, Info, ListPlus, Pencil, Play, Trash2 } from "lucide-react";
+import { Download, Info, ListPlus, PencilSimple, Play, Trash } from "@phosphor-icons/react";
 import type { SubsonicClient } from "@resonia/api-client";
 import type { MenuItem } from "./ContextMenu";
 import type { Track } from "../../stores/playerStore";
@@ -85,13 +85,13 @@ export function buildPlaylistMenuItems({
     {
       type: "action",
       label: t("contextMenu.rename"),
-      icon: Pencil,
+      icon: PencilSimple,
       onClick: onRename,
     },
     {
       type: "action",
       label: t("contextMenu.delete"),
-      icon: Trash2,
+      icon: Trash,
       danger: true,
       onClick: onDelete,
     },

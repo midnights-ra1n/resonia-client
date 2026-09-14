@@ -1,4 +1,4 @@
-import { Download, Info, ListMusic, ListPlus, User } from "lucide-react";
+import { Download, Info, ListPlus, Playlist, User } from "@phosphor-icons/react";
 import type { AlbumSummary, SubsonicClient } from "@resonia/api-client";
 import type { NavigateFunction } from "react-router-dom";
 import type { MenuItem } from "./ContextMenu";
@@ -54,7 +54,7 @@ export function buildAlbumMenuItems({
     {
       type: "submenu",
       label: t("contextMenu.addToPlaylist"),
-      icon: ListMusic,
+      icon: Playlist,
       renderSubmenu: () => (
         <AddToPlaylistSubmenu
           client={client}

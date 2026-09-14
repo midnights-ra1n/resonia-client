@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, WifiOff } from "lucide-react";
+import { ArrowLeft, ArrowRight, WifiSlash } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
@@ -106,7 +106,7 @@ export function AppLayout() {
           <header className="sticky top-0 z-10 bg-neutral-950/95 border-b border-neutral-800">
             {!isOnline && (
               <div className="flex items-center justify-center gap-2 bg-amber-500/10 px-4 py-1.5 text-xs font-medium text-amber-400">
-                <WifiOff size={14} />
+                <WifiSlash size={14} />
                 {t("common.offline")}
               </div>
             )}

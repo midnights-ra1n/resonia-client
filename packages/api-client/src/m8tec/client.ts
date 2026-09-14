@@ -124,28 +124,53 @@ interface AnimatedArtworkStatusResponse {
   totalDownloads?: number;
 }
 
+/** Raison précise d'un échec de checkAnimatedArtworkHealth, pour afficher un message utile plutôt
+ *  qu'un simple "injoignable" qui laisse croire que le serveur est down :
+ *  - "network" : le fetch a levé une exception (CORS, mixed content http/https, certificat
+ *    auto-signé, DNS, timeout...) — l'instance peut très bien être en ligne et saine ; c'est le cas
+ *    le plus trompeur car indiscernable d'un vrai serveur down du point de vue du navigateur.
+ *  - "http" : réponse HTTP reçue mais statut non-2xx (mauvaise route, 404 sur une URL qui ne sert
+ *    pas l'API m8tec, 5xx...).
+ *  - "format" : réponse 2xx mais JSON invalide ou champ `status` inattendu (pas la même API, ou
+ *    version incompatible). */
+export type AnimatedArtworkHealthFailureReason = "network" | "http" | "format";
+
+export interface AnimatedArtworkHealthResult {
+  ok: boolean;
+  reason?: AnimatedArtworkHealthFailureReason;
+}
+
 /** Vérifie qu'une instance de l'API (par défaut ou personnalisée, voir DEFAULT_ANIMATED_ARTWORK_BASE_URL)
  *  répond correctement, pour afficher un indicateur (coche/croix) dans les réglages. Utilise la
  *  vraie route de santé du serveur (`GET /api/v1/status`, qui renvoie
  *  `{ status: "operational" | "degraded", message, totalSearches, totalDownloads }`) plutôt qu'une
  *  requête de recherche bidon : "operational" = l'instance et Apple Music répondent normalement,
  *  "degraded" = l'instance est up mais Apple Music la rate-limite (résultats possiblement
- *  instables) — dans les deux cas on considère l'instance joignable ; seule une erreur réseau, un
- *  timeout ou un statut HTTP non-2xx est traité comme "hors service". */
+ *  instables) — dans les deux cas on considère l'instance joignable. En cas d'échec, `reason`
+ *  distingue une vraie erreur HTTP/format d'une exception réseau (souvent CORS côté web, voir
+ *  AnimatedArtworkHealthFailureReason) plutôt que d'annoncer "hors service" pour un serveur qui
+ *  répond en réalité très bien. */
 export async function checkAnimatedArtworkHealth(
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<boolean> {
+): Promise<AnimatedArtworkHealthResult> {
+  let response: Response;
   try {
-    const response = await fetchImpl(
-      `${baseUrl.replace(/\/+$/, "")}/api/v1/status`,
-    );
-    if (!response.ok) return false;
-
-    const data = (await response.json()) as AnimatedArtworkStatusResponse;
-    return data.status === "operational" || data.status === "degraded";
+    response = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/api/v1/status`);
   } catch {
-    return false;
+    return { ok: false, reason: "network" };
+  }
+
+  if (!response.ok) return { ok: false, reason: "http" };
+
+  try {
+    const data = (await response.json()) as AnimatedArtworkStatusResponse;
+    if (data.status === "operational" || data.status === "degraded") {
+      return { ok: true };
+    }
+    return { ok: false, reason: "format" };
+  } catch {
+    return { ok: false, reason: "format" };
   }
 }
 

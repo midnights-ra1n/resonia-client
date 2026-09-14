@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bug, ListMusic, Mic2, Plug, Volume2, VolumeX } from "lucide-react";
+import { Bug, Microphone, Playlist, Plug, SpeakerHigh, SpeakerX } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { PitchMenu } from "./PitchMenu";
@@ -52,9 +52,9 @@ export function PlayerSectionRight() {
           title={isMuted ? "Unmute" : "Mute"}
         >
           {isMuted || effectiveVolume === 0 ? (
-            <VolumeX size={18} />
+            <SpeakerX size={18} />
           ) : (
-            <Volume2 size={18} />
+            <SpeakerHigh size={18} />
           )}
         </button>
         <div className="relative w-24 group">
@@ -105,7 +105,7 @@ export function PlayerSectionRight() {
           }`}
         title="Queue"
       >
-        <ListMusic size={18} />
+        <Playlist size={18} />
       </button>
 
       {/* Lyrics */}
@@ -117,7 +117,7 @@ export function PlayerSectionRight() {
           }`}
         title="Lyrics"
       >
-        <Mic2 size={18} />
+        <Microphone size={18} />
       </button>
 
       {/* Connect */}

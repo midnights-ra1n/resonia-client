@@ -1,4 +1,4 @@
-import { Pause, Play, Shuffle } from "lucide-react";
+import { Pause, Play, Shuffle } from "@phosphor-icons/react";
 import { useParams } from "react-router-dom";
 import type { AlbumSummary } from "@resonia/api-client";
 import { AlbumCarousel } from "../album/AlbumCarousel";

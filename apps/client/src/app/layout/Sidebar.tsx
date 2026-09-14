@@ -1,4 +1,4 @@
-import { BarChart3, Disc, Download, Folder, Home, LayoutList, Music, Plus, Settings, Star } from "lucide-react";
+import { ChartBar, Disc, Download, Folder, GearSix, House, ListBullets, MusicNotes, Plus, Star } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
@@ -8,15 +8,15 @@ import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { PlaylistSidebarItem } from "./PlaylistSidebarItem";
 
 const navLinks = [
-  { to: "/", icon: Home, key: "nav.home" },
+  { to: "/", icon: House, key: "nav.home" },
   { to: "/favorites", icon: Star, key: "nav.favorites" },
   { to: "/artists", icon: Disc, key: "nav.artists" },
-  { to: "/tracks", icon: Music, key: "nav.tracks" },
-  { to: "/genres", icon: LayoutList, key: "nav.genres" },
+  { to: "/tracks", icon: MusicNotes, key: "nav.tracks" },
+  { to: "/genres", icon: ListBullets, key: "nav.genres" },
   { to: "/folders", icon: Folder, key: "nav.folders" },
   { to: "/downloads", icon: Download, key: "nav.downloads" },
-  { to: "/stats", icon: BarChart3, key: "nav.stats" },
-  { to: "/settings", icon: Settings, key: "nav.settings" },
+  { to: "/stats", icon: ChartBar, key: "nav.stats" },
+  { to: "/settings", icon: GearSix, key: "nav.settings" },
 ];
 
 export function Sidebar() {

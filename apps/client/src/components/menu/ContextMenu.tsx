@@ -1,5 +1,4 @@
-import type { LucideIcon } from "lucide-react";
-import { ChevronRight } from "lucide-react";
+import { CaretRight, type Icon } from "@phosphor-icons/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -7,7 +6,7 @@ export type MenuItem =
   | {
       type: "action";
       label: string;
-      icon?: LucideIcon;
+      icon?: Icon;
       onClick: () => void;
       danger?: boolean;
       disabled?: boolean;
@@ -15,7 +14,7 @@ export type MenuItem =
   | {
       type: "submenu";
       label: string;
-      icon?: LucideIcon;
+      icon?: Icon;
       renderSubmenu: (close: () => void) => React.ReactNode;
     }
   | { type: "separator" };
@@ -219,7 +218,7 @@ function MenuPanel({
                   <Icon size={16} className="shrink-0 text-neutral-400" />
                 )}
                 <span className="flex-1 truncate">{item.label}</span>
-                <ChevronRight size={14} className="shrink-0 text-neutral-500" />
+                <CaretRight size={14} className="shrink-0 text-neutral-500" />
               </button>
               {isOpen && submenuAnchorRect && (
                 <SubmenuPanel anchorRect={submenuAnchorRect}>

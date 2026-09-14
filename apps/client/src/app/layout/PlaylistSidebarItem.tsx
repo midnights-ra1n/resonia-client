@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Library, Play, Pause } from "lucide-react";
+import { Pause, Play, Playlist } from "@phosphor-icons/react";
 import { MarqueeText } from "../../components/MarqueeText";
 import { InfoModal } from "../../components/InfoModal";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
@@ -94,7 +94,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
             <img src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-neutral-600 group-hover:hidden">
-              <Library size={16} />
+              <Playlist size={16} />
             </div>
           )}
 

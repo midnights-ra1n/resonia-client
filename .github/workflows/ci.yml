@@ -1,0 +1,52 @@
+name: CI
+
+# Vérifications de qualité sur chaque pull request : lint, tests et build, chacun comme check
+# séparé pour pouvoir choisir individuellement lesquels rendre obligatoires dans les règles de
+# protection de branche (Settings → Branches → Require status checks to pass).
+on:
+  pull_request:
+  # Aussi sur push direct vers les branches longues : permet au check de tourner sans passer par
+  # une PR (utile pour l'amorcer la première fois, avant qu'il soit sélectionnable comme required
+  # status check dans les règles de protection de branche).
+  push:
+    branches:
+      - development
+      - beta
+      - stable
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @resonia/client lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @resonia/client test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @resonia/client build

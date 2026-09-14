@@ -142,9 +142,12 @@ jobs:
         if: startsWith(matrix.platform, 'macos')
         run: |
           BUNDLE_DIR="apps/client/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          APP_PATH=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app')
-          PLIST_PATH="$BUNDLE_DIR/component.plist"
-          PKG_PATH="$BUNDLE_DIR/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
+          # Hors de BUNDLE_DIR, tous les deux : --analyze exige --root (pas --component), et
+          # --root embarque TOUT ce que contient ce dossier dans le paquet — ni le plist ni le
+          # .pkg de sortie ne doivent y vivre, sous peine de se retrouver eux-mêmes copiés dans
+          # /Applications (constaté en local : sans ça, le .pkg s'auto-inclut dans son payload).
+          PLIST_PATH="$RUNNER_TEMP/component.plist"
+          PKG_PATH="$RUNNER_TEMP/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
 
           # Sans --component-plist, pkgbuild génère un paquet "relocatable" par défaut :
           # l'installeur macOS ignore alors --install-location dès qu'il trouve, via Launch
@@ -152,10 +155,10 @@ jobs:
           # (reste d'une install .dmg glissée dans Téléchargements, la Corbeille...) et
           # installe/écrase là au lieu de /Applications — silencieusement, sans erreur. On
           # désactive donc explicitement la relocation pour garantir la destination.
-          pkgbuild --analyze --component "$APP_PATH" "$PLIST_PATH"
+          pkgbuild --analyze --root "$BUNDLE_DIR" "$PLIST_PATH"
           /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$PLIST_PATH"
 
-          pkgbuild --install-location /Applications --component "$APP_PATH" \
+          pkgbuild --root "$BUNDLE_DIR" --install-location /Applications \
             --component-plist "$PLIST_PATH" \
             --identifier com.resonia.client --version "${{ needs.resolve-version.outputs.version }}" "$PKG_PATH"
           echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"

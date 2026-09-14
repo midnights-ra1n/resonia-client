@@ -5,13 +5,21 @@ name: Release (beta)
 # rien ne se passe (push sans bump de version = pas de nouvelle release). Bump la version dans
 # package.json avant de merger/push sur beta pour publier une nouvelle préversion.
 #
+# La release est créée en DRAFT (invisible publiquement) dès le premier build desktop terminé,
+# et n'est rendue publique par publish-release qu'une fois TOUS les jobs (5 cibles desktop +
+# l'image Docker) terminés avec succès — voir ce job pour le détail. Si une seule cible échoue,
+# la release reste en draft (visible seulement des collaborateurs du repo) au lieu d'être publiée
+# incomplète.
+#
 # Notes de version : générées automatiquement par GitHub à partir des commits/PR depuis la
 # dernière release (mêmes notes sur la page GitHub et dans l'app, l'app lisant le corps de cette
 # même release — voir lib/update/updateService.ts).
 #
-# Artefacts produits par run : Windows (.exe NSIS, x86_64), macOS (.dmg + .pkg, arm64 et x86_64),
-# Linux (.deb + .rpm + .AppImage, x86_64 et arm64). Le .pkg n'est pas un format Tauri natif : il
-# est construit à la main avec pkgbuild à partir du .app généré, ni signé ni notarisé (aucun
+# Artefacts produits par run : Windows (.exe NSIS, x86_64 ET arm64 cross-compilé), macOS (.dmg +
+# .pkg, arm64 uniquement — voir le commentaire sur la matrice), Linux (.deb + .rpm + .AppImage,
+# x86_64 et arm64), image Docker web
+# multi-arch (linux/amd64 + linux/arm64). Le .pkg n'est pas un format Tauri natif : il est
+# construit à la main avec pkgbuild à partir du .app généré, ni signé ni notarisé (aucun
 # certificat Apple Developer configuré) — Gatekeeper avertira à l'ouverture, comme pour le .app.
 on:
   push:
@@ -34,6 +42,8 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Ne crée PAS le tag ici : il est créé par le premier appel à tauri-action ci-dessous, en
+      # même temps que la release (en draft). On se contente de déterminer s'il existe déjà.
       - name: Déterminer la version et si une release est nécessaire
         id: resolve
         run: |
@@ -54,14 +64,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Créer et pousser le tag
-        if: steps.resolve.outputs.should_release == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.resolve.outputs.tag }}" -m "Release ${{ steps.resolve.outputs.tag }}"
-          git push origin "${{ steps.resolve.outputs.tag }}"
-
   release:
     needs: resolve-version
     if: needs.resolve-version.outputs.should_release == 'true'
@@ -69,11 +71,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Apple Silicon uniquement : les runners hébergés macos-13 (Intel) sont en pénurie
+          # croissante côté GitHub (fin de vie du parc Intel), avec des files d'attente parfois
+          # très longues — on ne construit donc plus pour x86_64-apple-darwin.
           - platform: macos-latest
             target: aarch64-apple-darwin
-            extraArgs: ""
-          - platform: macos-13
-            target: x86_64-apple-darwin
             extraArgs: ""
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -85,6 +87,11 @@ jobs:
             extraArgs: ""
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
+            extraArgs: "--bundles nsis"
+          # Pas de runner Windows ARM hébergé : cross-compilé depuis windows-latest (x64), comme
+          # documenté par Tauri — le toolchain MSVC sait cibler arm64 sans hôte natif.
+          - platform: windows-latest
+            target: aarch64-pc-windows-msvc
             extraArgs: "--bundles nsis"
     runs-on: ${{ matrix.platform }}
     steps:
@@ -119,7 +126,10 @@ jobs:
       - name: Synchroniser tauri.conf.json / Cargo.toml sur la version de package.json
         run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
 
-      - name: Build + publication de la release (préversion)
+      # releaseDraft: true — la release (et le tag, créés ici au premier run à terminer) reste
+      # invisible publiquement jusqu'à ce que publish-release la publie, une fois tous les jobs
+      # de cette matrice ET docker-web terminés avec succès.
+      - name: Build + publication de la release (préversion, en draft)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,16 +143,35 @@ jobs:
           releaseName: "Resonia ${{ needs.resolve-version.outputs.tag }} (beta)"
           generateReleaseNotes: true
           updaterJsonPreferNsis: true
-          releaseDraft: false
+          releaseDraft: true
           prerelease: true
 
       - name: Construire l'installateur .pkg (macOS)
         if: startsWith(matrix.platform, 'macos')
         run: |
           BUNDLE_DIR="apps/client/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          APP_PATH=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app')
-          PKG_PATH="$BUNDLE_DIR/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
-          pkgbuild --install-location /Applications --component "$APP_PATH" \
+          # BUNDLE_DIR contient aussi Resonia.app.tar.gz + .sig (artefacts de l'updater, voir
+          # createUpdaterArtifacts dans tauri.conf.json) : packager --root directement sur ce
+          # dossier les embarquerait dans /Applications avec l'app. On isole donc UNIQUEMENT le
+          # .app dans un dossier de staging avant de packager.
+          STAGING_DIR="$RUNNER_TEMP/pkgroot"
+          mkdir -p "$STAGING_DIR"
+          cp -R "$BUNDLE_DIR"/*.app "$STAGING_DIR"/
+
+          PLIST_PATH="$RUNNER_TEMP/component.plist"
+          PKG_PATH="$RUNNER_TEMP/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
+
+          # Sans --component-plist, pkgbuild génère un paquet "relocatable" par défaut :
+          # l'installeur macOS ignore alors --install-location dès qu'il trouve, via Launch
+          # Services, N'IMPORTE QUELLE app portant le même identifiant ailleurs sur le disque
+          # (reste d'une install .dmg glissée dans Téléchargements, la Corbeille...) et
+          # installe/écrase là au lieu de /Applications — silencieusement, sans erreur. On
+          # désactive donc explicitement la relocation pour garantir la destination.
+          pkgbuild --analyze --root "$STAGING_DIR" "$PLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$PLIST_PATH"
+
+          pkgbuild --root "$STAGING_DIR" --install-location /Applications \
+            --component-plist "$PLIST_PATH" \
             --identifier com.resonia.client --version "${{ needs.resolve-version.outputs.version }}" "$PKG_PATH"
           echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"
 
@@ -155,7 +184,8 @@ jobs:
   # Image Docker de la version web (seule plateforme sans téléchargement hors-ligne ni choix de
   # qualité audio : AAC 256 kbps forcé, cf. apps/client/src/lib/audio/qualityOptions.ts). Publiée
   # à part des binaires de bureau ci-dessus, sur GHCR, avec un tag flottant ":beta" en plus du tag
-  # de version (même logique que le pointeur d'updater ci-dessous).
+  # de version (même logique que le pointeur d'updater ci-dessous). Multi-arch (amd64 natif,
+  # arm64 émulé via QEMU — l'image est une simple build Vite + nginx, l'émulation reste rapide).
   docker-web:
     needs: resolve-version
     if: needs.resolve-version.outputs.should_release == 'true'
@@ -163,6 +193,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: QEMU (pour la cible arm64 émulée)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -179,6 +214,7 @@ jobs:
         with:
           context: .
           file: apps/client/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/${{ github.repository }}-web:beta
@@ -186,12 +222,28 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Ne s'exécute (par défaut, needs propage l'échec/skip) que si TOUTES les cibles de `release`
+  # ET `docker-web` ont réussi : c'est le seul moment où la release, restée en draft jusqu'ici,
+  # devient visible publiquement. Une cible en échec laisse la release en draft (visible des
+  # seuls collaborateurs) plutôt que de publier une release avec des plateformes manquantes.
+  publish-release:
+    needs: [resolve-version, release, docker-web]
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publier la release (toutes les cibles ont réussi)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.resolve-version.outputs.tag }}" --draft=false -R "${{ github.repository }}"
+
   # L'updater du canal beta pointe vers une release à tag fixe ("beta") pour ne jamais avoir à
   # changer l'URL de l'endpoint dans tauri.beta.conf.json à chaque nouvelle préversion — seul le
   # fichier latest.json y est republié à chaque run, ses URLs internes pointant vers les binaires
-  # de la vraie release versionnée créée ci-dessus (immuable, jamais réécrite).
+  # de la vraie release versionnée créée ci-dessus (immuable, jamais réécrite). Dépend de
+  # publish-release (donc, transitivement, de tout le reste) : l'updater ne doit jamais pointer
+  # vers une release encore en draft ou incomplète.
   publish-beta-pointer:
-    needs: [resolve-version, release]
+    needs: [resolve-version, publish-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

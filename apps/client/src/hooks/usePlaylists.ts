@@ -64,7 +64,7 @@ export function usePlaylists() {
   }, [servers, activeServerId, t]);
 
   const refreshPlaylists = async () => {
-    let cancelled = false;
+    const cancelled = false;
     setLoading(true);
     setError(null);
 

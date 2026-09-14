@@ -78,6 +78,7 @@ export function setMediaSessionPositionState(duration: number, position: number,
       playbackRate,
     });
   } catch {
+    // Navigateur sans MediaSession API (ou action non supportée) : rien à faire.
   }
 
   // Filet de sécurité supplémentaire (voir updateMediaSessionMetadata) : appelé à chaque
@@ -157,6 +158,7 @@ export function resetMediaSession() {
     navigator.mediaSession.setActionHandler("seekforward", null);
     navigator.mediaSession.setActionHandler("seekbackward", null);
   } catch {
+    // Navigateur sans MediaSession API (ou action non supportée) : rien à faire.
   }
 
   clearMediaSessionPositionState();

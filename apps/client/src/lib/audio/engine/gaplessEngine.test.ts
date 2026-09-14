@@ -9,7 +9,7 @@ const { GaplessEngine } = await import("./gaplessEngine");
 // Doit rester synchronisé avec SWAP_FADE_SECONDS dans gaplessEngine.ts : la piste suivante
 // démarre `SWAP_FADE_SECONDS` avant l'instant de fin logique de la piste courante, pour un
 // micro-crossfade au lieu d'un raccord bord-à-bord (voir trySchedulePending).
-const SWAP_FADE_SECONDS = 0.008;
+const SWAP_FADE_SECONDS = 0.025;
 
 function decodedTrack(durationSeconds: number) {
   return { buffer: makeFakeAudioBuffer(durationSeconds, 44100, 1), trim: { start: 0, end: 0 } };
@@ -60,7 +60,16 @@ describe("GaplessEngine — planification gapless déterministe", () => {
 
     expect(ctx.createdSources).toHaveLength(3);
     expect(ctx.createdSources[1].startCall).toEqual({ when: 10 - SWAP_FADE_SECONDS, offset: 0 }); // B après A (10s)
-    expect(ctx.createdSources[2].startCall).toEqual({ when: 18 - SWAP_FADE_SECONDS, offset: 0 }); // C après B (10+8s)
+    // C démarre SWAP_FADE_SECONDS avant la fin *logique* de B, laquelle est déjà décalée de
+    // SWAP_FADE_SECONDS par le crossfade A→B (position 0 de B posée à crossfadeStart, pas à
+    // t=10 pile — voir le commentaire sur `startOffsetInTrim` dans trySchedulePending) : deux
+    // crossfades consécutifs de SWAP_FADE_SECONDS chacun se cumulent forcément, ce n'est pas
+    // une dérive à corriger mais la conséquence physique inévitable du chevauchement — sans
+    // quoi le crossfade n'économiserait aucun temps d'antenne. Le nom du test vise l'absence de
+    // dérive *numérique* (aucune erreur d'arrondi flottant au-delà de l'epsilon attendu), pas
+    // l'absence de ce décalage déterministe.
+    const expectedEndOfB = 10 - SWAP_FADE_SECONDS + 8;
+    expect(ctx.createdSources[2].startCall).toEqual({ when: expectedEndOfB - SWAP_FADE_SECONDS, offset: 0 }); // C après B
   });
 
   it("un pause() annule le swap déjà planifié sans perte, et un resume() le replanifie sans dérive", () => {

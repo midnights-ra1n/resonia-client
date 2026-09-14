@@ -16,7 +16,8 @@ name: Release (beta)
 # même release — voir lib/update/updateService.ts).
 #
 # Artefacts produits par run : Windows (.exe NSIS, x86_64 ET arm64 cross-compilé), macOS (.dmg +
-# .pkg, arm64 et x86_64), Linux (.deb + .rpm + .AppImage, x86_64 et arm64), image Docker web
+# .pkg, arm64 uniquement — voir le commentaire sur la matrice), Linux (.deb + .rpm + .AppImage,
+# x86_64 et arm64), image Docker web
 # multi-arch (linux/amd64 + linux/arm64). Le .pkg n'est pas un format Tauri natif : il est
 # construit à la main avec pkgbuild à partir du .app généré, ni signé ni notarisé (aucun
 # certificat Apple Developer configuré) — Gatekeeper avertira à l'ouverture, comme pour le .app.
@@ -70,11 +71,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Apple Silicon uniquement : les runners hébergés macos-13 (Intel) sont en pénurie
+          # croissante côté GitHub (fin de vie du parc Intel), avec des files d'attente parfois
+          # très longues — on ne construit donc plus pour x86_64-apple-darwin.
           - platform: macos-latest
             target: aarch64-apple-darwin
-            extraArgs: ""
-          - platform: macos-13
-            target: x86_64-apple-darwin
             extraArgs: ""
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu

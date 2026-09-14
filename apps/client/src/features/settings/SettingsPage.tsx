@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
-import { Check, X, Loader2 } from "lucide-react";
+import {
+  Check,
+  X,
+  Loader2,
+  Globe,
+  Plug,
+  HardDrive,
+  Download,
+  RefreshCw,
+  Code2,
+} from "lucide-react";
 import {
   checkAnimatedArtworkHealth,
   DEFAULT_ANIMATED_ARTWORK_BASE_URL,
 } from "@resonia/api-client";
 import { useTranslation, type Locale } from "../../lib/i18n";
 import { useSettingsStore, GIGABYTE } from "../../stores/settingsStore";
+import { useUpdateStore } from "../../stores/updateStore";
 import { getPlatform, isTauri } from "../../lib/platform";
 import { getAppVersion, isBetaVersion } from "../../lib/app/appVersion";
 import { cacheStore } from "../../lib/audio/cache/cacheStore";
@@ -46,6 +57,9 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 const CACHE_LIMIT_OPTIONS_GB = [1, 2, 3, 4, 6, 8, 10, 12, 14, 16];
 
+type SettingsTab =
+  "general" | "integrations" | "cache" | "downloads" | "updates" | "developer";
+
 function formatBytes(bytes: number, unitGb: string, unitMb: string): string {
   const gb = bytes / GIGABYTE;
   if (gb >= 1) return `${gb.toFixed(gb >= 10 ? 0 : 1)} ${unitGb}`;
@@ -82,6 +96,13 @@ export function SettingsPage() {
     (s) => s.setBetaUpdatesEnabled,
   );
 
+  const updateStatus = useUpdateStore((s) => s.status);
+  const updateVersion = useUpdateStore((s) => s.version);
+  const updateProgress = useUpdateStore((s) => s.progress);
+  const updateErrorMessage = useUpdateStore((s) => s.errorMessage);
+  const checkForUpdates = useUpdateStore((s) => s.check);
+  const installUpdate = useUpdateStore((s) => s.install);
+
   const [appVersion, setAppVersion] = useState<string | null>(null);
 
   const [lastfmInput, setLastfmInput] = useState(lastfmApiKey);
@@ -93,6 +114,18 @@ export function SettingsPage() {
   const [forcingAnimatedArtworkRefresh, setForcingAnimatedArtworkRefresh] =
     useState(false);
   const isDesktop = getPlatform() === "desktop";
+
+  const tabs: { id: SettingsTab; label: string; icon: typeof Globe }[] = [
+    { id: "general", label: t("settings.general"), icon: Globe },
+    { id: "integrations", label: t("settings.integrations"), icon: Plug },
+    ...(isDesktop
+      ? [{ id: "cache" as const, label: t("settings.cache"), icon: HardDrive }]
+      : []),
+    { id: "downloads", label: t("settings.downloads"), icon: Download },
+    { id: "updates", label: t("settings.updates"), icon: RefreshCw },
+    { id: "developer", label: t("settings.developer"), icon: Code2 },
+  ];
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
   const [audioCacheBytes, setAudioCacheBytes] = useState<number | null>(null);
   const [coverCacheBytes, setCoverCacheBytes] = useState<number | null>(null);
@@ -133,10 +166,14 @@ export function SettingsPage() {
       if (!cancelled) setDownloadsBytes(bytes);
     };
     downloadStore.currentDownloadsSize().then(syncDownloads);
-    downloadStore.listDownloaded().then((list) => !cancelled && setDownloadsCount(list.length));
+    downloadStore
+      .listDownloaded()
+      .then((list) => !cancelled && setDownloadsCount(list.length));
     const unsubSize = downloadStore.onSizeChange(syncDownloads);
     const unsubQueue = downloadStore.onQueueChange(() => {
-      downloadStore.listDownloaded().then((list) => !cancelled && setDownloadsCount(list.length));
+      downloadStore
+        .listDownloaded()
+        .then((list) => !cancelled && setDownloadsCount(list.length));
     });
     return () => {
       cancelled = true;
@@ -176,7 +213,11 @@ export function SettingsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getAppVersion().then((v) => !cancelled && setAppVersion(v));
+    getAppVersion()
+      .then((v) => !cancelled && setAppVersion(v))
+      .catch((err) =>
+        console.error("[settings] Échec de lecture de la version", err),
+      );
     return () => {
       cancelled = true;
     };
@@ -240,350 +281,468 @@ export function SettingsPage() {
     <div className="p-8 text-white">
       <h1 className="mb-6 text-2xl font-bold">{t("settings.title")}</h1>
 
-      <section className="max-w-xl">
-        <h2 className="text-lg font-semibold">{t("settings.general")}</h2>
-
-        <div className="mt-6 flex flex-col gap-6">
-          <div>
-            <label
-              htmlFor="language-select"
-              className="block text-sm font-medium text-white"
-            >
-              {t("settings.language")}
-            </label>
-            <p className="mt-1 text-xs text-neutral-500">
-              {t("settings.languageDescription")}
-            </p>
-            <select
-              id="language-select"
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as Locale)}
-              className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-            >
-              {supportedLocales.map((l) => (
-                <option key={l} value={l}>
-                  {LOCALE_LABELS[l]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-10 max-w-xl">
-        <h2 className="text-lg font-semibold">{t("settings.integrations")}</h2>
-        <p className="mt-1 text-sm text-neutral-400">
-          {t("settings.integrationsDescription")}
-        </p>
-
-        <div className="mt-6 flex flex-col gap-6">
-          <div>
-            <label
-              htmlFor="lastfm-api-key"
-              className="block text-sm font-medium text-white"
-            >
-              {t("settings.lastfmApiKey")}
-            </label>
-            <p className="mt-1 text-xs text-neutral-500">
-              {t("settings.lastfmApiKeyDescription")}
-            </p>
-            <input
-              id="lastfm-api-key"
-              type="password"
-              value={lastfmInput}
-              onChange={(e) => setLastfmInput(e.target.value)}
-              onBlur={() => setLastfmApiKey(lastfmInput.trim())}
-              placeholder={t("settings.apiKeyPlaceholder")}
-              className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor="animated-artwork-base-url"
-                className="block text-sm font-medium text-white"
-              >
-                {t("settings.animatedArtworkBaseUrl")}
-              </label>
-              <span
-                title={t(
-                  animatedArtworkHealth === "ok"
-                    ? "settings.animatedArtworkStatusOk"
-                    : animatedArtworkHealth === "error"
-                      ? "settings.animatedArtworkStatusError"
-                      : "settings.animatedArtworkStatusChecking",
-                )}
-              >
-                {animatedArtworkHealth === "checking" && (
-                  <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />
-                )}
-                {animatedArtworkHealth === "ok" && (
-                  <Check className="h-4 w-4 text-emerald-500" />
-                )}
-                {animatedArtworkHealth === "error" && (
-                  <X className="h-4 w-4 text-red-500" />
-                )}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">
-              {t("settings.animatedArtworkBaseUrlDescription")}
-            </p>
-            <input
-              id="animated-artwork-base-url"
-              type="text"
-              inputMode="url"
-              value={animatedArtworkBaseUrlInput}
-              onChange={(e) => {
-                setAnimatedArtworkBaseUrlInput(e.target.value);
-                setAnimatedArtworkUrlError(false);
-              }}
-              onBlur={handleAnimatedArtworkBaseUrlBlur}
-              placeholder={t("settings.animatedArtworkBaseUrlPlaceholder")}
-              aria-invalid={animatedArtworkUrlError}
-              className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all aria-[invalid=true]:border-red-500"
-            />
-            {animatedArtworkUrlError && (
-              <p className="mt-1 text-xs text-red-400">
-                {t("settings.animatedArtworkBaseUrlInvalid")}
-              </p>
-            )}
+      <div className="flex flex-col gap-8 md:flex-row">
+        <nav className="flex shrink-0 gap-1 overflow-x-auto md:w-48 md:flex-col md:overflow-visible">
+          {tabs.map(({ id, label, icon: Icon }) => (
             <button
+              key={id}
               type="button"
-              onClick={handleForceRefreshAnimatedCovers}
-              disabled={forcingAnimatedArtworkRefresh}
-              className="mt-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition-all hover:border-emerald-500 hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => setActiveTab(id)}
+              aria-current={activeTab === id ? "page" : undefined}
+              className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium whitespace-nowrap transition-all ${
+                activeTab === id
+                  ? "bg-neutral-800 text-white"
+                  : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
+              }`}
             >
-              {forcingAnimatedArtworkRefresh
-                ? t("settings.animatedArtworkForceRefreshing")
-                : t("settings.animatedArtworkForceRefresh")}
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
             </button>
-            <p className="mt-1 text-xs text-neutral-500">
-              {t("settings.animatedArtworkForceRefreshDescription")}
-            </p>
-          </div>
-        </div>
-      </section>
+          ))}
+        </nav>
 
-      {isDesktop && (
-        <section className="mt-10 max-w-xl">
-          <h2 className="text-lg font-semibold">{t("settings.cache")}</h2>
-          <p className="mt-1 text-sm text-neutral-400">
-            {t("settings.cacheDescription")}
-          </p>
+        <div className="max-w-xl flex-1">
+          {activeTab === "general" && (
+            <section>
+              <h2 className="text-lg font-semibold">{t("settings.general")}</h2>
 
-          <div className="mt-6 flex flex-col gap-6">
-            <div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-sm font-medium text-white">
-                  {t("settings.cacheSize")}
-                </span>
-                <span className="text-xs text-neutral-500">
-                  {cacheSize === null
-                    ? t("common.loading")
-                    : `${formatBytes(cacheSize, unitGb, unitMb)} / ${formatBytes(cacheMaxBytes, unitGb, unitMb)}`}
-                </span>
+              <div className="mt-6 flex flex-col gap-6">
+                <div>
+                  <label
+                    htmlFor="language-select"
+                    className="block text-sm font-medium text-white"
+                  >
+                    {t("settings.language")}
+                  </label>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.languageDescription")}
+                  </p>
+                  <select
+                    id="language-select"
+                    value={locale}
+                    onChange={(e) => setLocale(e.target.value as Locale)}
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  >
+                    {supportedLocales.map((l) => (
+                      <option key={l} value={l}>
+                        {LOCALE_LABELS[l]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div
-                role="progressbar"
-                aria-valuenow={Math.round(cacheFillPercent)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-800"
-              >
-                <div
-                  className={`h-full rounded-full transition-all duration-300 ${fillBarColor(cacheFillPercent)}`}
-                  style={{ width: `${cacheFillPercent}%` }}
-                />
-              </div>
-            </div>
+            </section>
+          )}
 
-            <div>
-              <label
-                htmlFor="cache-limit-select"
-                className="block text-sm font-medium text-white"
-              >
-                {t("settings.cacheLimit")}
-              </label>
-              <p className="mt-1 text-xs text-neutral-500">
-                {t("settings.cacheLimitDescription")}
+          {activeTab === "integrations" && (
+            <section>
+              <h2 className="text-lg font-semibold">
+                {t("settings.integrations")}
+              </h2>
+              <p className="mt-1 text-sm text-neutral-400">
+                {t("settings.integrationsDescription")}
               </p>
-              <select
-                id="cache-limit-select"
-                value={cacheMaxBytes / GIGABYTE}
-                onChange={(e) =>
-                  setCacheMaxBytes(Number(e.target.value) * GIGABYTE)
-                }
-                className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-              >
-                {CACHE_LIMIT_OPTIONS_GB.map((gb) => (
-                  <option key={gb} value={gb}>
-                    {gb} {unitGb}
-                  </option>
-                ))}
-              </select>
-            </div>
 
-            <div>
-              <button
-                type="button"
-                onClick={handleClearCache}
-                disabled={clearing}
-                className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {clearing
-                  ? t("settings.cacheClearing")
-                  : t("settings.cacheClear")}
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="mt-10 max-w-xl">
-        <h2 className="text-lg font-semibold">{t("settings.downloads")}</h2>
-        <p className="mt-1 text-sm text-neutral-400">
-          {t("settings.downloadsDescription")}
-        </p>
-
-        <div className="mt-6 flex flex-col gap-6">
-          <div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm font-medium text-white">
-                {t("settings.downloadsSize")}
-              </span>
-              <span className="text-xs text-neutral-500">
-                {downloadsBytes === null
-                  ? t("common.loading")
-                  : formatBytes(downloadsBytes, unitGb, unitMb)}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">
-              {t("settings.downloadsCount", { count: downloadsCount })}
-            </p>
-          </div>
-
-          <div>
-            <button
-              type="button"
-              onClick={handleClearDownloads}
-              disabled={clearingDownloads || downloadsCount === 0}
-              className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {clearingDownloads
-                ? t("settings.downloadsClearing")
-                : t("settings.downloadsClear")}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-10 max-w-xl">
-        <h2 className="text-lg font-semibold">{t("settings.updates")}</h2>
-        <p className="mt-1 text-sm text-neutral-400">
-          {t("settings.updatesDescription")}
-        </p>
-
-        <div className="mt-6 flex flex-col gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">
-              {appVersion === null
-                ? t("common.loading")
-                : t("settings.updatesCurrentVersion", { version: appVersion })}
-            </span>
-            {appVersion !== null && isBetaVersion(appVersion) && (
-              <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold uppercase text-amber-400">
-                {t("settings.updatesBetaBadge")}
-              </span>
-            )}
-          </div>
-
-          {isDesktop && (
-            <>
-              <button
-                type="button"
-                onClick={() => setCheckUpdatesOnLaunch(!checkUpdatesOnLaunch)}
-                className="flex w-full items-center justify-between gap-2"
-              >
-                <span>
-                  <span className="block text-sm font-medium text-white">
-                    {t("settings.checkOnLaunch")}
-                  </span>
-                  <span className="mt-1 block text-xs text-neutral-500">
-                    {t("settings.checkOnLaunchDescription")}
-                  </span>
-                </span>
-                <span
-                  className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${checkUpdatesOnLaunch ? "bg-emerald-500" : "bg-neutral-700"
-                    }`}
-                >
-                  <span
-                    className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checkUpdatesOnLaunch ? "translate-x-4" : "translate-x-0"
-                      }`}
+              <div className="mt-6 flex flex-col gap-6">
+                <div>
+                  <label
+                    htmlFor="lastfm-api-key"
+                    className="block text-sm font-medium text-white"
+                  >
+                    {t("settings.lastfmApiKey")}
+                  </label>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.lastfmApiKeyDescription")}
+                  </p>
+                  <input
+                    id="lastfm-api-key"
+                    type="password"
+                    value={lastfmInput}
+                    onChange={(e) => setLastfmInput(e.target.value)}
+                    onBlur={() => setLastfmApiKey(lastfmInput.trim())}
+                    placeholder={t("settings.apiKeyPlaceholder")}
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                   />
-                </span>
-              </button>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => setBetaUpdatesEnabled(!betaUpdatesEnabled)}
-                className="flex w-full items-center justify-between gap-2"
-              >
-                <span>
-                  <span className="block text-sm font-medium text-white">
-                    {t("settings.betaUpdates")}
-                  </span>
-                  <span className="mt-1 block text-xs text-neutral-500">
-                    {t("settings.betaUpdatesDescription")}
-                  </span>
-                </span>
-                <span
-                  className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${betaUpdatesEnabled ? "bg-emerald-500" : "bg-neutral-700"
-                    }`}
-                >
-                  <span
-                    className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${betaUpdatesEnabled ? "translate-x-4" : "translate-x-0"
-                      }`}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="animated-artwork-base-url"
+                      className="block text-sm font-medium text-white"
+                    >
+                      {t("settings.animatedArtworkBaseUrl")}
+                    </label>
+                    <span
+                      title={t(
+                        animatedArtworkHealth === "ok"
+                          ? "settings.animatedArtworkStatusOk"
+                          : animatedArtworkHealth === "error"
+                            ? "settings.animatedArtworkStatusError"
+                            : "settings.animatedArtworkStatusChecking",
+                      )}
+                    >
+                      {animatedArtworkHealth === "checking" && (
+                        <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />
+                      )}
+                      {animatedArtworkHealth === "ok" && (
+                        <Check className="h-4 w-4 text-emerald-500" />
+                      )}
+                      {animatedArtworkHealth === "error" && (
+                        <X className="h-4 w-4 text-red-500" />
+                      )}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.animatedArtworkBaseUrlDescription")}
+                  </p>
+                  <input
+                    id="animated-artwork-base-url"
+                    type="text"
+                    inputMode="url"
+                    value={animatedArtworkBaseUrlInput}
+                    onChange={(e) => {
+                      setAnimatedArtworkBaseUrlInput(e.target.value);
+                      setAnimatedArtworkUrlError(false);
+                    }}
+                    onBlur={handleAnimatedArtworkBaseUrlBlur}
+                    placeholder={t(
+                      "settings.animatedArtworkBaseUrlPlaceholder",
+                    )}
+                    aria-invalid={animatedArtworkUrlError}
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all aria-[invalid=true]:border-red-500"
                   />
-                </span>
-              </button>
-            </>
+                  {animatedArtworkUrlError && (
+                    <p className="mt-1 text-xs text-red-400">
+                      {t("settings.animatedArtworkBaseUrlInvalid")}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleForceRefreshAnimatedCovers}
+                    disabled={forcingAnimatedArtworkRefresh}
+                    className="mt-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition-all hover:border-emerald-500 hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {forcingAnimatedArtworkRefresh
+                      ? t("settings.animatedArtworkForceRefreshing")
+                      : t("settings.animatedArtworkForceRefresh")}
+                  </button>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.animatedArtworkForceRefreshDescription")}
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeTab === "cache" && isDesktop && (
+            <section>
+              <h2 className="text-lg font-semibold">{t("settings.cache")}</h2>
+              <p className="mt-1 text-sm text-neutral-400">
+                {t("settings.cacheDescription")}
+              </p>
+
+              <div className="mt-6 flex flex-col gap-6">
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-white">
+                      {t("settings.cacheSize")}
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      {cacheSize === null
+                        ? t("common.loading")
+                        : `${formatBytes(cacheSize, unitGb, unitMb)} / ${formatBytes(cacheMaxBytes, unitGb, unitMb)}`}
+                    </span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-valuenow={Math.round(cacheFillPercent)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-800"
+                  >
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${fillBarColor(cacheFillPercent)}`}
+                      style={{ width: `${cacheFillPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="cache-limit-select"
+                    className="block text-sm font-medium text-white"
+                  >
+                    {t("settings.cacheLimit")}
+                  </label>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.cacheLimitDescription")}
+                  </p>
+                  <select
+                    id="cache-limit-select"
+                    value={cacheMaxBytes / GIGABYTE}
+                    onChange={(e) =>
+                      setCacheMaxBytes(Number(e.target.value) * GIGABYTE)
+                    }
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  >
+                    {CACHE_LIMIT_OPTIONS_GB.map((gb) => (
+                      <option key={gb} value={gb}>
+                        {gb} {unitGb}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleClearCache}
+                    disabled={clearing}
+                    className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {clearing
+                      ? t("settings.cacheClearing")
+                      : t("settings.cacheClear")}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeTab === "downloads" && (
+            <section>
+              <h2 className="text-lg font-semibold">
+                {t("settings.downloads")}
+              </h2>
+              <p className="mt-1 text-sm text-neutral-400">
+                {t("settings.downloadsDescription")}
+              </p>
+
+              <div className="mt-6 flex flex-col gap-6">
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-white">
+                      {t("settings.downloadsSize")}
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      {downloadsBytes === null
+                        ? t("common.loading")
+                        : formatBytes(downloadsBytes, unitGb, unitMb)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.downloadsCount", { count: downloadsCount })}
+                  </p>
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleClearDownloads}
+                    disabled={clearingDownloads || downloadsCount === 0}
+                    className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-red-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {clearingDownloads
+                      ? t("settings.downloadsClearing")
+                      : t("settings.downloadsClear")}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeTab === "updates" && (
+            <section>
+              <h2 className="text-lg font-semibold">{t("settings.updates")}</h2>
+              <p className="mt-1 text-sm text-neutral-400">
+                {t("settings.updatesDescription")}
+              </p>
+
+              <div className="mt-6 flex flex-col gap-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-white">
+                    {appVersion === null
+                      ? t("common.loading")
+                      : t("settings.updatesCurrentVersion", {
+                          version: appVersion,
+                        })}
+                  </span>
+                  {appVersion !== null && isBetaVersion(appVersion) && (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold uppercase text-amber-400">
+                      {t("settings.updatesBetaBadge")}
+                    </span>
+                  )}
+                </div>
+
+                {isDesktop && (
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void checkForUpdates(betaUpdatesEnabled)}
+                        disabled={
+                          updateStatus === "checking" ||
+                          updateStatus === "downloading" ||
+                          updateStatus === "ready"
+                        }
+                        className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-emerald-500 hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {updateStatus === "checking"
+                          ? t("settings.updatesChecking")
+                          : t("settings.updatesCheckButton")}
+                      </button>
+
+                      {updateStatus === "available" && (
+                        <button
+                          type="button"
+                          onClick={() => void installUpdate()}
+                          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition-all hover:bg-emerald-400"
+                        >
+                          {t("settings.updatesInstallButton")}
+                        </button>
+                      )}
+                    </div>
+
+                    {updateStatus !== "idle" && updateStatus !== "checking" && (
+                      <p
+                        className="mt-2 text-xs text-neutral-500"
+                        title={
+                          updateStatus === "error" && updateErrorMessage
+                            ? updateErrorMessage
+                            : undefined
+                        }
+                      >
+                        {updateStatus === "up-to-date" &&
+                          t("settings.updatesUpToDate")}
+                        {updateStatus === "available" &&
+                          updateVersion &&
+                          t("settings.updatesAvailable", {
+                            version: updateVersion,
+                          })}
+                        {updateStatus === "downloading" &&
+                          updateVersion &&
+                          t("settings.updatesInstalling", {
+                            version: updateVersion,
+                            percent: updateProgress,
+                          })}
+                        {updateStatus === "ready" && t("settings.updatesReady")}
+                        {updateStatus === "error" &&
+                          t("settings.updatesCheckError")}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {isDesktop && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCheckUpdatesOnLaunch(!checkUpdatesOnLaunch)
+                      }
+                      className="flex w-full items-center justify-between gap-2"
+                    >
+                      <span>
+                        <span className="block text-sm font-medium text-white">
+                          {t("settings.checkOnLaunch")}
+                        </span>
+                        <span className="mt-1 block text-xs text-neutral-500">
+                          {t("settings.checkOnLaunchDescription")}
+                        </span>
+                      </span>
+                      <span
+                        className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
+                          checkUpdatesOnLaunch
+                            ? "bg-emerald-500"
+                            : "bg-neutral-700"
+                        }`}
+                      >
+                        <span
+                          className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                            checkUpdatesOnLaunch
+                              ? "translate-x-4"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBetaUpdatesEnabled(!betaUpdatesEnabled)}
+                      className="flex w-full items-center justify-between gap-2"
+                    >
+                      <span>
+                        <span className="block text-sm font-medium text-white">
+                          {t("settings.betaUpdates")}
+                        </span>
+                        <span className="mt-1 block text-xs text-neutral-500">
+                          {t("settings.betaUpdatesDescription")}
+                        </span>
+                      </span>
+                      <span
+                        className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
+                          betaUpdatesEnabled
+                            ? "bg-emerald-500"
+                            : "bg-neutral-700"
+                        }`}
+                      >
+                        <span
+                          className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                            betaUpdatesEnabled
+                              ? "translate-x-4"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
+          {activeTab === "developer" && (
+            <section>
+              <h2 className="text-lg font-semibold">
+                {t("settings.developer")}
+              </h2>
+              <p className="mt-1 text-sm text-neutral-400">
+                {t("settings.developerDescription")}
+              </p>
+
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={() => setDevModeEnabled(!devModeEnabled)}
+                  className="flex w-full items-center justify-between gap-2"
+                >
+                  <span>
+                    <span className="block text-sm font-medium text-white">
+                      {t("settings.developerMode")}
+                    </span>
+                    <span className="mt-1 block text-xs text-neutral-500">
+                      {t("settings.developerModeDescription")}
+                    </span>
+                  </span>
+                  <span
+                    className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
+                      devModeEnabled ? "bg-emerald-500" : "bg-neutral-700"
+                    }`}
+                  >
+                    <span
+                      className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                        devModeEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </span>
+                </button>
+              </div>
+            </section>
           )}
         </div>
-      </section>
-
-      <section className="mt-10 max-w-xl">
-        <h2 className="text-lg font-semibold">{t("settings.developer")}</h2>
-        <p className="mt-1 text-sm text-neutral-400">
-          {t("settings.developerDescription")}
-        </p>
-
-        <div className="mt-6">
-          <button
-            type="button"
-            onClick={() => setDevModeEnabled(!devModeEnabled)}
-            className="flex w-full items-center justify-between gap-2"
-          >
-            <span>
-              <span className="block text-sm font-medium text-white">
-                {t("settings.developerMode")}
-              </span>
-              <span className="mt-1 block text-xs text-neutral-500">
-                {t("settings.developerModeDescription")}
-              </span>
-            </span>
-            <span
-              className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${devModeEnabled ? "bg-emerald-500" : "bg-neutral-700"
-                }`}
-            >
-              <span
-                className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${devModeEnabled ? "translate-x-4" : "translate-x-0"
-                  }`}
-              />
-            </span>
-          </button>
-        </div>
-      </section>
+      </div>
     </div>
   );
 }

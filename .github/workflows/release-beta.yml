@@ -250,8 +250,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ needs.resolve-version.outputs.tag }}" --draft=false -R "${{ github.repository }}"
 
-  # L'updater du canal beta pointe vers une release à tag fixe ("beta") pour ne jamais avoir à
-  # changer l'URL de l'endpoint dans tauri.beta.conf.json à chaque nouvelle préversion — seul le
+  # L'updater du canal beta pointe vers une release à tag fixe ("beta-updater" — délibérément
+  # PAS "beta", qui collisionnerait avec le nom de la branche : `git push origin beta` devient
+  # ambigu entre la branche et un tag du même nom dès que ce dernier existe) pour ne jamais avoir
+  # à changer l'URL de l'endpoint dans tauri.beta.conf.json à chaque nouvelle préversion — seul le
   # fichier latest.json y est republié à chaque run, ses URLs internes pointant vers les binaires
   # de la vraie release versionnée créée ci-dessus (immuable, jamais réécrite). Dépend de
   # publish-release (donc, transitivement, de tout le reste) : l'updater ne doit jamais pointer
@@ -262,20 +264,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Republier latest.json sur la release pointeur "beta"
+      - name: Republier latest.json sur la release pointeur "beta-updater"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p dl
           gh release download "${{ needs.resolve-version.outputs.tag }}" -R "${GITHUB_REPOSITORY}" -D dl --clobber -p 'latest.json'
 
-          if gh release view beta -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload beta dl/latest.json -R "${GITHUB_REPOSITORY}" --clobber
+          if gh release view beta-updater -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload beta-updater dl/latest.json -R "${GITHUB_REPOSITORY}" --clobber
           else
-            gh release create beta dl/latest.json \
+            gh release create beta-updater dl/latest.json \
               -R "${GITHUB_REPOSITORY}" \
-              --title "Beta (pointeur de mise à jour)" \
-              --notes "Release technique : ne contient que le manifeste utilisé par l'auto-updater du canal beta. Voir la release ${{ needs.resolve-version.outputs.tag }} pour les notes de version." \
+              --title "beta-updater" \
+              --notes "beta updater pointer" \
               --prerelease \
               --target "${GITHUB_SHA}"
           fi

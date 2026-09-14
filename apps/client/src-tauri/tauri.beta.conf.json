@@ -3,7 +3,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/midnights-ra1n/resonia-client/releases/download/beta/latest.json"
+        "https://github.com/midnights-ra1n/resonia-client/releases/download/beta-updater/latest.json"
       ]
     }
   }

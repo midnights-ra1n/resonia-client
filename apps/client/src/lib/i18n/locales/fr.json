@@ -196,18 +196,28 @@
     "developerMode": "Mode développeur",
     "developerModeDescription": "Ajoute un débogueur réseau et décodage au lecteur, avec le débit de téléchargement en direct, l'usage du cache et les événements de buffer/décodage.",
     "updates": "Mises à jour",
-    "updatesDescription": "Les mises à jour sont téléchargées et installées automatiquement en arrière-plan, puis l'application redémarre toute seule — aucun téléchargement manuel depuis GitHub n'est nécessaire.",
+    "updatesDescription": "Les mises à jour sont téléchargées et installées automatiquement en arrière-plan — aucun téléchargement manuel depuis GitHub n'est nécessaire. Une fois prête, redémarre l'application depuis le bouton en haut de l'écran pour l'appliquer.",
     "updatesCurrentVersion": "Version actuelle : {{version}}",
     "updatesBetaBadge": "bêta",
-    "checkOnLaunch": "Vérifier les mises à jour au lancement",
-    "checkOnLaunchDescription": "Recherche une nouvelle version à chaque démarrage de l'application.",
+    "updatesCheckButton": "Vérifier les mises à jour",
+    "updatesChecking": "Vérification des mises à jour...",
+    "updatesUpToDate": "Ton application est à jour.",
+    "updatesAvailable": "La version {{version}} est disponible.",
+    "updatesInstallButton": "Installer la mise à jour",
+    "updatesInstalling": "Téléchargement de la mise à jour {{version}}... {{percent}}%",
+    "updatesReady": "Mise à jour prête — redémarre l'application pour l'appliquer.",
+    "updatesCheckError": "Impossible de vérifier les mises à jour. Réessaie plus tard.",
+    "checkOnLaunch": "Vérifier les mises à jour automatiquement",
+    "checkOnLaunchDescription": "Recherche une nouvelle version au démarrage, puis une fois par jour tant que l'application reste ouverte.",
     "betaUpdates": "Recevoir les mises à jour bêta",
     "betaUpdatesDescription": "Accède aux versions en avant-première avant qu'elles n'atteignent le canal stable. Elles peuvent être moins stables."
   },
   "update": {
     "installing": "Installation de la mise à jour {{version}}...",
     "restarting": "Redémarrage...",
-    "error": "La mise à jour n'a pas pu être installée. Réessaie plus tard."
+    "error": "La mise à jour n'a pas pu être installée. Réessaie plus tard.",
+    "restartButton": "Redémarrer pour installer la mise à jour",
+    "restartTooltip": "La version {{version}} a été téléchargée et est prête à être installée."
   },
   "downloads": {
     "title": "Téléchargements",

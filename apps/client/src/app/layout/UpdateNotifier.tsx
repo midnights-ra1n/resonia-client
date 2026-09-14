@@ -1,99 +1,71 @@
-import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "../../lib/i18n";
+import { useEffect, useRef } from "react";
 import { isTauri } from "../../lib/platform";
+import { storage } from "../../lib/storage";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { checkForUpdate, relaunchApp } from "../../lib/update/updateService";
+import { useUpdateStore } from "../../stores/updateStore";
 
-type Status = "downloading" | "installed" | "error";
+const LAST_CHECK_STORAGE_KEY = "resonia:update:lastCheckedAt";
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Une vérification par heure suffit à repérer qu'un jour s'est écoulé depuis la dernière
+// vérification, y compris après une mise en veille prolongée de la machine, sans pour autant
+// solliciter GitHub en continu.
+const POLL_INTERVAL_MS = 60 * 60 * 1000;
 
-/** Vérifie une seule fois, au lancement de l'app de bureau (si le réglage correspondant est
- *  activé), si une mise à jour est disponible sur le canal choisi (stable ou beta, voir
- *  updateService.ts) et l'installe automatiquement en arrière-plan — aucune confirmation, aucun
- *  lien vers la page GitHub : seule une boîte de dialogue d'avancement s'affiche pendant le
- *  téléchargement/installation, puis disparaît et relance l'app dans sa nouvelle version dès que
- *  c'est terminé. Ne rend rien côté web ni tant qu'aucune mise à jour n'est en cours d'installation. */
+/** Ne rend rien : gère uniquement la vérification et l'installation automatiques et silencieuses
+ *  des mises à jour en arrière-plan — au lancement, puis une fois par jour tant que l'app reste
+ *  ouverte (utilisateurs qui la laissent tourner en fond de tâche) — quand le réglage
+ *  correspondant est activé. Aucune boîte de dialogue, aucun redémarrage forcé : une fois
+ *  l'installation terminée sur disque, le store updateStore passe en statut "ready" et c'est le
+ *  bouton "Redémarrer pour installer la mise à jour" de la barre supérieure (UpdateRestartButton)
+ *  qui prend le relais pour laisser l'utilisateur choisir quand redémarrer. */
 export function UpdateNotifier() {
-  const { t } = useTranslation();
   const hydrated = useSettingsStore((s) => s.hydrated);
   const checkUpdatesOnLaunch = useSettingsStore((s) => s.checkUpdatesOnLaunch);
   const betaUpdatesEnabled = useSettingsStore((s) => s.betaUpdatesEnabled);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [targetVersion, setTargetVersion] = useState<string | null>(null);
   // Le hydrate() du settingsStore résout de façon asynchrone : sans cette garde, une vérification
   // se déclencherait une première fois avec les valeurs par défaut avant que le réglage persisté
   // n'ait eu le temps d'être chargé.
-  const started = useRef(false);
+  const startedOnLaunch = useRef(false);
 
   useEffect(() => {
-    if (!isTauri() || !hydrated || started.current) return;
-    if (!checkUpdatesOnLaunch) return;
-    started.current = true;
+    if (!isTauri() || !hydrated || !checkUpdatesOnLaunch) return;
 
     let cancelled = false;
-    checkForUpdate(betaUpdatesEnabled)
-      .then(async (update) => {
-        if (cancelled || !update) return;
-        setTargetVersion(update.version);
-        setStatus("downloading");
-        try {
-          await update.downloadAndInstall((percent) => {
-            if (!cancelled) setProgress(percent);
-          });
-          if (cancelled) return;
-          setStatus("installed");
-          await relaunchApp();
-        } catch (err) {
-          console.error("[update] Échec du téléchargement/installation", err);
-          if (!cancelled) setStatus("error");
-        }
-      })
-      .catch((err) => console.warn("[update] Échec de la vérification de mise à jour", err));
+
+    async function runIfDue(force: boolean) {
+      if (cancelled) return;
+      // Une mise à jour déjà trouvée/en cours (déclenchée par le bouton manuel des paramètres,
+      // par exemple) ne doit jamais être interrompue ou redemandée par ce vérificateur silencieux.
+      const status = useUpdateStore.getState().status;
+      if (
+        status === "checking" ||
+        status === "downloading" ||
+        status === "ready"
+      )
+        return;
+
+      if (!force) {
+        const last = (await storage.get<number>(LAST_CHECK_STORAGE_KEY)) ?? 0;
+        if (Date.now() - last < DAY_MS) return;
+      }
+      if (cancelled) return;
+
+      await storage.set(LAST_CHECK_STORAGE_KEY, Date.now());
+      await useUpdateStore.getState().checkAndInstall(betaUpdatesEnabled);
+    }
+
+    if (!startedOnLaunch.current) {
+      startedOnLaunch.current = true;
+      void runIfDue(true);
+    }
+
+    const interval = setInterval(() => void runIfDue(false), POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [hydrated, checkUpdatesOnLaunch, betaUpdatesEnabled]);
 
-  if (!status) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 p-6 text-center shadow-xl">
-        {status === "error" ? (
-          <>
-            <p className="mb-4 text-sm text-red-400">{t("update.error")}</p>
-            <button
-              type="button"
-              onClick={() => setStatus(null)}
-              className="w-full rounded-full bg-neutral-800 py-2.5 font-semibold text-white transition hover:bg-neutral-700"
-            >
-              {t("common.confirm")}
-            </button>
-          </>
-        ) : status === "installed" ? (
-          <p className="text-sm text-neutral-300">{t("update.restarting")}</p>
-        ) : (
-          <>
-            <h2 className="mb-4 text-sm font-semibold text-white">
-              {t("update.installing", { version: targetVersion ?? "" })}
-            </h2>
-            <div
-              role="progressbar"
-              aria-valuenow={progress}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="h-2 w-full overflow-hidden rounded-full bg-neutral-800"
-            >
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="mt-2 text-xs text-neutral-500">{progress}%</p>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  return null;
 }

@@ -250,3 +250,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ needs.resolve-version.outputs.tag }}" --draft=false -R "${{ github.repository }}"
+
+  # Même mécanisme que publish-beta-pointer côté release-beta.yml : l'updater du canal stable
+  # pointe vers une release à tag fixe ("stable-updater") plutôt que vers "latest" (endpoint
+  # GitHub qui aurait aussi fonctionné ici, les releases stables n'étant jamais prerelease — mais
+  # un tag fixe explicite reste immunisé contre tout futur changement d'ordre des releases, et
+  # symétrique avec le canal beta). Dépend de publish-release : ne pointe jamais vers une release
+  # encore en draft ou incomplète.
+  publish-stable-pointer:
+    needs: [resolve-version, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Republier latest.json sur la release pointeur "stable-updater"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dl
+          gh release download "${{ needs.resolve-version.outputs.tag }}" -R "${GITHUB_REPOSITORY}" -D dl --clobber -p 'latest.json'
+
+          if gh release view stable-updater -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload stable-updater dl/latest.json -R "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create stable-updater dl/latest.json \
+              -R "${GITHUB_REPOSITORY}" \
+              --title "stable-updater" \
+              --notes "stable updater pointer" \
+              --target "${GITHUB_SHA}"
+          fi

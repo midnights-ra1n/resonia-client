@@ -26,10 +26,10 @@ fn apply_webkitgtk_perf_workarounds() {
 /// l'endpoint choisi à la volée plutôt que d'utiliser celui de la config.
 #[cfg(desktop)]
 const UPDATE_ENDPOINT_STABLE: &str =
-    "https://github.com/midnights-ra1n/resonia-client/releases/latest/download/latest.json";
+    "https://github.com/midnights-ra1n/resonia-client/releases/download/stable-updater/latest.json";
 #[cfg(desktop)]
 const UPDATE_ENDPOINT_BETA: &str =
-    "https://github.com/midnights-ra1n/resonia-client/releases/download/beta/latest.json";
+    "https://github.com/midnights-ra1n/resonia-client/releases/download/beta-updater/latest.json";
 
 /// Vérifie la disponibilité d'une mise à jour sur le canal demandé et, si trouvée, enregistre
 /// l'`Update` dans la table de ressources du plugin — le rid renvoyé reste ensuite utilisable
@@ -57,7 +57,21 @@ async fn check_for_update(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+    // Chaque canal pointe vers une release à tag fixe (stable-updater / beta-updater, voir les
+    // constantes ci-dessus et publish-*-pointer dans les workflows) plutôt que vers "latest" :
+    // tant qu'aucune release de ce canal n'a encore été publiée (le projet n'a par exemple
+    // encore publié aucune stable), ce tag n'existe pas et l'URL renvoie un 404, que le plugin
+    // remonte comme `Error::ReleaseNotFound`. C'est un état normal ("pas de mise à jour sur ce
+    // canal pour l'instant"), pas une panne : on le traite comme "aucune mise à jour disponible"
+    // plutôt que de faire remonter une erreur générique côté interface. Les vraies pannes
+    // (réseau, TLS, JSON invalide...) continuent, elles, de remonter normalement.
+    let update = match updater.check().await {
+        Ok(update) => update,
+        Err(tauri_plugin_updater::Error::ReleaseNotFound) => None,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let Some(update) = update else {
         return Ok(None);
     };
 

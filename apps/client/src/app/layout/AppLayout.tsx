@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
+import { UpdateRestartButton } from "./UpdateRestartButton";
 import { LyricsView } from "../../features/lyrics/LyricsView";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
@@ -32,7 +33,9 @@ export function AppLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
+  const [query, setQuery] = useState(
+    () => new URLSearchParams(location.search).get("q") ?? "",
+  );
   const debouncedQuery = useDebouncedValue(query, 300);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const showLyrics = usePlayerStore((s) => s.showLyrics);
@@ -110,13 +113,24 @@ export function AppLayout() {
                 {t("common.offline")}
               </div>
             )}
-            <form onSubmit={handleSubmit} className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3 gap-2">
+            <form
+              onSubmit={handleSubmit}
+              className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3 gap-2"
+            >
               {/* Boutons navigation à gauche de la barre de recherche */}
               <div className="flex items-center gap-1 pr-2">
-                <button onClick={handleGoBack} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page précédente">
+                <button
+                  onClick={handleGoBack}
+                  className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition"
+                  title="Aller à la page précédente"
+                >
                   <ArrowLeft size={16} />
                 </button>
-                <button onClick={handleGoForward} className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition" title="Aller à la page suivante">
+                <button
+                  onClick={handleGoForward}
+                  className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition"
+                  title="Aller à la page suivante"
+                >
                   <ArrowRight size={16} />
                 </button>
               </div>
@@ -137,8 +151,10 @@ export function AppLayout() {
                 />
               </div>
 
-              {/* Indicateur de téléchargements en cours, à droite */}
-              <div className="flex items-center justify-end pl-2">
+              {/* Indicateur de téléchargements en cours et bouton de redémarrage (si une mise à
+                  jour installée en arrière-plan attend d'être appliquée), à droite */}
+              <div className="flex items-center justify-end gap-2 pl-2">
+                <UpdateRestartButton />
                 <DownloadsIndicator />
               </div>
             </form>

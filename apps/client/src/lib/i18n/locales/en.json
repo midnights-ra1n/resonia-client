@@ -196,18 +196,28 @@
     "developerMode": "Developer mode",
     "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events.",
     "updates": "Updates",
-    "updatesDescription": "Updates are downloaded and installed automatically in the background, then the app restarts on its own — no manual download from GitHub needed.",
+    "updatesDescription": "Updates download and install automatically in the background — no manual download from GitHub needed. Once ready, restart the app from the button in the top bar to apply it.",
     "updatesCurrentVersion": "Current version: {{version}}",
     "updatesBetaBadge": "beta",
-    "checkOnLaunch": "Check for updates on launch",
-    "checkOnLaunchDescription": "Look for a new version every time the app starts.",
+    "updatesCheckButton": "Check for updates",
+    "updatesChecking": "Checking for updates...",
+    "updatesUpToDate": "You're up to date.",
+    "updatesAvailable": "Version {{version}} is available.",
+    "updatesInstallButton": "Install update",
+    "updatesInstalling": "Downloading update {{version}}... {{percent}}%",
+    "updatesReady": "Update ready — restart the app to apply it.",
+    "updatesCheckError": "Couldn't check for updates. Try again later.",
+    "checkOnLaunch": "Check for updates automatically",
+    "checkOnLaunchDescription": "Looks for a new version on launch, then once a day while the app stays open.",
     "betaUpdates": "Receive beta updates",
     "betaUpdatesDescription": "Get early access releases before they reach the stable channel. These may be less stable."
   },
   "update": {
     "installing": "Installing update {{version}}...",
     "restarting": "Restarting...",
-    "error": "The update couldn't be installed. Try again later."
+    "error": "The update couldn't be installed. Try again later.",
+    "restartButton": "Restart to install update",
+    "restartTooltip": "Version {{version}} has been downloaded and is ready to install."
   },
   "downloads": {
     "title": "Downloads",

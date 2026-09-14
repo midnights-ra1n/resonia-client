@@ -25,7 +25,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @resonia/client lint
+      - run: pnpm lint
 
   test:
     runs-on: ubuntu-latest
@@ -37,7 +37,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @resonia/client test
+      - run: pnpm test
 
   build:
     runs-on: ubuntu-latest
@@ -49,4 +49,4 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @resonia/client build
+      - run: pnpm build

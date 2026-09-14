@@ -38,6 +38,7 @@ export class FakeGainNode extends FakeAudioNode {
 
 export class FakeAudioBufferSourceNode extends FakeAudioNode {
   buffer: AudioBuffer | null = null;
+  playbackRate = new FakeAudioParam();
   onended: (() => void) | null = null;
   startCall: { when: number; offset: number } | null = null;
   stopCall: { when: number } | null = null;

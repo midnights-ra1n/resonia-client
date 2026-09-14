@@ -170,8 +170,23 @@ jobs:
           pkgbuild --analyze --root "$STAGING_DIR" "$PLIST_PATH"
           /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$PLIST_PATH"
 
+          # L'installer .pkg tourne toujours en root, quel que soit l'utilisateur qui l'exécute
+          # (contrairement à un simple glisser-déposer depuis un .dmg) : sans ce postinstall,
+          # Resonia.app appartiendrait à root, et Finder demanderait le mot de passe admin juste
+          # pour le supprimer plus tard. On le rend donc à l'utilisateur de la session graphique.
+          SCRIPTS_DIR="$RUNNER_TEMP/pkgscripts"
+          mkdir -p "$SCRIPTS_DIR"
+          cat > "$SCRIPTS_DIR/postinstall" <<'SCRIPT'
+          #!/bin/bash
+          CONSOLE_USER=$(stat -f "%Su" /dev/console)
+          chown -R "$CONSOLE_USER":staff "/Applications/Resonia.app"
+          exit 0
+          SCRIPT
+          chmod +x "$SCRIPTS_DIR/postinstall"
+
           pkgbuild --root "$STAGING_DIR" --install-location /Applications \
             --component-plist "$PLIST_PATH" \
+            --scripts "$SCRIPTS_DIR" \
             --identifier com.resonia.client --version "${{ needs.resolve-version.outputs.version }}" "$PKG_PATH"
           echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"
 
@@ -184,8 +199,12 @@ jobs:
   # Image Docker de la version web (seule plateforme sans téléchargement hors-ligne ni choix de
   # qualité audio : AAC 256 kbps forcé, cf. apps/client/src/lib/audio/qualityOptions.ts). Publiée
   # à part des binaires de bureau ci-dessus, sur GHCR, avec un tag flottant ":beta" en plus du tag
-  # de version (même logique que le pointeur d'updater ci-dessous). Multi-arch (amd64 natif,
-  # arm64 émulé via QEMU — l'image est une simple build Vite + nginx, l'émulation reste rapide).
+  # de version (même logique que le pointeur d'updater ci-dessous). Multi-arch (amd64 + arm64) —
+  # pas besoin de QEMU : le Dockerfile force le stage de build (Node/pnpm/Vite) à toujours
+  # tourner nativement (--platform=$BUILDPLATFORM) et ne produit que des assets statiques,
+  # indépendants de l'archi ; seul le stage final (nginx, aucune exécution) varie par plateforme,
+  # via ses images de base officielles déjà multi-arch. Émuler le stage Node sous QEMU plantait
+  # ("qemu: uncaught target signal 4") pendant `pnpm install`.
   docker-web:
     needs: resolve-version
     if: needs.resolve-version.outputs.should_release == 'true'
@@ -193,11 +212,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: QEMU (pour la cible arm64 émulée)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3

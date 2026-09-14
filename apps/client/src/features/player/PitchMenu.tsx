@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { RotateCcw } from "lucide-react";
+import { ClockCounterClockwise } from "@phosphor-icons/react";
 import { PITCH_RANGE_OPTIONS, usePlayerStore } from "../../stores/playerStore";
 
 const PITCH_STEP = 0.1;
@@ -108,7 +108,7 @@ export function PitchMenu() {
             className="text-neutral-400 hover:text-white transition-colors"
             title="Réinitialiser (1x)"
           >
-            <RotateCcw size={14} />
+            <ClockCounterClockwise size={14} />
           </button>
         </div>
       </div>

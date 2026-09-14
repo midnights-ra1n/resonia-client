@@ -1,4 +1,4 @@
-import { Disc, Download, Info, ListMusic, ListPlus, User } from "lucide-react";
+import { Disc, Download, Info, ListPlus, Playlist, User } from "@phosphor-icons/react";
 import type { SubsonicClient } from "@resonia/api-client";
 import type { NavigateFunction } from "react-router-dom";
 import type { MenuItem } from "./ContextMenu";
@@ -55,7 +55,7 @@ export function buildTrackMenuItems({
       label: isMultiple
         ? t("contextMenu.addToPlaylistCount", { count: targetIds.length })
         : t("contextMenu.addToPlaylist"),
-      icon: ListMusic,
+      icon: Playlist,
       renderSubmenu: () => (
         <AddToPlaylistSubmenu client={client} getSongIds={async () => targetIds} />
       ),

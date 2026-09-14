@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, Radio, RotateCcw, X } from "lucide-react";
+import { ClockCounterClockwise, Pulse, Radio, X } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../../stores/playerStore";
 import { cacheStore } from "../../../lib/audio/cache/cacheStore";
 import {
@@ -327,11 +327,11 @@ export function DebugPanel() {
       <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-3 py-2">
         <div className="flex items-center gap-1.5">
           <TabButton icon={<Radio size={12} />} label="Network" active={tab === "network"} onClick={() => setTab("network")} />
-          <TabButton icon={<Activity size={12} />} label="Decode" active={tab === "decode"} onClick={() => setTab("decode")} />
+          <TabButton icon={<Pulse size={12} />} label="Decode" active={tab === "decode"} onClick={() => setTab("decode")} />
         </div>
         <div className="flex items-center gap-2.5">
           <button onClick={resetDebugStats} className="text-neutral-500 transition-colors hover:text-white" title="Reset stats">
-            <RotateCcw size={13} />
+            <ClockCounterClockwise size={13} />
           </button>
           <button onClick={toggleDebugPanel} className="text-neutral-500 transition-colors hover:text-white" title="Close">
             <X size={14} />

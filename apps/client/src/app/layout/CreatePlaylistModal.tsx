@@ -1,4 +1,4 @@
-import { ImagePlus, X } from "lucide-react";
+import { ImageSquare, X } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import type { PlaylistSummary } from "@resonia/api-client";
 import { useTranslation } from "../../lib/i18n";
@@ -88,7 +88,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
             {photoPreview ? (
               <img src={photoPreview} alt="" className="h-full w-full object-cover" />
             ) : (
-              <ImagePlus size={28} className="text-neutral-500" />
+              <ImageSquare size={28} className="text-neutral-500" />
             )}
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />

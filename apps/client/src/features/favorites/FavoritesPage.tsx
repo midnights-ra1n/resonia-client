@@ -1,4 +1,4 @@
-import { Heart, Pause, Play, Shuffle } from "lucide-react";
+import { Heart, Pause, Play, Shuffle } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";

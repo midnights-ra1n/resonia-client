@@ -1,4 +1,4 @@
-import { Download, Loader2 } from "lucide-react";
+import { CircleNotch, Download } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { MarqueeText } from "../../components/MarqueeText";
 import { downloadStore, type DownloadProgressInfo } from "../../lib/downloads/downloadStore";
@@ -48,7 +48,7 @@ export function DownloadProgressRow({ item }: { item: PendingDownloadItem }) {
   return (
     <div className="grid grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md px-2 py-3">
       <div className="flex items-center justify-center text-neutral-400">
-        {status === "downloading" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+        {status === "downloading" ? <CircleNotch size={14} className="animate-spin" /> : <Download size={14} />}
       </div>
       <div className="min-w-0">
         <MarqueeText text={item.track.title} className="text-sm text-white" />

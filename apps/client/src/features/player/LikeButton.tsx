@@ -1,4 +1,4 @@
-import { Check, ListMusic, Plus } from "lucide-react";
+import { Check, Playlist, Plus } from "@phosphor-icons/react";
 import { useState } from "react";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { AddToPlaylistSubmenu } from "../../components/menu/AddToPlaylistSubmenu";
@@ -58,7 +58,7 @@ export function LikeButton({ track }: LikeButtonProps) {
             {
               type: "submenu",
               label: t("contextMenu.addToPlaylist"),
-              icon: ListMusic,
+              icon: Playlist,
               renderSubmenu: () => (
                 <AddToPlaylistSubmenu client={client} getSongIds={async () => [track.id]} />
               ),

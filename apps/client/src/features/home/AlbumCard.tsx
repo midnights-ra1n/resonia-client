@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Play } from "lucide-react";
+import { Play } from "@phosphor-icons/react";
 import type { AlbumSummary } from "@resonia/api-client";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";

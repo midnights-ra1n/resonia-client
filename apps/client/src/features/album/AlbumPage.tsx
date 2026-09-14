@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MarqueeText } from "../../components/MarqueeText";
-import { Check, Download, Loader2, Play, Pause, Shuffle } from "lucide-react";
+import { Check, CircleNotch, Download, Pause, Play, Shuffle } from "@phosphor-icons/react";
 import { useAlbum } from "./useAlbum";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
@@ -289,7 +289,7 @@ export function AlbumPage() {
           title={downloadStatus === "complete" ? t("album.downloaded") : downloadStatus === "downloading" ? t("album.downloading") : t("album.download")}
         >
           {downloadStatus === "downloading" ? (
-            <Loader2 size={24} className="animate-spin" />
+            <CircleNotch size={24} className="animate-spin" />
           ) : downloadStatus === "complete" ? (
             <Check size={24} />
           ) : (

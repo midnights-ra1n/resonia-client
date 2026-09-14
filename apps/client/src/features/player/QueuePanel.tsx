@@ -1,4 +1,4 @@
-import { GripVertical, X } from "lucide-react";
+import { DotsSixVertical, X } from "@phosphor-icons/react";
 import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCallback, useRef, useState } from "react";
@@ -169,7 +169,7 @@ function QueueItem({
         }`}
       >
         <div className="shrink-0 text-neutral-600 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-neutral-400">
-          <GripVertical size={14} />
+          <DotsSixVertical size={14} />
         </div>
 
         <img

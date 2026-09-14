@@ -1,4 +1,4 @@
-import { Pause, Play, Trash2 } from "lucide-react";
+import { Pause, Play, Trash } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { InfoModal } from "../../components/InfoModal";
@@ -83,7 +83,7 @@ export function DownloadsPage() {
     items.push({
       type: "action",
       label: t("contextMenu.removeDownload"),
-      icon: Trash2,
+      icon: Trash,
       danger: true,
       onClick: () => downloadStore.removeDownload(meta.trackId, meta.qualityId),
     });

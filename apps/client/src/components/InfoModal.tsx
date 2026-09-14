@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X } from "@phosphor-icons/react";
 
 interface InfoModalProps {
   title: string;

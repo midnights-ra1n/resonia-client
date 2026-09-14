@@ -1,4 +1,4 @@
-import { Check, Loader2, Plus } from "lucide-react";
+import { Check, CircleNotch, Plus } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { usePlaylists } from "../../hooks/usePlaylists";
@@ -189,7 +189,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
                   }`}
                 >
                   {pending ? (
-                    <Loader2 size={11} className="animate-spin text-neutral-400" />
+                    <CircleNotch size={11} className="animate-spin text-neutral-400" />
                   ) : (
                     added && <Check size={11} strokeWidth={3} />
                   )}

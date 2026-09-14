@@ -1,4 +1,4 @@
-import { RotateCw } from "lucide-react";
+import { ArrowClockwise } from "@phosphor-icons/react";
 import { useTranslation } from "../../lib/i18n";
 import { useUpdateStore } from "../../stores/updateStore";
 
@@ -21,7 +21,7 @@ export function UpdateRestartButton() {
       title={version ? t("update.restartTooltip", { version }) : undefined}
       className="flex h-9 items-center gap-1.5 rounded-full bg-emerald-500 px-3 text-xs font-semibold text-black transition hover:bg-emerald-400"
     >
-      <RotateCw size={14} />
+      <ArrowClockwise size={14} />
       {t("update.restartButton")}
     </button>
   );

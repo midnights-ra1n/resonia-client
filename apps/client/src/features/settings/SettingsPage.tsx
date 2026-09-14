@@ -2,17 +2,18 @@ import { useEffect, useState } from "react";
 import {
   Check,
   X,
-  Loader2,
+  CircleNotch,
   Globe,
   Plug,
   HardDrive,
   Download,
-  RefreshCw,
-  Code2,
-} from "lucide-react";
+  ArrowsClockwise,
+  Code,
+} from "@phosphor-icons/react";
 import {
   checkAnimatedArtworkHealth,
   DEFAULT_ANIMATED_ARTWORK_BASE_URL,
+  type AnimatedArtworkHealthFailureReason,
 } from "@resonia/api-client";
 import { useTranslation, type Locale } from "../../lib/i18n";
 import { useSettingsStore, GIGABYTE } from "../../stores/settingsStore";
@@ -111,6 +112,8 @@ export function SettingsPage() {
   const [animatedArtworkUrlError, setAnimatedArtworkUrlError] = useState(false);
   const [animatedArtworkHealth, setAnimatedArtworkHealth] =
     useState<AnimatedArtworkHealth>("idle");
+  const [animatedArtworkHealthReason, setAnimatedArtworkHealthReason] =
+    useState<AnimatedArtworkHealthFailureReason | null>(null);
   const [forcingAnimatedArtworkRefresh, setForcingAnimatedArtworkRefresh] =
     useState(false);
   const isDesktop = getPlatform() === "desktop";
@@ -122,8 +125,8 @@ export function SettingsPage() {
       ? [{ id: "cache" as const, label: t("settings.cache"), icon: HardDrive }]
       : []),
     { id: "downloads", label: t("settings.downloads"), icon: Download },
-    { id: "updates", label: t("settings.updates"), icon: RefreshCw },
-    { id: "developer", label: t("settings.developer"), icon: Code2 },
+    { id: "updates", label: t("settings.updates"), icon: ArrowsClockwise },
+    { id: "developer", label: t("settings.developer"), icon: Code },
   ];
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
@@ -240,8 +243,11 @@ export function SettingsPage() {
 
     (async () => {
       setAnimatedArtworkHealth("checking");
-      const ok = await checkAnimatedArtworkHealth(urlToTest, platformFetch);
-      if (!cancelled) setAnimatedArtworkHealth(ok ? "ok" : "error");
+      setAnimatedArtworkHealthReason(null);
+      const result = await checkAnimatedArtworkHealth(urlToTest, platformFetch);
+      if (cancelled) return;
+      setAnimatedArtworkHealth(result.ok ? "ok" : "error");
+      setAnimatedArtworkHealthReason(result.ok ? null : (result.reason ?? null));
     })();
 
     return () => {
@@ -374,16 +380,24 @@ export function SettingsPage() {
                       {t("settings.animatedArtworkBaseUrl")}
                     </label>
                     <span
-                      title={t(
-                        animatedArtworkHealth === "ok"
-                          ? "settings.animatedArtworkStatusOk"
-                          : animatedArtworkHealth === "error"
-                            ? "settings.animatedArtworkStatusError"
-                            : "settings.animatedArtworkStatusChecking",
-                      )}
+                      title={
+                        animatedArtworkHealth === "error"
+                          ? t(
+                              animatedArtworkHealthReason === "network"
+                                ? "settings.animatedArtworkStatusErrorNetwork"
+                                : animatedArtworkHealthReason === "format"
+                                  ? "settings.animatedArtworkStatusErrorFormat"
+                                  : "settings.animatedArtworkStatusErrorHttp",
+                            )
+                          : t(
+                              animatedArtworkHealth === "ok"
+                                ? "settings.animatedArtworkStatusOk"
+                                : "settings.animatedArtworkStatusChecking",
+                            )
+                      }
                     >
                       {animatedArtworkHealth === "checking" && (
-                        <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />
+                        <CircleNotch className="h-4 w-4 animate-spin text-neutral-500" />
                       )}
                       {animatedArtworkHealth === "ok" && (
                         <Check className="h-4 w-4 text-emerald-500" />
@@ -417,6 +431,13 @@ export function SettingsPage() {
                       {t("settings.animatedArtworkBaseUrlInvalid")}
                     </p>
                   )}
+                  {!animatedArtworkUrlError &&
+                    animatedArtworkHealth === "error" &&
+                    animatedArtworkHealthReason === "network" && (
+                      <p className="mt-1 text-xs text-amber-400">
+                        {t("settings.animatedArtworkStatusErrorNetworkHint")}
+                      </p>
+                    )}
                   <button
                     type="button"
                     onClick={handleForceRefreshAnimatedCovers}

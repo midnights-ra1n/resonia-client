@@ -1,15 +1,4 @@
-import {
-  ArrowDownAZ,
-  ArrowUpAZ,
-  Check,
-  ChevronDown,
-  Download,
-  GripVertical,
-  Loader2,
-  Pause,
-  Play,
-  Shuffle,
-} from "lucide-react";
+import { CaretDown, Check, CircleNotch, DotsSixVertical, Download, Pause, Play, Shuffle, SortAscending, SortDescending } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
@@ -396,7 +385,7 @@ export function PlaylistPage() {
               }
             >
               {downloadStatus === "downloading" ? (
-                <Loader2 size={24} className="animate-spin" />
+                <CircleNotch size={24} className="animate-spin" />
               ) : downloadStatus === "complete" ? (
                 <Check size={24} />
               ) : (
@@ -415,11 +404,11 @@ export function PlaylistPage() {
               <span>{t(SORT_LABEL_KEYS[playlistSortBy])}</span>
               {playlistSortBy !== "default" &&
                 (playlistSortDirection === "asc" ? (
-                  <ArrowUpAZ size={16} />
+                  <SortDescending size={16} />
                 ) : (
-                  <ArrowDownAZ size={16} />
+                  <SortAscending size={16} />
                 ))}
-              <ChevronDown size={14} />
+              <CaretDown size={14} />
             </button>
           </>
         )}
@@ -515,7 +504,7 @@ export function PlaylistPage() {
                           <span className="group-hover:hidden">
                             {index + 1}
                           </span>
-                          <GripVertical
+                          <DotsSixVertical
                             size={14}
                             className="hidden cursor-grab text-neutral-400 group-hover:block active:cursor-grabbing"
                           />

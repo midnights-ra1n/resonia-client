@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play } from "lucide-react";
+import { Play } from "@phosphor-icons/react";
 import type { SongDTO, SubsonicClient } from "@resonia/api-client";
 import { InfoModal } from "../../components/InfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";

@@ -52,17 +52,57 @@ function cacheKeyFor(serverId: string, coverArtId: string, size: number): string
   return `${serverId}:${coverArtId}:${size}`;
 }
 
+/** Sur les grilles/carrousels non virtualisés (recherche, accueil), potentiellement des
+ *  dizaines de pochettes deviennent "voulues" en même temps (voir `useInViewport` pour le
+ *  filtre côté visibilité, qui réduit déjà beaucoup ce nombre mais ne le ramène pas à un
+ *  téléchargement à la fois). Sans limite, elles partent toutes en parallèle : sur bureau
+ *  chaque requête traverse en plus la frontière IPC Rust du plugin `http`, et le serveur
+ *  Subsonic/Navidrome lui-même peut sérialiser ou ralentir un pic de requêtes simultanées —
+ *  c'est ce qui produisait des pochettes visibles mettant 5 à 10 secondes à apparaître dans
+ *  la recherche. Une petite file à concurrence bornée lisse la charge sans changer le
+ *  résultat final (tout finit par se télécharger et se mettre en cache), juste son ordre
+ *  d'arrivée — largement suffisant ici puisqu'aucune pochette individuelle n'est urgente au
+ *  point de justifier une vraie priorisation par distance au viewport. */
+const MAX_CONCURRENT_COVER_FETCHES = 6;
+let activeCoverFetches = 0;
+const coverFetchQueue: Array<() => void> = [];
+
+function runQueuedCoverFetch() {
+  if (activeCoverFetches >= MAX_CONCURRENT_COVER_FETCHES) return;
+  const next = coverFetchQueue.shift();
+  if (!next) return;
+  activeCoverFetches++;
+  next();
+}
+
+function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      task()
+        .then(resolve, reject)
+        .finally(() => {
+          activeCoverFetches--;
+          runQueuedCoverFetch();
+        });
+    };
+    coverFetchQueue.push(run);
+    runQueuedCoverFetch();
+  });
+}
+
 /** Certains hôtes distants (ex. music.apple.com pour le scraping HTML) ne renvoient pas
  *  d'en-tête CORS pour notre origine ; côté bureau, on passe donc par le client HTTP natif
  *  de Tauri, non soumis à la politique CORS du navigateur, pour fiabiliser le
  *  téléchargement quel que soit l'hôte (les CDN d'artwork type mzstatic envoient bien un
  *  en-tête CORS ouvert, mais ne pas en dépendre reste plus robuste). */
 async function fetchForCache(url: string): Promise<Response> {
-  if (isTauri()) {
-    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    return tauriFetch(url);
-  }
-  return fetch(url);
+  return withCoverFetchLimit(async () => {
+    if (isTauri()) {
+      const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+      return tauriFetch(url);
+    }
+    return fetch(url);
+  });
 }
 
 async function readMeta(): Promise<CacheEntryMeta[]> {

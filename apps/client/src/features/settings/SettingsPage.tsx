@@ -7,6 +7,7 @@ import {
 import { useTranslation, type Locale } from "../../lib/i18n";
 import { useSettingsStore, GIGABYTE } from "../../stores/settingsStore";
 import { getPlatform, isTauri } from "../../lib/platform";
+import { getAppVersion, isBetaVersion } from "../../lib/app/appVersion";
 import { cacheStore } from "../../lib/audio/cache/cacheStore";
 import { downloadStore } from "../../lib/downloads/downloadStore";
 import {
@@ -72,6 +73,16 @@ export function SettingsPage() {
   const setCacheMaxBytes = useSettingsStore((s) => s.setCacheMaxBytes);
   const devModeEnabled = useSettingsStore((s) => s.devModeEnabled);
   const setDevModeEnabled = useSettingsStore((s) => s.setDevModeEnabled);
+  const checkUpdatesOnLaunch = useSettingsStore((s) => s.checkUpdatesOnLaunch);
+  const setCheckUpdatesOnLaunch = useSettingsStore(
+    (s) => s.setCheckUpdatesOnLaunch,
+  );
+  const betaUpdatesEnabled = useSettingsStore((s) => s.betaUpdatesEnabled);
+  const setBetaUpdatesEnabled = useSettingsStore(
+    (s) => s.setBetaUpdatesEnabled,
+  );
+
+  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   const [lastfmInput, setLastfmInput] = useState(lastfmApiKey);
   const [animatedArtworkBaseUrlInput, setAnimatedArtworkBaseUrlInput] =
@@ -162,6 +173,14 @@ export function SettingsPage() {
       setClearingDownloads(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    getAppVersion().then((v) => !cancelled && setAppVersion(v));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Le hydrate() du store est asynchrone (peut résoudre après le montage de cette page) :
   // on resynchronise le champ une fois la clé chargée depuis le stockage.
@@ -456,6 +475,80 @@ export function SettingsPage() {
                 : t("settings.downloadsClear")}
             </button>
           </div>
+        </div>
+      </section>
+
+      <section className="mt-10 max-w-xl">
+        <h2 className="text-lg font-semibold">{t("settings.updates")}</h2>
+        <p className="mt-1 text-sm text-neutral-400">
+          {t("settings.updatesDescription")}
+        </p>
+
+        <div className="mt-6 flex flex-col gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-white">
+              {appVersion === null
+                ? t("common.loading")
+                : t("settings.updatesCurrentVersion", { version: appVersion })}
+            </span>
+            {appVersion !== null && isBetaVersion(appVersion) && (
+              <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold uppercase text-amber-400">
+                {t("settings.updatesBetaBadge")}
+              </span>
+            )}
+          </div>
+
+          {isDesktop && (
+            <>
+              <button
+                type="button"
+                onClick={() => setCheckUpdatesOnLaunch(!checkUpdatesOnLaunch)}
+                className="flex w-full items-center justify-between gap-2"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-white">
+                    {t("settings.checkOnLaunch")}
+                  </span>
+                  <span className="mt-1 block text-xs text-neutral-500">
+                    {t("settings.checkOnLaunchDescription")}
+                  </span>
+                </span>
+                <span
+                  className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${checkUpdatesOnLaunch ? "bg-emerald-500" : "bg-neutral-700"
+                    }`}
+                >
+                  <span
+                    className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checkUpdatesOnLaunch ? "translate-x-4" : "translate-x-0"
+                      }`}
+                  />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBetaUpdatesEnabled(!betaUpdatesEnabled)}
+                className="flex w-full items-center justify-between gap-2"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-white">
+                    {t("settings.betaUpdates")}
+                  </span>
+                  <span className="mt-1 block text-xs text-neutral-500">
+                    {t("settings.betaUpdatesDescription")}
+                  </span>
+                </span>
+                <span
+                  className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${betaUpdatesEnabled ? "bg-emerald-500" : "bg-neutral-700"
+                    }`}
+                >
+                  <span
+                    className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${betaUpdatesEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                  />
+                </span>
+              </button>
+            </>
+          )}
         </div>
       </section>
 

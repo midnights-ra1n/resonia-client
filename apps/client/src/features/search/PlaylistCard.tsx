@@ -10,6 +10,7 @@ import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuI
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { RenamePlaylistModal } from "../../app/layout/RenamePlaylistModal";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { useInViewport } from "../../hooks/useInViewport";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
@@ -36,7 +37,13 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
   const coverUrl = client && playlist.coverArt ? client.getCoverArtUrl(playlist.coverArt, 300) : undefined;
-  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, playlist.coverArt, 300, coverUrl);
+  const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
+  const cachedCoverUrl = useCoverArt(
+    activeServerId ?? undefined,
+    coverInView ? playlist.coverArt : undefined,
+    300,
+    coverUrl,
+  );
 
   async function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -68,11 +75,11 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
 
   return (
     <div
-      className="group relative w-40 shrink-0 rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800"
+      className="grid-card-cv group relative w-40 shrink-0 rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800"
       onContextMenu={menu.handleContextMenu}
     >
       <Link to={`/playlists/${playlist.id}`} className="block cursor-pointer">
-        <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
+        <div ref={coverRef} className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
           {cachedCoverUrl ? (
             <img src={cachedCoverUrl} alt={name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (

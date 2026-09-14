@@ -8,6 +8,7 @@ import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { useInViewport } from "../../hooks/useInViewport";
 import { formatTrackDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
@@ -47,7 +48,13 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
   const coverUrl = client && song.coverArt ? client.getCoverArtUrl(song.coverArt, 80) : undefined;
-  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, song.coverArt, 80, coverUrl);
+  const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
+  const cachedCoverUrl = useCoverArt(
+    activeServerId ?? undefined,
+    coverInView ? song.coverArt : undefined,
+    80,
+    coverUrl,
+  );
 
   const isCurrent = currentTrackId === song.id;
 
@@ -86,7 +93,7 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
         isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-neutral-800/60" : ""
       }`}
     >
-      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
+      <div ref={coverRef} className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
           <img src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (

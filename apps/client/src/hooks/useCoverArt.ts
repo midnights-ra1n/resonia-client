@@ -44,6 +44,10 @@ export function useCoverArt(
         }
       } catch (err) {
         console.error("[coverCache] Échec du cache de pochette", err);
+        // Repli terminal uniquement en cas d'échec réel du cache : voir le commentaire sur le
+        // rendu plus bas pour la raison de ne JAMAIS exposer `liveUrl` pendant que la
+        // résolution est encore en cours.
+        if (!cancelled) setResolved({ key: cacheKey, url: liveUrl });
       }
     })();
 
@@ -56,10 +60,18 @@ export function useCoverArt(
     };
   }, [serverId, coverArtId, size, liveUrl, cacheKey]);
 
-  // Dérivé au rendu : si la clé résolue ne correspond plus (id/serveur/size a changé),
-  // on retombe immédiatement sur l'URL live sans passer par un setState de "reset".
+  // Dérivé au rendu : tant que rien n'est résolu pour cette clé (cache pas encore lu, ou
+  // téléchargement+mise en cache encore en vol), on renvoie `undefined` plutôt que `liveUrl` —
+  // les appelants affichent un placeholder dans cet intervalle. Exposer `liveUrl` ici
+  // déclencherait un chargement réseau direct via `<img src>` EN PARALLÈLE de celui fait par
+  // `loadAndCacheCover` ci-dessus (même image, deux téléchargements), puis un remplacement du
+  // `src` une fois le cache prêt — un clignotement visible sur chaque pochette une fois
+  // "affichée" (second décodage qui repeint l'image par-dessus la précédente), en plus de la
+  // bande passante gaspillée. `resolved.url` n'est posé qu'une seule fois par clé (voir
+  // l'effet ci-dessus, `liveUrl` y compris comme repli terminal en cas d'échec), donc `<img
+  // src>` ne change plus jamais après son tout premier paint.
   if (resolved && resolved.key === cacheKey) {
     return resolved.url;
   }
-  return liveUrl;
+  return undefined;
 }

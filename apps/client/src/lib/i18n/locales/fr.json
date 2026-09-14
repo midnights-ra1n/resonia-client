@@ -194,16 +194,20 @@
     "developer": "Développeur",
     "developerDescription": "Diagnostics avancés du moteur audio.",
     "developerMode": "Mode développeur",
-    "developerModeDescription": "Ajoute un débogueur réseau et décodage au lecteur, avec le débit de téléchargement en direct, l'usage du cache et les événements de buffer/décodage."
+    "developerModeDescription": "Ajoute un débogueur réseau et décodage au lecteur, avec le débit de téléchargement en direct, l'usage du cache et les événements de buffer/décodage.",
+    "updates": "Mises à jour",
+    "updatesDescription": "Les mises à jour sont téléchargées et installées automatiquement en arrière-plan, puis l'application redémarre toute seule — aucun téléchargement manuel depuis GitHub n'est nécessaire.",
+    "updatesCurrentVersion": "Version actuelle : {{version}}",
+    "updatesBetaBadge": "bêta",
+    "checkOnLaunch": "Vérifier les mises à jour au lancement",
+    "checkOnLaunchDescription": "Recherche une nouvelle version à chaque démarrage de l'application.",
+    "betaUpdates": "Recevoir les mises à jour bêta",
+    "betaUpdatesDescription": "Accède aux versions en avant-première avant qu'elles n'atteignent le canal stable. Elles peuvent être moins stables."
   },
   "update": {
-    "title": "Mise à jour disponible — {{version}}",
-    "currentVersion": "Tu es actuellement en version {{version}}.",
-    "install": "Installer maintenant",
-    "downloading": "Téléchargement... {{percent}}%",
-    "later": "Plus tard",
-    "restart": "Redémarrer pour appliquer",
-    "error": "Le téléchargement de la mise à jour a échoué. Réessaie plus tard."
+    "installing": "Installation de la mise à jour {{version}}...",
+    "restarting": "Redémarrage...",
+    "error": "La mise à jour n'a pas pu être installée. Réessaie plus tard."
   },
   "downloads": {
     "title": "Téléchargements",

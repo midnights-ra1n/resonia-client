@@ -30,6 +30,21 @@ const COLD_START_FADE_SECONDS = 0.015;
 const SILENT_LOOP_DATA_URI =
   "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAoA8AAKAPAAABAAgAZGF0YcgAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==";
 
+/** `latencyHint: "playback"` (au lieu du défaut `"interactive"`) demande un tampon de sortie
+ *  nettement plus généreux — quelques dizaines de ms de latence de sortie en plus, imperceptible
+ *  pour de la lecture musicale (à l'inverse d'un jeu ou d'une app d'instrument). En échange,
+ *  la marge devient bien plus confortable face au moindre retard d'ordonnancement du thread
+ *  audio. Sur WebKitGTK/Linux (backend GStreamer/PipeWire, historiquement moins robuste que
+ *  Chromium ici), le tampon "interactive" par défaut est resté la cause la plus probable des
+ *  micro-coupures/micro-sauts observés en lecture — un simple sous-remplissage (underrun/xrun)
+ *  du tampon de sortie dès qu'une tâche JS/IPC retarde ne serait-ce que de quelques ms le thread
+ *  principal. Ce réglage n'affecte AUCUNE des échéances sample-accurate de la planification
+ *  gapless ci-dessous (toutes exprimées en `context.currentTime`, indépendant de la taille du
+ *  tampon de sortie) — seule la marge de sécurité au rendu change. */
+function createAudioContext(): AudioContext {
+  return new AudioContext({ latencyHint: "playback" });
+}
+
 function describeMediaError(error: MediaError | null): string {
   if (!error) return "Lecture audio impossible (erreur inconnue)";
   switch (error.code) {
@@ -96,8 +111,23 @@ interface PendingNext {
  */
 export class GaplessEngine {
   context: AudioContext;
-  private masterGain: GainNode;
+  /** Alimente exclusivement le chemin "mode buffer" (AudioBufferSourceNode, voir
+   *  `startBufferAt`/`trySchedulePending`) et se connecte DIRECTEMENT à `context.destination` —
+   *  jamais via un noeud qui a `nativeGain`/`mediaSource` (donc un MediaElementAudioSourceNode)
+   *  quelque part en amont. WebKit désactive silencieusement l'automation de gain (`setValueAtTime`/
+   *  ramps) sur TOUT le sous-graphe en aval d'un MediaElementAudioSourceNode, pas seulement sur le
+   *  noeud qui lui est directement connecté — un ancien schéma où ce noeud recevait aussi
+   *  `nativeGain` produisait un volume figé à son niveau d'origine dès qu'une piste basculait en
+   *  mode buffer (voir `attachDecodedActive`), indépendamment de la position du slider de volume :
+   *  bas pendant le streaming natif (compensé via `nativeAudio.volume`, seul chemin que WebKit
+   *  respecte pour ce mode-là), puis brutalement fort dès la bascule vers le mode buffer où
+   *  l'automation de ce noeud était ignorée. Garder ce noeud sur un sous-graphe qui n'a jamais vu
+   *  de MediaElementAudioSourceNode est ce qui rend son automation fiable sur WebKit. */
+  private bufferMasterGain: GainNode;
   private nativeAudio: HTMLAudioElement;
+  /** Chemin "streaming natif" : `mediaSource -> nativeGain -> destination`, câblé SANS passer par
+   *  `bufferMasterGain` (voir son commentaire) — seul `nativeAudio.volume` porte le volume
+   *  utilisateur ici, `nativeGain` ne sert qu'au micro-fondu natif→buffer. */
   private nativeGain: GainNode;
 
   /** Sur WebKit (Safari et la webview macOS de l'app de bureau — WKWebView), l'intégration Now
@@ -162,15 +192,15 @@ export class GaplessEngine {
   onNetworkPressure: ((active: boolean) => void) | null = null;
 
   constructor() {
-    this.context = new AudioContext();
-    this.masterGain = this.context.createGain();
-    this.masterGain.connect(this.context.destination);
+    this.context = createAudioContext();
+    this.bufferMasterGain = this.context.createGain();
+    this.bufferMasterGain.connect(this.context.destination);
 
     this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
-    this.nativeGain.connect(this.masterGain);
+    this.nativeGain.connect(this.context.destination);
     this.applyRateToNativeAudio();
 
     this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
@@ -301,7 +331,7 @@ export class GaplessEngine {
 
     const oldContext = this.context;
     const oldNativeAudio = this.nativeAudio;
-    const volume = this.masterGain.gain.value;
+    const volume = this.bufferMasterGain.gain.value;
 
     // Capturé AVANT toute bascule : this.currentTime dépend encore de l'ancien trackState/
     // contexte à ce stade.
@@ -323,16 +353,16 @@ export class GaplessEngine {
     this.stopCurrentBufferPlayback();
     oldNativeAudio.pause();
 
-    this.context = new AudioContext();
-    this.masterGain = this.context.createGain();
-    this.masterGain.gain.setValueAtTime(volume, this.context.currentTime);
-    this.masterGain.connect(this.context.destination);
+    this.context = createAudioContext();
+    this.bufferMasterGain = this.context.createGain();
+    this.bufferMasterGain.gain.setValueAtTime(volume, this.context.currentTime);
+    this.bufferMasterGain.connect(this.context.destination);
 
     this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
-    this.nativeGain.connect(this.masterGain);
+    this.nativeGain.connect(this.context.destination);
     this.applyRateToNativeAudio();
 
     this.trackState = null;
@@ -500,15 +530,16 @@ export class GaplessEngine {
   setVolume(v: number) {
     const clamped = Math.min(1, Math.max(0, v));
     const now = this.context.currentTime;
-    this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(clamped, now);
-    // WebKit n'applique pas l'automation d'un GainNode situé en aval d'un
-    // MediaElementAudioSourceNode : tant que la piste est en streaming natif (<audio>), le
-    // graphe ci-dessus est donc inopérant sur Safari — le son reste à son niveau d'origine
-    // quelle que soit la valeur de masterGain, sauf au strict minimum où WebKit rend bien un
-    // vrai silence. On pilote donc en plus le volume natif de l'élément lui-même, qui lui est
-    // toujours respecté par WebKit ; sur les navigateurs conformes (Chrome/Firefox), le volume
-    // de l'élément est ignoré une fois routé vers Web Audio, donc ceci n'a aucun effet double.
+    // Mode buffer : `bufferMasterGain` n'a jamais de MediaElementAudioSourceNode en amont (voir
+    // son commentaire de déclaration), donc WebKit respecte bien cette automation.
+    this.bufferMasterGain.gain.cancelScheduledValues(now);
+    this.bufferMasterGain.gain.setValueAtTime(clamped, now);
+    // Mode streaming natif : WebKit n'applique pas l'automation d'un GainNode situé en aval d'un
+    // MediaElementAudioSourceNode (ici `nativeGain`) — le son resterait à son niveau d'origine
+    // quelle que soit la valeur qu'on lui donnerait, sauf au strict minimum où WebKit rend bien un
+    // vrai silence. On pilote donc le volume natif de l'élément lui-même, qui lui est toujours
+    // respecté par WebKit ; sur les navigateurs conformes (Chrome/Firefox), le volume de
+    // l'élément est ignoré une fois routé vers Web Audio, donc ceci n'a aucun effet double.
     this.nativeAudio.volume = clamped;
     this.nativeAudio.muted = clamped <= 0;
   }
@@ -882,7 +913,7 @@ export class GaplessEngine {
     const gain = this.context.createGain();
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(1, now + COLD_START_FADE_SECONDS);
-    gain.connect(this.masterGain);
+    gain.connect(this.bufferMasterGain);
 
     const source = this.context.createBufferSource();
     source.buffer = buffer;
@@ -1009,7 +1040,7 @@ export class GaplessEngine {
     nextGain.gain.setValueAtTime(0, physicalStart);
     nextGain.gain.setValueAtTime(0, crossfadeStart);
     nextGain.gain.linearRampToValueAtTime(1, endTime);
-    nextGain.connect(this.masterGain);
+    nextGain.connect(this.bufferMasterGain);
 
     const nextSource = this.context.createBufferSource();
     nextSource.buffer = nextBuffer;

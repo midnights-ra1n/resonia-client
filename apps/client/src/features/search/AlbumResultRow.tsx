@@ -8,6 +8,7 @@ import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildAlbumMenuItems } from "../../components/menu/buildAlbumMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { useInViewport } from "../../hooks/useInViewport";
 import { formatAlbumDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
@@ -32,7 +33,13 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
   const coverUrl = client && album.coverArt ? client.getCoverArtUrl(album.coverArt, 80) : undefined;
-  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, album.coverArt, 80, coverUrl);
+  const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
+  const cachedCoverUrl = useCoverArt(
+    activeServerId ?? undefined,
+    coverInView ? album.coverArt : undefined,
+    80,
+    coverUrl,
+  );
 
   async function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -68,9 +75,9 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
       onClick={() => navigate(`/albums/${album.id}`)}
       onKeyDown={(e) => e.key === "Enter" && navigate(`/albums/${album.id}`)}
       onContextMenu={menu.handleContextMenu}
-      className="group flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition hover:bg-neutral-800/80"
+      className="track-row-cv group flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition hover:bg-neutral-800/80"
     >
-      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded bg-neutral-800">
+      <div ref={coverRef} className="relative h-12 w-12 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
           <img src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (

@@ -1,8 +1,86 @@
 use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
 
+/** WebKitGTK (webview Linux) choisit par défaut, sur beaucoup de GPU/pilotes Mesa (Intel,
+ *  AMD, machines virtuelles), un chemin de rendu accéléré par DMA-BUF connu pour produire un
+ *  défilement très saccadé (task WebKit https://bugs.webkit.org/show_bug.cgi?id=261874 et son
+ *  lot de rapports équivalents côté Tauri/Electron/GTK4 — plafond observé autour de 20-30 FPS
+ *  au lieu du plein taux de rafraîchissement) voire des images totalement blanches sur
+ *  certaines combinaisons. Désactiver spécifiquement CE renderer (pas la compositing
+ *  acceleration dans son ensemble, qui elle doit rester active) fait retomber WebKitGTK sur
+ *  son chemin de composition GL classique, nettement plus stable en pratique. Sans effet sur
+ *  macOS/Windows (WKWebView/WebView2 ignorent cette variable) : on peut la poser
+ *  inconditionnellement avant la création de la fenêtre, à condition de ne jamais écraser un
+ *  choix explicite de l'utilisateur/de l'environnement de déploiement. */
+#[cfg(target_os = "linux")]
+fn apply_webkitgtk_perf_workarounds() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
+/// Mêmes endpoints que tauri.conf.json (stable) / tauri.beta.conf.json (canal beta figé au
+/// build) — dupliqués ici car le réglage "recevoir les mises à jour bêta" doit pouvoir basculer
+/// une build STABLE vers le flux beta à l'exécution, ce que l'updater ne permet pas nativement
+/// (ses endpoints sont figés au build). La commande ci-dessous reconstruit donc un updater avec
+/// l'endpoint choisi à la volée plutôt que d'utiliser celui de la config.
+#[cfg(desktop)]
+const UPDATE_ENDPOINT_STABLE: &str =
+    "https://github.com/midnights-ra1n/resonia-client/releases/latest/download/latest.json";
+#[cfg(desktop)]
+const UPDATE_ENDPOINT_BETA: &str =
+    "https://github.com/midnights-ra1n/resonia-client/releases/download/beta/latest.json";
+
+/// Vérifie la disponibilité d'une mise à jour sur le canal demandé et, si trouvée, enregistre
+/// l'`Update` dans la table de ressources du plugin — le rid renvoyé reste ensuite utilisable
+/// tel quel par les commandes standard du plugin (`plugin:updater|download_and_install`, etc.)
+/// appelées depuis le front, aucune duplication de la logique de téléchargement/installation.
+#[cfg(desktop)]
+#[tauri::command]
+async fn check_for_update(
+    webview: tauri::Webview,
+    beta: bool,
+) -> Result<Option<serde_json::Value>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let endpoint = if beta {
+        UPDATE_ENDPOINT_BETA
+    } else {
+        UPDATE_ENDPOINT_STABLE
+    };
+    let url = url::Url::parse(endpoint).map_err(|e| e.to_string())?;
+
+    let updater = webview
+        .updater_builder()
+        .endpoints(vec![url])
+        .map_err(|e| e.to_string())?
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+
+    let current_version = update.current_version.clone();
+    let version = update.version.clone();
+    let body = update.body.clone();
+    let raw_json = update.raw_json.clone();
+    let rid = webview.resources_table().add(update);
+
+    Ok(Some(serde_json::json!({
+        "rid": rid,
+        "currentVersion": current_version,
+        "version": version,
+        "body": body,
+        "rawJson": raw_json,
+    })))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    apply_webkitgtk_perf_workarounds();
+
     let builder = tauri::Builder::default()
         // Doit être enregistré avant tout autre plugin : sans lui, un second lancement de
         // l'app (double-clic répété, `tauri dev` relancé avec une build encore ouverte) ouvre
@@ -34,7 +112,9 @@ pub fn run() {
     // autonome sur les stores) : on le garde derrière ce cfg pour ne pas casser une éventuelle
     // cible mobile future.
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![check_for_update]);
 
     // Sur macOS uniquement : fermer la fenêtre principale (croix rouge) ne doit pas quitter
     // l'app, comme c'est la convention native de la plateforme (Safari, Mail, Musique...) —

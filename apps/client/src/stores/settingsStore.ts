@@ -21,6 +21,8 @@ interface SettingsState {
   playlistSortBy: PlaylistSortBy;
   playlistSortDirection: PlaylistSortDirection;
   devModeEnabled: boolean;
+  checkUpdatesOnLaunch: boolean;
+  betaUpdatesEnabled: boolean;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setAudioQuality: (id: string) => Promise<void>;
@@ -32,6 +34,8 @@ interface SettingsState {
     direction: PlaylistSortDirection,
   ) => Promise<void>;
   setDevModeEnabled: (enabled: boolean) => Promise<void>;
+  setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
+  setBetaUpdatesEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const STORAGE_KEY = "resonia:settings:audioQuality";
@@ -43,6 +47,9 @@ const PLAYLIST_SORT_BY_STORAGE_KEY = "resonia:settings:playlistSortBy";
 const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
 const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
+const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
+  "resonia:settings:checkUpdatesOnLaunch";
+const BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
 
 export const GIGABYTE = 1024 * 1024 * 1024;
 export const DEFAULT_CACHE_MAX_BYTES = 2 * GIGABYTE;
@@ -79,6 +86,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   playlistSortBy: "default",
   playlistSortDirection: "asc",
   devModeEnabled: false,
+  checkUpdatesOnLaunch: true,
+  betaUpdatesEnabled: false,
   hydrated: false,
 
   hydrate: async () => {
@@ -90,6 +99,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortBy,
       playlistSortDirection,
       devModeEnabled,
+      checkUpdatesOnLaunch,
+      betaUpdatesEnabled,
     ] = await Promise.all([
       storage.get<string>(STORAGE_KEY),
       storage.get<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -98,6 +109,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.get<PlaylistSortBy>(PLAYLIST_SORT_BY_STORAGE_KEY),
       storage.get<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
       storage.get<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
+      storage.get<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
+      storage.get<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
     ]);
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -117,6 +130,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortBy: playlistSortBy ?? "default",
       playlistSortDirection: playlistSortDirection ?? "asc",
       devModeEnabled: devModeEnabled ?? false,
+      checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
+      betaUpdatesEnabled: betaUpdatesEnabled ?? false,
       hydrated: true,
     });
   },
@@ -157,5 +172,15 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     await storage.set(DEV_MODE_ENABLED_STORAGE_KEY, enabled);
     setAudioDebugEnabled(enabled);
     set({ devModeEnabled: enabled });
+  },
+
+  setCheckUpdatesOnLaunch: async (enabled) => {
+    await storage.set(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY, enabled);
+    set({ checkUpdatesOnLaunch: enabled });
+  },
+
+  setBetaUpdatesEnabled: async (enabled) => {
+    await storage.set(BETA_UPDATES_ENABLED_STORAGE_KEY, enabled);
+    set({ betaUpdatesEnabled: enabled });
   },
 }));

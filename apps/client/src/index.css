@@ -53,6 +53,19 @@ img {
   contain-intrinsic-size: auto 60px;
 }
 
+/* Cartes de grille/carrousel (albums, artistes, playlists — accueil et recherche) : même
+ * raisonnement que .track-row-cv, appliqué cette fois à des listes défilant HORIZONTALEMENT
+ * ou verticalement selon la page (accueil = carrousels horizontaux non virtualisés, recherche
+ * = grilles verticales). `content-visibility: auto` fonctionne dans les deux orientations —
+ * seule change la dimension qu'il faut fournir via `contain-intrinsic-size` pour éviter un
+ * saut de mise en page avant la première mesure réelle de la carte hors écran. 160px de large
+ * correspond à la largeur `w-40` fixe utilisée par ces cartes ; la hauteur (ratio 1:1 de la
+ * pochette + 2 lignes de texte) est approximée à 216px, cohérente sur toutes les variantes. */
+.grid-card-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 160px 216px;
+}
+
 /* Scrollbar customisation */
 ::-webkit-scrollbar {
   width: 6px;

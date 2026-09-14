@@ -5,6 +5,7 @@ import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { useInViewport } from "../../hooks/useInViewport";
 import { Link, useNavigate } from "react-router-dom";
 import { InfoModal } from "../../components/InfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
@@ -31,7 +32,13 @@ export function AlbumCard({ album }: AlbumCardProps) {
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
   const coverUrl = client && album.coverArt ? client.getCoverArtUrl(album.coverArt, 300) : undefined;
-  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, album.coverArt, 300, coverUrl);
+  const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
+  const cachedCoverUrl = useCoverArt(
+    activeServerId ?? undefined,
+    coverInView ? album.coverArt : undefined,
+    300,
+    coverUrl,
+  );
 
   async function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -68,7 +75,7 @@ export function AlbumCard({ album }: AlbumCardProps) {
       onContextMenu={menu.handleContextMenu}
     >
       <Link to={`/albums/${album.id}`} className="block cursor-pointer">
-        <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
+        <div ref={coverRef} className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
           {cachedCoverUrl ? (
             <img src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (

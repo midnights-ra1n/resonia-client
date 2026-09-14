@@ -194,16 +194,20 @@
     "developer": "Developer",
     "developerDescription": "Advanced diagnostics for the audio engine.",
     "developerMode": "Developer mode",
-    "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events."
+    "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events.",
+    "updates": "Updates",
+    "updatesDescription": "Updates are downloaded and installed automatically in the background, then the app restarts on its own — no manual download from GitHub needed.",
+    "updatesCurrentVersion": "Current version: {{version}}",
+    "updatesBetaBadge": "beta",
+    "checkOnLaunch": "Check for updates on launch",
+    "checkOnLaunchDescription": "Look for a new version every time the app starts.",
+    "betaUpdates": "Receive beta updates",
+    "betaUpdatesDescription": "Get early access releases before they reach the stable channel. These may be less stable."
   },
   "update": {
-    "title": "Update available — {{version}}",
-    "currentVersion": "You're currently on {{version}}.",
-    "install": "Install now",
-    "downloading": "Downloading... {{percent}}%",
-    "later": "Later",
-    "restart": "Restart to apply",
-    "error": "The update couldn't be downloaded. Try again later."
+    "installing": "Installing update {{version}}...",
+    "restarting": "Restarting...",
+    "error": "The update couldn't be installed. Try again later."
   },
   "downloads": {
     "title": "Downloads",

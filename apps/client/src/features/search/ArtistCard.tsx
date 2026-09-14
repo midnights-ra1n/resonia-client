@@ -1,6 +1,7 @@
 import type { ArtistSummary } from "@resonia/api-client";
 import { Link } from "react-router-dom";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { useInViewport } from "../../hooks/useInViewport";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { useServersStore } from "../../stores/serversStore";
 import { useTranslation } from "../../lib/i18n";
@@ -17,14 +18,20 @@ export function ArtistCard({ artist }: ArtistCardProps) {
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
   const coverUrl = client && artist.coverArt ? client.getCoverArtUrl(artist.coverArt, 300) : undefined;
-  const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, artist.coverArt, 300, coverUrl);
+  const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
+  const cachedCoverUrl = useCoverArt(
+    activeServerId ?? undefined,
+    coverInView ? artist.coverArt : undefined,
+    300,
+    coverUrl,
+  );
 
   return (
     <Link
       to={`/artists/${artist.id}`}
-      className="flex w-40 shrink-0 flex-col items-center gap-3 rounded-lg p-3 text-center transition-colors hover:bg-neutral-800"
+      className="grid-card-cv flex w-40 shrink-0 flex-col items-center gap-3 rounded-lg p-3 text-center transition-colors hover:bg-neutral-800"
     >
-      <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-neutral-800">
+      <div ref={coverRef} className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-neutral-800">
         {cachedCoverUrl ? (
           <img src={cachedCoverUrl} alt={artist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (

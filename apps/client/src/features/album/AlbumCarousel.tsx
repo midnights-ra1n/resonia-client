@@ -41,7 +41,7 @@ export function AlbumCarousel({ title, albums }: AlbumCarouselProps) {
 
       <div ref={scrollRef} className="flex gap-4 overflow-x-auto scroll-smooth pb-2 [scrollbar-width:none]">
         {albums.map((album) => (
-          <div key={album.id} className="w-40 shrink-0">
+          <div key={album.id} className="grid-card-cv w-40 shrink-0">
             <AlbumCard album={album} />
           </div>
         ))}

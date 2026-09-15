@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, ipcMain, net, powerSaveBlocker, screen } from "electron";
+import { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, powerSaveBlocker, screen } from "electron";
+import { autoUpdater } from "electron-updater";
 import { dirname, join } from "node:path";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
@@ -11,10 +12,32 @@ import type { FileHandle } from "node:fs/promises";
 // (productName "Resonia", identifiant com.resonia.client dans tauri.conf.json).
 app.setName("Resonia");
 
+// Resonia n'a pas de thème clair (voir index.css — fond #0A0A0A codé en dur partout) : sans
+// ça, un système en mode clair rend le chrome natif (fond des boutons de fenêtre macOS, menus
+// contextuels natifs, dialogues systèmes) clair alors que tout le contenu web est sombre —
+// contraste visuel cassé exactement à la frontière entre les deux. Même intention que
+// `"theme": "Dark"` dans l'ancien tauri.conf.json ; voir aussi le `<meta name="color-scheme">`
+// dans index.html pour la partie rendue par le moteur web lui-même (scrollbars/contrôles
+// natifs par défaut, indépendante de ce réglage).
+nativeTheme.themeSource = "dark";
+
 // Icônes réutilisées telles quelles depuis l'ancien build Tauri (src-tauri/icons/), copiées
 // dans build/ pour rester indépendantes de src-tauri (supprimé en fin de migration) — voir
 // aussi electron-builder.yml (Phase 4) qui les reprendra pour l'empaquetage.
 const APP_ICON_PNG = join(app.getAppPath(), "build", "icon.png");
+
+// Panneau "À propos de Resonia" natif (menu Resonia > À propos, voir `installApplicationMenu` —
+// `role: "appMenu"` le câble automatiquement à cet item). `app.getVersion()` lit la version
+// injectée par electron-builder à l'empaquetage (champ "version" de package.json) — même
+// source que celle synchronisée par scripts/set-version.mjs pour l'ancien build Tauri, donc
+// identique à ce qu'affichait tauri.conf.json.
+app.setAboutPanelOptions({
+  applicationName: "Resonia",
+  applicationVersion: app.getVersion(),
+  version: app.getVersion(),
+  iconPath: APP_ICON_PNG,
+  copyright: "Copyright © Resonia",
+});
 
 // Défensif seulement : sous Electron, le backend audio Linux de Chromium (PulseAudio direct,
 // contrairement à GStreamer côté WebKitGTK de l'ancien shell Tauri) peut lui aussi consulter
@@ -118,7 +141,7 @@ async function createWindow() {
     // supplémentaire d'une fenêtre visible avant que le renderer ait quoi que ce soit à montrer.
     show: false,
     webPreferences: {
-      preload: join(__dirname, "../preload/index.mjs"),
+      preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -131,6 +154,16 @@ async function createWindow() {
   });
 
   if (state.maximized) mainWindow.maximize();
+
+  // Filet de sécurité permanent, pas seulement un diagnostic ponctuel : une erreur dans le
+  // preload (contextBridge, IPC...) est normalement invisible en production — `devTools` y est
+  // désactivé (voir plus haut), et l'erreur n'atterrit que dans la console DevTools du
+  // renderer, jamais dans les logs du process principal. Sans elle, un preload cassé se
+  // manifeste uniquement comme "l'app ne se comporte pas comme une app de bureau" (cache,
+  // réglages desktop...) sans aucune piste exploitable.
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    console.error("[preload] échec de chargement :", preloadPath, error);
+  });
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("resize", scheduleSaveWindowState);
@@ -188,10 +221,11 @@ function installApplicationMenu() {
 void app.whenReady().then(() => {
   installApplicationMenu();
   // En dev/preview (app non empaquetée), le Dock affiche par défaut l'icône générique
-  // d'Electron — pas celle de `build/icon.png` (qui, elle, ne s'applique qu'à un bundle .app
-  // packagé via electron-builder, Phase 4). L'imposer explicitement ici évite de confondre
+  // d'Electron — pas celle de `build/icon.png`. L'imposer explicitement ici évite de confondre
   // Resonia avec n'importe quelle autre app Electron ouverte en parallèle pendant les tests.
-  if (process.platform === "darwin") app.dock?.setIcon(APP_ICON_PNG);
+  // Uniquement en dev : un .app packagé (electron-builder, `mac.icon`) a déjà la bonne icône de
+  // Dock via son propre bundle — appeler ceci en prod n'apporterait rien.
+  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(APP_ICON_PNG);
   registerIpcHandlers();
   void createWindow();
 });
@@ -352,5 +386,57 @@ function registerIpcHandlers() {
       powerSaveBlocker.stop(powerSaveBlockerId);
       powerSaveBlockerId = null;
     }
+  });
+
+  // ---- electron-updater : vérifie/télécharge/installe les mises à jour depuis les releases
+  // GitHub — remplace l'ancien mécanisme Tauri (commande Rust check_for_update + minisign).
+  // `autoDownload`/`autoInstallOnAppQuit` à false : le téléchargement et l'installation
+  // restent entièrement pilotés par l'utilisateur via l'UI (voir UpdateNotifier.tsx), jamais
+  // en arrière-plan silencieux — même comportement observable qu'avant (vérif au lancement si
+  // le réglage est activé, installation seulement après téléchargement complet confirmé). ----
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow?.webContents.send("update:progress", Math.round(progress.percent));
+  });
+  autoUpdater.on("error", (err) => {
+    console.error("[updater] Erreur electron-updater", err);
+  });
+
+  ipcMain.handle(
+    "update:check",
+    async (_e, beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null> => {
+      // Canal choisi à l'exécution (réglage utilisateur) — même intention que le double
+      // endpoint stable/beta de l'ancien tauri.conf.json/tauri.beta.conf.json, mais un seul
+      // mécanisme ici : le canal change simplement quelle release GitHub est ciblée (voir
+      // electron-builder.yml — les releases beta y sont marquées prerelease).
+      autoUpdater.channel = beta ? "beta" : "latest";
+      autoUpdater.allowPrerelease = beta;
+      try {
+        const result = await autoUpdater.checkForUpdates();
+        if (!result || result.updateInfo.version === app.getVersion()) return null;
+        const notes = result.updateInfo.releaseNotes;
+        return {
+          version: result.updateInfo.version,
+          currentVersion: app.getVersion(),
+          // `notes` provient du corps de la release GitHub, comme côté Tauri — string dans le
+          // cas usuel (provider GitHub), tableau seulement pour un provider générique multi-
+          // versions que ce projet n'utilise pas.
+          notes: typeof notes === "string" ? notes : (notes?.[0]?.note ?? null),
+        };
+      } catch (err) {
+        console.error("[updater] Vérification de mise à jour impossible", err);
+        return null;
+      }
+    },
+  );
+
+  ipcMain.handle("update:download", async () => {
+    await autoUpdater.downloadUpdate();
+  });
+
+  ipcMain.handle("update:install", () => {
+    autoUpdater.quitAndInstall();
   });
 }

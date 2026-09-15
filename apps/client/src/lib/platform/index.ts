@@ -29,6 +29,12 @@ export interface ResoniaBridge {
     start(): Promise<void>;
     stop(): Promise<void>;
   };
+  update: {
+    check(beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null>;
+    download(): Promise<void>;
+    install(): Promise<void>;
+    onProgress(cb: (percent: number) => void): () => void;
+  };
 }
 
 declare global {

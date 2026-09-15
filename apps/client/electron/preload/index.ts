@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { IpcRendererEvent } from "electron";
 
 type DesktopBaseDir = "appCache" | "appData";
 
@@ -39,5 +40,22 @@ contextBridge.exposeInMainWorld("resonia", {
   powerSave: {
     start: (): Promise<void> => ipcRenderer.invoke("powersave:start"),
     stop: (): Promise<void> => ipcRenderer.invoke("powersave:stop"),
+  },
+
+  update: {
+    check: (
+      beta: boolean,
+    ): Promise<{ version: string; currentVersion: string; notes: string | null } | null> =>
+      ipcRenderer.invoke("update:check", beta),
+    download: (): Promise<void> => ipcRenderer.invoke("update:download"),
+    install: (): Promise<void> => ipcRenderer.invoke("update:install"),
+    // Contrairement au reste (requête/réponse via invoke), la progression est poussée par le
+    // process principal au fil du téléchargement (événement `download-progress` d'electron-
+    // updater) — un abonnement `ipcRenderer.on` est le seul moyen de la recevoir en continu.
+    onProgress: (cb: (percent: number) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, percent: number) => cb(percent);
+      ipcRenderer.on("update:progress", listener);
+      return () => ipcRenderer.removeListener("update:progress", listener);
+    },
   },
 });

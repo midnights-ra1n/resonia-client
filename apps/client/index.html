@@ -5,6 +5,12 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Resonia n'a pas de thème clair (voir index.css) : sans ceci, un système en mode clair
+       rend en clair les contrôles natifs par défaut du moteur web (scrollbars, sélections de
+       texte, form controls) tant qu'aucun CSS applicatif ne les recouvre — voir aussi
+       `nativeTheme.themeSource` côté process principal Electron pour le chrome natif de la
+       fenêtre elle-même (barre de titre, menus contextuels système). -->
+  <meta name="color-scheme" content="dark" />
   <title>Resonia</title>
 </head>
 

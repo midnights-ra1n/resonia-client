@@ -9,6 +9,16 @@ appId: com.resonia.client
 productName: Resonia
 copyright: Copyright © Resonia
 
+# Cible `electron-updater` (voir electron/main/index.ts, update:check) sur le même dépôt de
+# releases que l'ancien updater Tauri. `channel: latest` par défaut ; les releases marquées
+# prerelease sur GitHub sont ce qu'`autoUpdater.allowPrerelease = true` (canal "beta", réglage
+# utilisateur) va chercher — pas besoin d'un second pointeur de release à tag fixe comme
+# `publish-beta-pointer` le faisait côté CI Tauri, electron-updater résout ça nativement.
+publish:
+  provider: github
+  owner: midnights-ra1n
+  repo: resonia-client
+
 directories:
   output: dist-electron-build
   buildResources: build
@@ -29,6 +39,12 @@ files:
   - dist-electron/preload/**
   - dist-electron/renderer/**
   - package.json
+  # `build/icon.icns`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
+  # directement depuis `buildResources` (ci-dessus) pour l'icône du BUNDLE lui-même, jamais à
+  # l'exécution. `build/icon.png`, lui, EST lu à l'exécution par electron/main/index.ts
+  # (icône de fenêtre/barre des tâches Windows/Linux) — sans cette ligne il manquait purement
+  # et simplement de l'asar packagé, provoquant un rejet de promesse non catché au démarrage.
+  - build/icon.png
 
 mac:
   target:

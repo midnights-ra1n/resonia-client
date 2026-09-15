@@ -81,7 +81,9 @@ export interface Track {
   coverArtId?: string;
 }
 
-const DEFAULT_COVER_URL = "/default-cover.svg";
+// `import.meta.env.BASE_URL`, jamais un chemin racine en dur — voir le même commentaire dans
+// Sidebar.tsx : casse sous Electron empaqueté (chargé via `file://`, base relative).
+const DEFAULT_COVER_URL = `${import.meta.env.BASE_URL}default-cover.svg`;
 const SCROBBLE_MIN_DURATION = 30;
 const PREFETCH_COUNT = 3;
 

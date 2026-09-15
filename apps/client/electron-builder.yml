@@ -1,0 +1,56 @@
+# Config minimale pour valider l'identité de l'app (icône, nom de bundle, Dock/Cmd+Tab) via un
+# vrai build empaqueté local — voir le plan de migration (Phase 1, groundwork pour la Phase 4).
+# La matrice complète (multi-cibles CI, signature, updater electron-updater) sera étoffée en
+# Phase 4 ; ceci n'est volontairement pas encore branché sur le CI de release.
+#
+# Mêmes identifiants que l'ancien build Tauri (voir src-tauri/tauri.conf.json), pour qu'un
+# utilisateur migrant de l'un à l'autre retrouve la même app (nom, icône, identifiant système) :
+appId: com.resonia.client
+productName: Resonia
+copyright: Copyright © Resonia
+
+directories:
+  output: dist-electron-build
+  buildResources: build
+
+# Aucun module natif (compilé) dans ce projet : main/preload/renderer sont entièrement
+# pré-bundlés par electron-vite (voir externalizeDepsPlugin — zéro `require()` runtime d'un
+# paquet npm en dehors d'"electron" lui-même, fourni par le runtime). L'étape @electron/rebuild
+# est donc inutile ici, et plante avec `pm=pnpm` en monorepo (parcours des node_modules du
+# workspace racine, buggé côté electron-builder au moment de la migration — voir la trace
+# "Cannot read properties of undefined (reading 'files')" si réactivé).
+npmRebuild: false
+
+# electron-vite a déjà tout bundlé (main/preload/renderer) sans dépendance runtime externe côté
+# main/preload (uniquement Node core + Electron, voir externalizeDepsPlugin dans
+# electron.vite.config.ts) — inutile d'embarquer node_modules dans le paquet final.
+files:
+  - dist-electron/main/**
+  - dist-electron/preload/**
+  - dist-electron/renderer/**
+  - package.json
+
+mac:
+  target:
+    # `dir` (non listé ici, passé en CLI via `--dir` pour un test local rapide) produit un
+    # `.app` non signé directement inspectable au Finder — pas la peine d'une image DMG
+    # complète juste pour vérifier l'identité (nom/icône/Dock).
+    - target: zip
+  icon: build/icon.icns
+  category: public.app-category.music
+
+win:
+  target:
+    - target: nsis
+  icon: build/icon.ico
+
+linux:
+  target:
+    - target: AppImage
+    - target: deb
+  icon: build/icons
+  category: Audio
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

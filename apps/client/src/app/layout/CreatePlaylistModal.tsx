@@ -1,4 +1,4 @@
-import { ImageSquare, X } from "@phosphor-icons/react";
+import { ImageSquare, X } from "../../components/icons";
 import { useRef, useState } from "react";
 import type { PlaylistSummary } from "@resonia/api-client";
 import { useTranslation } from "../../lib/i18n";

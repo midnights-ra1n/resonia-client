@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play } from "@phosphor-icons/react";
+import { Play } from "../../components/icons";
 import type { SongDTO, SubsonicClient } from "@resonia/api-client";
 import { InfoModal } from "../../components/InfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
@@ -59,7 +59,7 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
             <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
           )}
 
-          <div className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-emerald-500 opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+          <div className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-emerald-500 opacity-0 shadow-lg transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
             <Play size={18} fill="black" className="ml-0.5 text-neutral-900" />
           </div>
         </div>

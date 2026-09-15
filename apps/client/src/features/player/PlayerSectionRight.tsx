@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bug, Microphone, Playlist, Plug, SpeakerHigh, SpeakerX } from "@phosphor-icons/react";
+import { Bug, Microphone, Playlist, Plug, SpeakerHigh, SpeakerX } from "../../components/icons";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { PitchMenu } from "./PitchMenu";
@@ -91,7 +91,7 @@ export function PlayerSectionRight() {
             }`}
           title="Pitch / Master Tempo"
         >
-          {pitch === 0 ? "1x" : `${pitch > 0 ? "+" : ""}${pitch}%`}
+          {pitch === 0 ? "1x" : `${pitch > 0 ? "+" : ""}${pitch.toFixed(1)}%`}
         </button>
         {showPitchMenu && <PitchMenu />}
       </div>

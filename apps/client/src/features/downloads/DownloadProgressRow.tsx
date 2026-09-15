@@ -1,4 +1,4 @@
-import { CircleNotch, Download } from "@phosphor-icons/react";
+import { CircleNotch, Download } from "../../components/icons";
 import { useEffect, useState } from "react";
 import { MarqueeText } from "../../components/MarqueeText";
 import { downloadStore, type DownloadProgressInfo } from "../../lib/downloads/downloadStore";

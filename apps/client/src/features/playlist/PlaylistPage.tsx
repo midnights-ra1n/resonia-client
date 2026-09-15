@@ -1,4 +1,4 @@
-import { CaretDown, Check, CircleNotch, DotsSixVertical, Download, Pause, Play, Shuffle, SortAscending, SortDescending } from "@phosphor-icons/react";
+import { CaretDown, Check, CircleNotch, DotsSixVertical, Download, Pause, Play, Shuffle, SortAscending, SortDescending } from "../../components/icons";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
@@ -308,6 +308,7 @@ export function PlaylistPage() {
               src={coverUrl}
               alt={name}
               className="h-full w-full object-cover"
+              decoding="async"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ClockCounterClockwise, Pulse, Radio, X } from "@phosphor-icons/react";
+import { ClockCounterClockwise, Pulse, Radio, X } from "../../../components/icons";
 import { usePlayerStore } from "../../../stores/playerStore";
 import { cacheStore } from "../../../lib/audio/cache/cacheStore";
 import {

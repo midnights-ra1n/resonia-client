@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight } from "../../components/icons";
 import type { SongDTO, SubsonicClient } from "@resonia/api-client";
 import { RandomSongCard } from "./RandomSongCard";
 

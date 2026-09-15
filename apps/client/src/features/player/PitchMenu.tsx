@@ -1,5 +1,5 @@
-import type { CSSProperties } from "react";
-import { ClockCounterClockwise } from "@phosphor-icons/react";
+import { useCallback, useRef } from "react";
+import { ClockCounterClockwise } from "../../components/icons";
 import { PITCH_RANGE_OPTIONS, usePlayerStore } from "../../stores/playerStore";
 
 const PITCH_STEP = 0.1;
@@ -9,14 +9,137 @@ const PITCH_STEP = 0.1;
  *  la hauteur — mais seulement en tout début de piste, voir `masterTempo` dans playerStore
  *  et GaplessEngine.setPreservePitch pour la limitation. */
 // Remplissage du fader ancré au centre (0%) plutôt qu'au minimum, comme un contrôle de
-// balance — la coloration native d'un <input type=range> (accent-color) part toujours du
-// minimum, il faut donc la désactiver (-webkit-appearance: none) et reconstruire la piste
-// à la main via un gradient calculé, entre 50% (0%) et la position courante.
+// balance.
 function trackFillGradient(pitch: number, pitchRange: number): string {
   const percent = ((pitch - -pitchRange) / (pitchRange - -pitchRange)) * 100;
   const low = Math.min(50, percent);
   const high = Math.max(50, percent);
   return `linear-gradient(to right, #52525b ${low}%, #4ade80 ${low}%, #4ade80 ${high}%, #52525b ${high}%)`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
+const FADER_TRACK_HEIGHT = 176;
+const FADER_TRACK_WIDTH = 4;
+const FADER_THUMB_WIDTH = 26;
+const FADER_THUMB_HEIGHT = 10;
+
+interface PitchFaderProps {
+  pitch: number;
+  pitchRange: number;
+  onChange: (pitch: number) => void;
+}
+
+/** Fader vertical entièrement piloté en pointer events, plutôt qu'un `<input type=range>`
+ *  natif tourné à 90deg en CSS (`transform: rotate(90deg)`) comme précédemment. Ce dernier
+ *  s'est avéré totalement inerte sous WebKitGTK (webview Linux de l'app de bureau) : le
+ *  hit-testing pointeur→valeur d'un range transformé y est nettement moins abouti que sur
+ *  WebKit macOS/Chromium (implémentation native de `<input type=range>` historiquement moins
+ *  mature sous GTK), au point que le curseur ne répondait à aucun glissé. Calculer nous-mêmes
+ *  la position à partir de `pointermove`/`getBoundingClientRect` élimine ce point de variance
+ *  entre moteurs de rendu : le comportement ne dépend plus que de l'API Pointer Events,
+ *  implémentée de façon uniforme partout où Tauri tourne. */
+function PitchFader({ pitch, pitchRange, onChange }: PitchFaderProps) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+
+  // + (accélère) en bas, - (ralentit) en haut : le haut du rail correspond à -pitchRange, le
+  // bas à +pitchRange — voir le commentaire historique conservé sur ce choix dans PitchMenu.
+  const valueFromClientY = useCallback(
+    (clientY: number): number => {
+      const track = trackRef.current;
+      if (!track) return pitch;
+      const rect = track.getBoundingClientRect();
+      const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
+      const raw = -pitchRange + ratio * (2 * pitchRange);
+      return clamp(roundToStep(raw, PITCH_STEP), -pitchRange, pitchRange);
+    },
+    [pitch, pitchRange],
+  );
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      onChange(valueFromClientY(e.clientY));
+    },
+    [onChange, valueFromClientY],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+      onChange(valueFromClientY(e.clientY));
+    },
+    [onChange, valueFromClientY],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      switch (e.key) {
+        case "ArrowUp":
+          e.preventDefault();
+          onChange(clamp(roundToStep(pitch + PITCH_STEP, PITCH_STEP), -pitchRange, pitchRange));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          onChange(clamp(roundToStep(pitch - PITCH_STEP, PITCH_STEP), -pitchRange, pitchRange));
+          break;
+        case "Home":
+          e.preventDefault();
+          onChange(pitchRange);
+          break;
+        case "End":
+          e.preventDefault();
+          onChange(-pitchRange);
+          break;
+      }
+    },
+    [onChange, pitch, pitchRange],
+  );
+
+  const percent = ((pitch - -pitchRange) / (pitchRange - -pitchRange)) * 100;
+
+  return (
+    <div
+      ref={trackRef}
+      role="slider"
+      tabIndex={0}
+      aria-label="Pitch"
+      aria-orientation="vertical"
+      aria-valuemin={-pitchRange}
+      aria-valuemax={pitchRange}
+      aria-valuenow={pitch}
+      aria-valuetext={`${pitch > 0 ? "+" : ""}${pitch.toFixed(1)}%`}
+      title="Vitesse et hauteur couplées, comme un pitch fader de platine"
+      className="relative cursor-pointer touch-none outline-none"
+      style={{ width: FADER_THUMB_WIDTH, height: FADER_TRACK_HEIGHT }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onKeyDown={handleKeyDown}
+    >
+      <div
+        className="absolute left-1/2 top-0 -translate-x-1/2 rounded-full"
+        style={{
+          width: FADER_TRACK_WIDTH,
+          height: FADER_TRACK_HEIGHT,
+          background: trackFillGradient(pitch, pitchRange).replace("to right", "to bottom"),
+        }}
+      />
+      <div
+        className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[3px] bg-white"
+        style={{
+          width: FADER_THUMB_WIDTH,
+          height: FADER_THUMB_HEIGHT,
+          top: `${percent}%`,
+        }}
+      />
+    </div>
+  );
 }
 
 export function PitchMenu() {
@@ -33,70 +156,11 @@ export function PitchMenu() {
       className="absolute bottom-full right-0 mb-3 w-40 rounded-lg bg-neutral-800 shadow-xl border border-neutral-700/50 p-3 flex flex-col items-center gap-2 z-50"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <style>{`
-        input.pitch-fader {
-          -webkit-appearance: none;
-          appearance: none;
-          outline: none;
-        }
-        /* Capsule façon cap de pitch fader de platine (CDJ/Serato) plutôt qu'un rond : une
-           fois l'input tourné à 90deg (voir le transform plus bas), "width" devient l'axe de
-           déplacement (fin) et "height" l'axe perpendiculaire (large) — d'où les valeurs
-           inversées par rapport à une pilule verticale classique. */
-        input.pitch-fader::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          width: 10px;
-          height: 26px;
-          border-radius: 3px;
-          background: #fff;
-          cursor: pointer;
-          /* Pas de margin-top de centrage ici : le WebKit récent (WKWebView de Tauri
-             compris) centre déjà nativement un thumb stylé sur la piste. Le vieil hack
-             margin-top = (trackHeight - thumbHeight) / 2, hérité du thumb rond d'origine,
-             décalait la capsule hors de l'axe de la piste une fois cumulé au centrage natif. */
-        }
-        input.pitch-fader::-moz-range-thumb {
-          width: 10px;
-          height: 26px;
-          border-radius: 3px;
-          background: #fff;
-          border: none;
-          cursor: pointer;
-        }
-        input.pitch-fader::-moz-range-track {
-          height: 4px;
-          border-radius: 9999px;
-          background: var(--fill);
-        }
-      `}</style>
-
       <div className="text-xs font-semibold text-neutral-200">Pitch</div>
 
       <div className="flex items-center gap-3">
         <div className="h-44 flex items-center justify-center" style={{ width: 24 }}>
-          <input
-            type="range"
-            min={-pitchRange}
-            max={pitchRange}
-            step={PITCH_STEP}
-            value={pitch}
-            onChange={(e) => setPitch(parseFloat(e.target.value))}
-            className="pitch-fader cursor-pointer"
-            style={{
-              width: 176,
-              height: 4,
-              borderRadius: 9999,
-              background: "var(--fill)",
-              // Piloté en variable CSS (et pas directement `background`) pour que la même
-              // valeur atteigne aussi ::-moz-range-track (Firefox) — voir le <style> ci-dessus.
-              "--fill": trackFillGradient(pitch, pitchRange),
-              // rotate(90deg), pas -90deg : place le + (accélère) en bas et le - (ralentit)
-              // en haut, sens inverse de la rotation trigonométrique par défaut.
-              transform: "rotate(90deg)",
-              transformOrigin: "center",
-            } as CSSProperties & Record<"--fill", string>}
-            title="Vitesse et hauteur couplées, comme un pitch fader de platine"
-          />
+          <PitchFader pitch={pitch} pitchRange={pitchRange} onChange={setPitch} />
         </div>
 
         <div className="flex flex-col items-center gap-1 text-neutral-300 text-[11px]">

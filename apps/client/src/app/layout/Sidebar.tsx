@@ -1,4 +1,4 @@
-import { ChartBar, Disc, Download, Folder, GearSix, House, ListBullets, MusicNotes, Plus, Star } from "@phosphor-icons/react";
+import { ChartBar, Disc, Download, Folder, GearSix, House, ListBullets, MusicNotes, Plus, Star } from "../../components/icons";
 import { useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";

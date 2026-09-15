@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "./icons";
 
 interface InfoModalProps {
   title: string;
@@ -29,7 +29,7 @@ export function InfoModal({ title, coverUrl, rows, onClose }: InfoModalProps) {
 
         {coverUrl && (
           <div className="mx-auto mb-4 h-32 w-32 overflow-hidden rounded-lg bg-neutral-800">
-            <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+            <img src={coverUrl} alt="" className="h-full w-full object-cover" decoding="async" />
           </div>
         )}
 

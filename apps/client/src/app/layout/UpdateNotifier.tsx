@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../lib/i18n";
-import { isTauri } from "../../lib/platform";
+import { isElectron } from "../../lib/platform";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { checkForUpdate, relaunchApp } from "../../lib/update/updateService";
 
@@ -26,7 +26,7 @@ export function UpdateNotifier() {
   const started = useRef(false);
 
   useEffect(() => {
-    if (!isTauri() || !hydrated || started.current) return;
+    if (!isElectron() || !hydrated || started.current) return;
     if (!checkUpdatesOnLaunch) return;
     started.current = true;
 

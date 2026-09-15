@@ -1,4 +1,4 @@
-import { DotsSixVertical, X } from "@phosphor-icons/react";
+import { DotsSixVertical, X } from "../../components/icons";
 import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCallback, useRef, useState } from "react";

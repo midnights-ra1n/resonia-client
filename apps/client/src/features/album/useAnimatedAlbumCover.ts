@@ -5,7 +5,8 @@ import {
   resolveAppleMusicAlbumUrl,
   DEFAULT_ANIMATED_ARTWORK_BASE_URL,
 } from "@resonia/api-client";
-import { isTauri } from "../../lib/platform";
+import { electronFetch } from "../../lib/net/electronFetch";
+import { isElectron } from "../../lib/platform";
 import {
   getCachedSearchResult,
   setCachedSearchResult,
@@ -14,14 +15,11 @@ import {
 import { useSettingsStore } from "../../stores/settingsStore";
 
 /** Voir coverCache.ts : le CDN Apple derrière artwork.m8tec.top envoie bien un en-tête CORS
- *  ouvert, mais on passe quand même par le client HTTP natif de Tauri côté bureau pour rester
- *  cohérent avec le reste du cache d'images et robuste à un changement futur de politique CORS
- *  côté serveur. */
+ *  ouvert, mais on passe quand même par le pont HTTP du process principal côté bureau pour
+ *  rester cohérent avec le reste du cache d'images et robuste à un changement futur de
+ *  politique CORS côté serveur. */
 const platformFetch: typeof fetch = async (input, init) => {
-  if (isTauri()) {
-    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    return tauriFetch(input as string, init);
-  }
+  if (isElectron()) return electronFetch(input, init);
   return fetch(input, init);
 };
 

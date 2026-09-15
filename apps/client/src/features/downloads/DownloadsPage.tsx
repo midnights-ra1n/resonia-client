@@ -1,4 +1,4 @@
-import { Pause, Play, Trash } from "@phosphor-icons/react";
+import { Pause, Play, Trash } from "../../components/icons";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { InfoModal } from "../../components/InfoModal";

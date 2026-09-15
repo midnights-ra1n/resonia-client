@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, WifiSlash } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, WifiSlash } from "../../components/icons";
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";

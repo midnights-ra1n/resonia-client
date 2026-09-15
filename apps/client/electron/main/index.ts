@@ -1,0 +1,356 @@
+import { app, BrowserWindow, Menu, ipcMain, net, powerSaveBlocker, screen } from "electron";
+import { dirname, join } from "node:path";
+import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
+
+// Doit être appelé avant TOUT accès à `app.getPath(...)` (utilisé plus bas pour l'état de
+// fenêtre, le store, le blob store) : sans ça, Electron dérive le nom par défaut du champ
+// "name" de package.json ("@resonia/client"), ce qui produisait des dossiers de données
+// utilisateur littéralement nommés "@resonia/client" (visible dans le Finder/menu Application
+// Support) au lieu de "Resonia" — la même identité que l'ancien build Tauri
+// (productName "Resonia", identifiant com.resonia.client dans tauri.conf.json).
+app.setName("Resonia");
+
+// Icônes réutilisées telles quelles depuis l'ancien build Tauri (src-tauri/icons/), copiées
+// dans build/ pour rester indépendantes de src-tauri (supprimé en fin de migration) — voir
+// aussi electron-builder.yml (Phase 4) qui les reprendra pour l'empaquetage.
+const APP_ICON_PNG = join(app.getAppPath(), "build", "icon.png");
+
+// Défensif seulement : sous Electron, le backend audio Linux de Chromium (PulseAudio direct,
+// contrairement à GStreamer côté WebKitGTK de l'ancien shell Tauri) peut lui aussi consulter
+// cette variable pour dimensionner son tampon de sortie face à PipeWire. Les deux autres
+// workarounds Tauri (WEBKIT_DISABLE_DMABUF_RENDERER, GTK_THEME) n'ont plus de sens ici — pas
+// de WebKitGTK, pas de widgets GTK natifs à thémer sous Electron.
+if (process.platform === "linux" && !process.env["PULSE_LATENCY_MSEC"]) {
+  process.env["PULSE_LATENCY_MSEC"] = "60";
+}
+
+const isDev = !app.isPackaged;
+
+let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
+
+// ---- Instance unique : la seconde tentative de lancement réactive la fenêtre existante
+// plutôt que d'ouvrir une seconde instance (même comportement que tauri_plugin_single_instance).
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
+// ---- État de fenêtre persistant (taille/position/maximisation) ----
+interface WindowState {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
+
+const DEFAULT_WINDOW_STATE: WindowState = { width: 1280, height: 800, maximized: false };
+
+function windowStatePath(): string {
+  return join(app.getPath("userData"), "window-state.json");
+}
+
+async function loadWindowState(): Promise<WindowState> {
+  try {
+    const raw = JSON.parse(await readFile(windowStatePath(), "utf8")) as WindowState;
+    // Une position hors de tout écran actuellement connu (moniteur externe débranché depuis
+    // la dernière session) rendrait la fenêtre inatteignable : on retombe alors sur le
+    // centrage par défaut plutôt que de piéger l'utilisateur derrière une fenêtre invisible.
+    if (raw.x !== undefined && raw.y !== undefined) {
+      const onKnownDisplay = screen
+        .getAllDisplays()
+        .some(
+          (d) =>
+            raw.x! >= d.bounds.x &&
+            raw.x! < d.bounds.x + d.bounds.width &&
+            raw.y! >= d.bounds.y &&
+            raw.y! < d.bounds.y + d.bounds.height,
+        );
+      if (!onKnownDisplay) {
+        delete raw.x;
+        delete raw.y;
+      }
+    }
+    return { ...DEFAULT_WINDOW_STATE, ...raw };
+  } catch {
+    return DEFAULT_WINDOW_STATE;
+  }
+}
+
+let saveWindowStateTimer: NodeJS.Timeout | null = null;
+function scheduleSaveWindowState() {
+  if (!mainWindow || saveWindowStateTimer) return;
+  saveWindowStateTimer = setTimeout(() => {
+    saveWindowStateTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const bounds = mainWindow.getBounds();
+    const state: WindowState = { ...bounds, maximized: mainWindow.isMaximized() };
+    void writeFile(windowStatePath(), JSON.stringify(state)).catch(() => {});
+  }, 500);
+}
+
+async function createWindow() {
+  const state = await loadWindowState();
+
+  mainWindow = new BrowserWindow({
+    title: "Resonia",
+    // Sans effet sur macOS empaqueté (l'icône du Dock vient du bundle .app, voir
+    // electron-builder.yml en Phase 4) mais utile en dev et sur Windows/Linux, où l'icône de
+    // fenêtre/barre des tâches est bien celle-ci — mêmes fichiers que l'ancien build Tauri.
+    icon: APP_ICON_PNG,
+    x: state.x,
+    y: state.y,
+    width: state.width,
+    height: state.height,
+    minWidth: 960,
+    minHeight: 600,
+    backgroundColor: "#0A0A0A",
+    // Affiché seulement sur "ready-to-show" : évite le flash blanc / la peinture
+    // supplémentaire d'une fenêtre visible avant que le renderer ait quoi que ce soit à montrer.
+    show: false,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.mjs"),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      // Le vérificateur orthographique de Chromium tourne dans un process utilitaire à part
+      // et consomme CPU/RAM en continu — inutile pour une UI qui n'a pas de champ de texte
+      // libre significatif (recherche, noms de playlist).
+      spellcheck: false,
+      devTools: isDev,
+    },
+  });
+
+  if (state.maximized) mainWindow.maximize();
+
+  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("resize", scheduleSaveWindowState);
+  mainWindow.on("move", scheduleSaveWindowState);
+
+  // Comportement natif macOS : fermer la fenêtre la masque (l'app reste dans le Dock, la
+  // lecture continue) plutôt que de quitter — seul Cmd+Q (before-quit) quitte réellement.
+  mainWindow.on("close", (e) => {
+    if (process.platform === "darwin" && !isQuitting) {
+      e.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
+  if (process.env["ELECTRON_RENDERER_URL"]) {
+    await mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+  } else {
+    await mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+  }
+}
+
+app.on("before-quit", () => {
+  isQuitting = true;
+});
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+app.on("activate", () => {
+  if (mainWindow) mainWindow.show();
+  else void createWindow();
+});
+
+/** Sans menu applicatif explicite, macOS affiche en gras dans la barre de menu le nom du
+ *  BUNDLE réel (`Electron.app` tel que téléchargé dans node_modules en dev — jamais renommé
+ *  tant qu'aucun build electron-builder n'a produit un vrai `Resonia.app` distinct), pas
+ *  `app.name` : `app.setName("Resonia")` seul ne suffit pas à corriger ce titre-là (il corrige
+ *  en revanche `app.getPath(...)`, déjà vérifié). `role: "appMenu"` reconstruit tout le menu
+ *  standard macOS (À propos/Services/Masquer/Quitter) avec le libellé explicite ci-dessous —
+ *  c'est CE menu, pas `app.setName`, qui pilote le titre affiché. `editMenu`/`windowMenu`
+ *  restaurent Cmd+C/V/Z et le sous-menu Fenêtre qu'un menu personnalisé fait perdre par
+ *  défaut (utiles même sans champ de texte riche : recherche, renommage de playlist). Sans
+ *  effet sur Windows/Linux (pas de barre de menu globale équivalente) — les mêmes icônes de
+ *  fenêtre/barre des tâches posées plus haut suffisent là-bas. */
+function installApplicationMenu() {
+  if (process.platform !== "darwin") return;
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { label: "Resonia", role: "appMenu" },
+      { role: "editMenu" },
+      { role: "windowMenu" },
+    ]),
+  );
+}
+
+void app.whenReady().then(() => {
+  installApplicationMenu();
+  // En dev/preview (app non empaquetée), le Dock affiche par défaut l'icône générique
+  // d'Electron — pas celle de `build/icon.png` (qui, elle, ne s'applique qu'à un bundle .app
+  // packagé via electron-builder, Phase 4). L'imposer explicitement ici évite de confondre
+  // Resonia avec n'importe quelle autre app Electron ouverte en parallèle pendant les tests.
+  if (process.platform === "darwin") app.dock?.setIcon(APP_ICON_PNG);
+  registerIpcHandlers();
+  void createWindow();
+});
+
+// ==================== IPC ====================
+
+type DesktopBaseDir = "appCache" | "appData";
+
+function resolveBaseDir(baseDir: DesktopBaseDir): string {
+  // Electron n'expose pas de répertoire "cache" OS dédié via `app.getPath` (contrairement à
+  // `BaseDirectory.AppCache` côté plugin Tauri `fs`, résolu vers `~/Library/Caches/...` etc.) —
+  // seuls des noms fixes comme `userData`/`temp` existent. Un sous-dossier `Cache` sous
+  // `userData` (déjà namespacé par app) est le choix pragmatique le plus portable ; Electron
+  // lui-même y range son propre cache réseau (`Cache`/`GPUCache`) selon le même principe. Pas
+  // purgé automatiquement par l'OS comme le serait un vrai dossier cache système — le budget/
+  // LRU applicatif (cacheStore.ts) reste donc l'unique garde-fou contre une croissance illimitée,
+  // exactement comme c'était déjà le cas côté Tauri en pratique.
+  return baseDir === "appData" ? app.getPath("userData") : join(app.getPath("userData"), "Cache");
+}
+
+function resolvePath(baseDir: DesktopBaseDir, relativePath: string): string {
+  return join(resolveBaseDir(baseDir), relativePath);
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle("app:getVersion", () => app.getVersion());
+
+  // ---- store clé/valeur (paramètres, pitch, etc.) — équivalent de tauri-plugin-store ----
+  const storePath = join(app.getPath("userData"), "resonia-storage.json");
+  let storeData: Record<string, unknown> | null = null;
+  let storeSaveTimer: NodeJS.Timeout | null = null;
+
+  async function loadStoreData(): Promise<Record<string, unknown>> {
+    if (storeData) return storeData;
+    try {
+      storeData = JSON.parse(await readFile(storePath, "utf8"));
+    } catch {
+      storeData = {};
+    }
+    return storeData!;
+  }
+
+  // Débounce : le cache audio persiste ses métadonnées à chaque chunk téléchargé (~256 Ko) —
+  // sans lui, chaque écriture sérialiserait + réécrirait le fichier de stockage partagé en
+  // entier, gelant l'UI en téléchargement actif (même raison que côté Tauri, voir l'ancien
+  // tauriStoreAdapter.ts).
+  function scheduleStoreSave() {
+    if (storeSaveTimer) return;
+    storeSaveTimer = setTimeout(() => {
+      storeSaveTimer = null;
+      void writeFile(storePath, JSON.stringify(storeData)).catch(() => {});
+    }, 1000);
+  }
+
+  ipcMain.handle("store:get", async (_e, key: string) => (await loadStoreData())[key] ?? null);
+  ipcMain.handle("store:set", async (_e, key: string, value: unknown) => {
+    const data = await loadStoreData();
+    data[key] = value;
+    scheduleStoreSave();
+  });
+  ipcMain.handle("store:remove", async (_e, key: string) => {
+    const data = await loadStoreData();
+    delete data[key];
+    scheduleStoreSave();
+  });
+
+  // ---- blob store fs (cache audio + téléchargements) — équivalent de tauri-plugin-fs ----
+  const openHandles = new Map<number, FileHandle>();
+  let nextHandleId = 1;
+
+  async function openForWrite(filePath: string): Promise<FileHandle> {
+    // `create: true` sans troncature côté Tauri se traduit ici par : ouvrir en lecture/
+    // écriture si le fichier existe déjà (reprise de téléchargement), sinon le créer. `a+`
+    // n'est PAS utilisable pour une écriture positionnée (O_APPEND ignore la position fournie
+    // sous Linux) — d'où ce essai/repli plutôt qu'un flag unique.
+    try {
+      return await fsOpen(filePath, "r+");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return fsOpen(filePath, "w+");
+      throw err;
+    }
+  }
+
+  ipcMain.handle("blobstore:open", async (_e, baseDir: DesktopBaseDir, relativePath: string) => {
+    const filePath = resolvePath(baseDir, relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
+    const handle = await openForWrite(filePath);
+    const id = nextHandleId++;
+    openHandles.set(id, handle);
+    return id;
+  });
+  ipcMain.handle("blobstore:write", async (_e, handleId: number, position: number, data: Uint8Array) => {
+    const handle = openHandles.get(handleId);
+    if (!handle) throw new Error("blobstore: descripteur de fichier inconnu");
+    await handle.write(data, 0, data.byteLength, position);
+  });
+  ipcMain.handle("blobstore:close", async (_e, handleId: number) => {
+    const handle = openHandles.get(handleId);
+    openHandles.delete(handleId);
+    await handle?.close();
+  });
+  ipcMain.handle("blobstore:stat", async (_e, baseDir: DesktopBaseDir, relativePath: string) => {
+    try {
+      const info = await stat(resolvePath(baseDir, relativePath));
+      return { size: info.size };
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle("blobstore:readFile", async (_e, baseDir: DesktopBaseDir, relativePath: string) => {
+    try {
+      return await readFile(resolvePath(baseDir, relativePath));
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle("blobstore:remove", async (_e, baseDir: DesktopBaseDir, relativePath: string) => {
+    try {
+      await unlink(resolvePath(baseDir, relativePath));
+    } catch {
+      /* déjà absent, rien à faire */
+    }
+  });
+
+  // ---- fetch non soumis au CORS du renderer — équivalent de tauri-plugin-http. Utilisé par
+  // le cache de pochettes, les paroles (LRCLIB), les pochettes animées (API m8tec) et le test
+  // de connectivité des réglages : certains hôtes tiers ne renvoient pas d'en-tête CORS pour
+  // notre origine. `net.fetch` tourne sur la pile réseau du process principal, jamais soumise
+  // à la politique CORS d'un contexte renderer. ----
+  ipcMain.handle(
+    "net:fetch",
+    async (_e, url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+      const res = await net.fetch(url, {
+        method: init?.method,
+        headers: init?.headers,
+        body: init?.body,
+      });
+      const body = Buffer.from(await res.arrayBuffer());
+      return {
+        status: res.status,
+        statusText: res.statusText,
+        ok: res.ok,
+        headers: Object.fromEntries(res.headers.entries()),
+        body,
+      };
+    },
+  );
+
+  // ---- powerSaveBlocker : n'empêche que la mise en veille de L'APP (pas l'écran), tenu
+  // uniquement pendant une lecture active — jamais en idle. Démarré/arrêté par le renderer
+  // sur les événements de lecture réels du moteur gapless (voir gaplessEngine.ts). ----
+  let powerSaveBlockerId: number | null = null;
+  ipcMain.handle("powersave:start", () => {
+    if (powerSaveBlockerId === null) powerSaveBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+  });
+  ipcMain.handle("powersave:stop", () => {
+    if (powerSaveBlockerId !== null) {
+      powerSaveBlocker.stop(powerSaveBlockerId);
+      powerSaveBlockerId = null;
+    }
+  });
+}

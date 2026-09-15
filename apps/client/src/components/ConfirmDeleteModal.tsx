@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "@phosphor-icons/react";
+import { X } from "./icons";
 import { useTranslation } from "../lib/i18n";
 
 interface ConfirmDeleteModalProps {

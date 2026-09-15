@@ -1,4 +1,4 @@
-import { Pause, Play, Shuffle } from "@phosphor-icons/react";
+import { Pause, Play, Shuffle } from "../../components/icons";
 import { useParams } from "react-router-dom";
 import type { AlbumSummary } from "@resonia/api-client";
 import { AlbumCarousel } from "../album/AlbumCarousel";
@@ -89,7 +89,7 @@ export function ArtistPage() {
     <div>
       <div className="relative h-80 w-full overflow-hidden bg-neutral-800">
         {cachedPhotoUrl && (
-          <img src={cachedPhotoUrl} alt={artist.name} className="absolute inset-0 h-full w-full object-cover" />
+          <img src={cachedPhotoUrl} alt={artist.name} className="absolute inset-0 h-full w-full object-cover" decoding="async" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/10 to-black/20" />
         <div className="absolute bottom-6 left-8 right-8">

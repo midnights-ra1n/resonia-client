@@ -1,4 +1,4 @@
-import { Disc, Download, Info, ListPlus, Playlist, User } from "@phosphor-icons/react";
+import { Disc, Download, Info, ListPlus, Playlist, User } from "../icons";
 import type { SubsonicClient } from "@resonia/api-client";
 import type { NavigateFunction } from "react-router-dom";
 import type { MenuItem } from "./ContextMenu";

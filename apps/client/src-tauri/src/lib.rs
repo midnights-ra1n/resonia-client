@@ -19,6 +19,45 @@ fn apply_webkitgtk_perf_workarounds() {
     }
 }
 
+/** Sous KDE Plasma, WebKitGTK (le seul moteur de rendu Linux que Tauri sait utiliser — il n'y a
+ *  pas de backend Qt/QtWebEngine alternatif, remplacer WebKitGTK lui-même n'est donc pas
+ *  possible) reste un toolkit GTK : les rares widgets qu'il peut encore rendre nativement (menu
+ *  contextuel natif "Copier"/"Inspecter l'élément" du clic droit, certains `<select>` selon le
+ *  thème GTK système) suivent le thème GTK actif — PAS le thème Plasma — et GTK retombe par
+ *  défaut sur Adwaita (look GNOME) tant que rien ne lui dit explicitement d'utiliser un thème
+ *  compatible KDE. `GTK_THEME=Breeze` force ce choix vers le thème GTK officiel de KDE (quasi
+ *  toujours packagé avec Plasma, paquet `breeze-gtk-theme`/`breeze-gtk` selon la distribution),
+ *  sans jamais écraser un choix explicite déjà présent dans l'environnement de l'utilisateur. Le
+ *  reste de l'interface (tout ce qui n'est pas un widget natif — boutons, sliders, menus
+ *  contextuels applicatifs) est du CSS/React propre à Resonia, déjà indépendant de tout thème
+ *  système. */
+#[cfg(target_os = "linux")]
+fn apply_kde_gtk_theme_workaround() {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_lowercase();
+    let is_kde = desktop.split(':').any(|part| part == "kde");
+    if is_kde && std::env::var_os("GTK_THEME").is_none() {
+        std::env::set_var("GTK_THEME", "Breeze");
+    }
+}
+
+/** GStreamer (utilisé par WebKitGTK pour décoder/rendre l'audio HTML5, y compris l'ancre de
+ *  session silencieuse — voir `sessionAnchor` dans gaplessEngine.ts) route sa sortie vers
+ *  PipeWire via sa couche de compatibilité PulseAudio (`pipewire-pulse`). `PULSE_LATENCY_MSEC`
+ *  est lu par cette couche pour dimensionner le tampon de sortie ; sans elle, PipeWire applique
+ *  une latence basse pensée pour des cas pro-audio (tampon fin), qui laisse beaucoup moins de
+ *  marge qu'ALSA/PulseAudio classique face au moindre retard d'ordonnancement du thread audio —
+ *  cause plausible des micro-coupures/instabilités rapportées sous PipeWire. Complète (ne
+ *  remplace pas) `latencyHint: "playback"` côté Web Audio (voir `createAudioContext` dans
+ *  gaplessEngine.ts), qui ne dimensionne que le tampon interne du contexte Web Audio — pas la
+ *  couche système en aval que vise ce réglage-ci. Jamais posé si l'utilisateur/l'environnement
+ *  de déploiement a déjà fait un choix explicite. */
+#[cfg(target_os = "linux")]
+fn apply_pipewire_latency_workaround() {
+    if std::env::var_os("PULSE_LATENCY_MSEC").is_none() {
+        std::env::set_var("PULSE_LATENCY_MSEC", "60");
+    }
+}
+
 /// Mêmes endpoints que tauri.conf.json (stable) / tauri.beta.conf.json (canal beta figé au
 /// build) — dupliqués ici car le réglage "recevoir les mises à jour bêta" doit pouvoir basculer
 /// une build STABLE vers le flux beta à l'exécution, ce que l'updater ne permet pas nativement
@@ -79,7 +118,11 @@ async fn check_for_update(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
-    apply_webkitgtk_perf_workarounds();
+    {
+        apply_webkitgtk_perf_workarounds();
+        apply_kde_gtk_theme_workaround();
+        apply_pipewire_latency_workaround();
+    }
 
     let builder = tauri::Builder::default()
         // Doit être enregistré avant tout autre plugin : sans lui, un second lancement de

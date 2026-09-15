@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FakeAudioContext, installWebAudioMocks, makeFakeAudioBuffer } from "../testUtils/webAudioMocks";
+import { FakeAudioContext, FakeAudioElement, installWebAudioMocks, makeFakeAudioBuffer } from "../testUtils/webAudioMocks";
 
 installWebAudioMocks();
 
@@ -20,6 +20,7 @@ describe("GaplessEngine — planification gapless déterministe", () => {
   let ctx: FakeAudioContext;
 
   beforeEach(() => {
+    FakeAudioElement.instances = [];
     engine = new GaplessEngine();
     ctx = engine.context as unknown as FakeAudioContext;
   });
@@ -145,5 +146,58 @@ describe("GaplessEngine — planification gapless déterministe", () => {
 
     expect(engine.duration).toBeCloseTo(12, 5);
     expect(ctx.createdSources).toHaveLength(1);
+  });
+
+  it("un 'ended' natif quasi instantané (flux mp4 sans faststart, typ. WebKit) retombe sur onNativePlaybackUnsupported plutôt que d'avancer à la piste suivante", () => {
+    engine.loadAndPlay("https://example.com/stream.aac", 0);
+    const nativeAudio = FakeAudioElement.instances[0];
+
+    const onEnded = vi.fn();
+    const onNativePlaybackUnsupported = vi.fn();
+    engine.onEnded(onEnded);
+    engine.onNativePlaybackUnsupported = onNativePlaybackUnsupported;
+
+    // Rien n'a jamais réellement joué (currentTime resté à 0) : c'est exactement le cas
+    // WebKit où "ended" se déclenche sans qu'un seul échantillon n'ait été rendu.
+    nativeAudio.currentTime = 0;
+    nativeAudio.dispatchEvent(new Event("ended"));
+
+    expect(onNativePlaybackUnsupported).toHaveBeenCalledTimes(1);
+    expect(onNativePlaybackUnsupported).toHaveBeenCalledWith(0);
+    expect(onEnded).not.toHaveBeenCalled();
+    expect(engine.state).not.toBe("ended");
+  });
+
+  it("un seul repli est tenté par chargement : un second 'ended' quasi instantané retombe sur la vraie fin de piste", () => {
+    engine.loadAndPlay("https://example.com/stream.aac", 0);
+    const nativeAudio = FakeAudioElement.instances[0];
+
+    engine.onNativePlaybackUnsupported = vi.fn();
+    const onEnded = vi.fn();
+    engine.onEnded(onEnded);
+
+    nativeAudio.currentTime = 0;
+    nativeAudio.dispatchEvent(new Event("ended")); // repli consommé
+    nativeAudio.dispatchEvent(new Event("ended")); // plus de repli disponible
+
+    expect(engine.onNativePlaybackUnsupported).toHaveBeenCalledTimes(1);
+    expect(onEnded).toHaveBeenCalledTimes(1);
+    expect(engine.state).toBe("ended");
+  });
+
+  it("un 'ended' natif après une lecture réelle déclenche bien la vraie fin de piste, sans repli", () => {
+    engine.loadAndPlay("https://example.com/stream.aac", 0);
+    const nativeAudio = FakeAudioElement.instances[0];
+
+    engine.onNativePlaybackUnsupported = vi.fn();
+    const onEnded = vi.fn();
+    engine.onEnded(onEnded);
+
+    nativeAudio.currentTime = 200; // piste jouée normalement jusqu'au bout
+    nativeAudio.dispatchEvent(new Event("ended"));
+
+    expect(engine.onNativePlaybackUnsupported).not.toHaveBeenCalled();
+    expect(onEnded).toHaveBeenCalledTimes(1);
+    expect(engine.state).toBe("ended");
   });
 });

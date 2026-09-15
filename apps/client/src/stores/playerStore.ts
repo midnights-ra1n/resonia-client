@@ -438,10 +438,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         const downloadedBytes = (await downloadStore.isDownloaded(nextTrackData.id, resolved.qualityId))
           ? await downloadStore.readDownloadedFull(nextTrackData.id, resolved.qualityId)
           : null;
+        // isFullyCached d'abord : un préchargement encore partiel (budget de prefetch non
+        // atteint, ou interrompu par une piste active concurrente sur le réseau) laisse des
+        // octets dans OPFS qui ne représentent pas la piste entière — les utiliser tels
+        // quels ferait échouer decodeAndTrim (troncature) sans jamais retomber sur le réseau.
         const cachedBytes =
           downloadedBytes && downloadedBytes.byteLength > 0
             ? downloadedBytes
-            : await cacheStore.readCachedFull(nextTrackData.id, resolved.qualityId);
+            : (await cacheStore.isFullyCached(nextTrackData.id, resolved.qualityId))
+              ? await cacheStore.readCachedFull(nextTrackData.id, resolved.qualityId)
+              : null;
         const arrayBuffer =
           cachedBytes && cachedBytes.byteLength > 0
             ? cachedBytes

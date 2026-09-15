@@ -214,8 +214,16 @@ class CacheStore {
   }
 
   /** URL de lecture instantanée : blob local si la piste est déjà entièrement en cache,
-   *  sinon `null` (l'appelant doit alors retomber sur le streaming réseau brut). */
+   *  sinon `null` (l'appelant doit alors retomber sur le streaming réseau brut). Vérifie
+   *  `complete`, pas seulement la présence de octets : un téléchargement interrompu (perte
+   *  réseau, onglet fermé, budget de préchargement épuisé) laisse un fichier PARTIEL dans
+   *  OPFS qui, sans ce contrôle, était resservi tel quel comme si la piste était intégrale —
+   *  lecture tronquée/impossible, et ce à chaque tentative future (y compris après
+   *  redémarrage de l'app, OPFS étant persistant) puisque rien ne redéclenchait jamais le
+   *  téléchargement du reste. Seul un vidage complet du cache faisait disparaître ce fichier
+   *  incomplet. */
   async resolvePlaybackUrl(trackId: string, qualityId: string, format: "aac" | "opus" | "mp3"): Promise<string | null> {
+    if (!(await this.isFullyCached(trackId, qualityId))) return null;
     const cachedFull = await this.readCachedFull(trackId, qualityId);
     if (!cachedFull || cachedFull.byteLength === 0) return null;
     const mime = { aac: "audio/aac", opus: "audio/ogg", mp3: "audio/mpeg" }[format];

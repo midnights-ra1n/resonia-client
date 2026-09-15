@@ -1,11 +1,48 @@
 export type Platform = "web" | "desktop";
 
-export function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+type DesktopBaseDir = "appCache" | "appData";
+
+/** Contrat exposé par `electron/preload/index.ts` sur `window.resonia` — seule surface
+ *  atteignable depuis le renderer (`contextIsolation: true` interdit tout accès direct à
+ *  Node/ipcRenderer). Garder synchronisé avec le preload à chaque évolution de l'un des deux. */
+export interface ResoniaBridge {
+  platform: "desktop";
+  getVersion(): Promise<string>;
+  store: {
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown): Promise<void>;
+    remove(key: string): Promise<void>;
+  };
+  blobStore: {
+    open(baseDir: DesktopBaseDir, path: string): Promise<number>;
+    write(handleId: number, position: number, data: Uint8Array): Promise<void>;
+    close(handleId: number): Promise<void>;
+    stat(baseDir: DesktopBaseDir, path: string): Promise<{ size: number } | null>;
+    readFile(baseDir: DesktopBaseDir, path: string): Promise<Uint8Array | null>;
+    remove(baseDir: DesktopBaseDir, path: string): Promise<void>;
+  };
+  netFetch(
+    url: string,
+    init?: { method?: string; headers?: Record<string, string>; body?: string },
+  ): Promise<{ status: number; statusText: string; ok: boolean; headers: Record<string, string>; body: Uint8Array }>;
+  powerSave: {
+    start(): Promise<void>;
+    stop(): Promise<void>;
+  };
+}
+
+declare global {
+  interface Window {
+    resonia?: ResoniaBridge;
+  }
+}
+
+export function isElectron(): boolean {
+  return typeof window !== "undefined" && Boolean(window.resonia);
 }
 
 export function getPlatform(): Platform {
-  return isTauri() ? "desktop" : "web";
+  return isElectron() ? "desktop" : "web";
 }
 
 let nativeHlsSupport: boolean | null = null;

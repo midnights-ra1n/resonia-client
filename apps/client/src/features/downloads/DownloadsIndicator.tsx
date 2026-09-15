@@ -1,4 +1,4 @@
-import { Download } from "@phosphor-icons/react";
+import { Download } from "../../components/icons";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { downloadStore, type DownloadBatchStats } from "../../lib/downloads/downloadStore";

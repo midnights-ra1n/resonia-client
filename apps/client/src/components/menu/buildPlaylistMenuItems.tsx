@@ -1,4 +1,4 @@
-import { Download, Info, ListPlus, PencilSimple, Play, Trash } from "@phosphor-icons/react";
+import { Download, Info, ListPlus, PencilSimple, Play, Trash } from "../icons";
 import type { SubsonicClient } from "@resonia/api-client";
 import type { MenuItem } from "./ContextMenu";
 import type { Track } from "../../stores/playerStore";

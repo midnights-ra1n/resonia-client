@@ -1,4 +1,4 @@
-import { Check, Playlist, Plus } from "@phosphor-icons/react";
+import { Check, Playlist, Plus } from "../../components/icons";
 import { useState } from "react";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { AddToPlaylistSubmenu } from "../../components/menu/AddToPlaylistSubmenu";

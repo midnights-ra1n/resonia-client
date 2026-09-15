@@ -12,3 +12,5 @@ Le moteur doit garantir :
 Lors d'une modification du moteur audio, préserver ces invariants.
 
 L'interface graphique elle devra être très ressemblante à Spotify mais en gardant quand même quelque chose d'unique pour nous.
+
+L'application doit être absolument optimisé de fond en combles pour Safari (WebKit et WebKitGTK) et WebView2. Ainsi que pour un Chromium Embed Framework.

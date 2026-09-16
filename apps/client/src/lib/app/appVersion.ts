@@ -1,4 +1,4 @@
-import { isTauri } from "../platform";
+import { isElectron } from "../platform";
 
 // Injecté par Vite (voir vite.config.ts) depuis la version de package.json (racine) au moment du
 // build — c'est cette même valeur que scripts/set-version.mjs synchronise dans tauri.conf.json /
@@ -8,13 +8,12 @@ declare const __APP_VERSION__: string;
 
 let cachedVersion: string | null = null;
 
-/** Version affichée dans les paramètres — via l'API Tauri sur desktop (lue depuis
- *  tauri.conf.json, embarquée dans le binaire), via la constante injectée au build sur web. */
+/** Version affichée dans les paramètres — via le pont Electron sur desktop (`app.getVersion()`
+ *  côté process principal, lue depuis package.json), via la constante injectée au build sur web. */
 export async function getAppVersion(): Promise<string> {
   if (cachedVersion) return cachedVersion;
-  if (isTauri()) {
-    const { getVersion } = await import("@tauri-apps/api/app");
-    cachedVersion = await getVersion();
+  if (isElectron()) {
+    cachedVersion = await window.resonia!.getVersion();
   } else {
     cachedVersion = __APP_VERSION__;
   }

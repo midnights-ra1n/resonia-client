@@ -1,15 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Check,
-  X,
-  CircleNotch,
-  Globe,
-  Plug,
-  HardDrive,
-  Download,
-  ArrowsClockwise,
-  Code,
-} from "@phosphor-icons/react";
+import { Check, CircleNotch, X } from "../../components/icons";
 import {
   checkAnimatedArtworkHealth,
   DEFAULT_ANIMATED_ARTWORK_BASE_URL,
@@ -18,7 +8,8 @@ import {
 import { useTranslation, type Locale } from "../../lib/i18n";
 import { useSettingsStore, GIGABYTE } from "../../stores/settingsStore";
 import { useUpdateStore } from "../../stores/updateStore";
-import { getPlatform, isTauri } from "../../lib/platform";
+import { electronFetch } from "../../lib/net/electronFetch";
+import { getPlatform, isElectron } from "../../lib/platform";
 import { getAppVersion, isBetaVersion } from "../../lib/app/appVersion";
 import { cacheStore } from "../../lib/audio/cache/cacheStore";
 import { downloadStore } from "../../lib/downloads/downloadStore";
@@ -31,10 +22,7 @@ import { clearAnimatedCoverResolutionCache } from "../album/useAnimatedAlbumCove
 
 // Voir useAnimatedAlbumCover.ts : même raison (CORS/robustesse), même fallback web.
 const platformFetch: typeof fetch = async (input, init) => {
-  if (isTauri()) {
-    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    return tauriFetch(input as string, init);
-  }
+  if (isElectron()) return electronFetch(input, init);
   return fetch(input, init);
 };
 

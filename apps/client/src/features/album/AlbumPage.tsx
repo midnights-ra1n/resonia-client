@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MarqueeText } from "../../components/MarqueeText";
-import { Check, CircleNotch, Download, Pause, Play, Shuffle } from "@phosphor-icons/react";
+import { Check, CircleNotch, Download, Pause, Play, Shuffle } from "../../components/icons";
 import { useAlbum } from "./useAlbum";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
@@ -215,6 +215,7 @@ export function AlbumPage() {
               src={coverUrl}
               alt={album.name}
               className="h-full w-full object-cover"
+              decoding="async"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-600">

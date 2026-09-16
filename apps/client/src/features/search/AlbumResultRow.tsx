@@ -1,4 +1,4 @@
-import { Play } from "@phosphor-icons/react";
+import { Play } from "../../components/icons";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AlbumSummary } from "@resonia/api-client";

@@ -1,4 +1,4 @@
-import { CaretRight, type Icon } from "@phosphor-icons/react";
+import { CaretRight, type Icon } from "../icons";
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 

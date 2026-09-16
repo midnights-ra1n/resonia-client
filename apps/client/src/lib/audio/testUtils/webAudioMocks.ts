@@ -68,7 +68,10 @@ export function makeFakeAudioBuffer(duration: number, sampleRate = 44100, channe
   } as unknown as AudioBuffer;
 }
 
-export class FakeAudioContext {
+// Étend `EventTarget` (comme `FakeAudioElement` ci-dessous) pour que le vrai
+// `addEventListener("statechange", …)` du moteur (voir installContextStateWatcher dans
+// gaplessEngine.ts) fonctionne tel quel sans mock dédié.
+export class FakeAudioContext extends EventTarget {
   currentTime = 0;
   state: "running" | "suspended" | "closed" = "running";
   sampleRate = 44100;
@@ -125,6 +128,16 @@ export class FakeAudioElement extends EventTarget {
   currentTime = 0;
   duration = NaN;
   paused = true;
+
+  // Chaque instance créée (nativeAudio, sessionAnchor...) s'enregistre ici dans l'ordre de
+  // création — permet aux tests de récupérer une référence sans exposer les champs privés
+  // du moteur. Voir gaplessEngine.test.ts (repli sur "ended" natif prématuré).
+  static instances: FakeAudioElement[] = [];
+
+  constructor() {
+    super();
+    FakeAudioElement.instances.push(this);
+  }
 
   play(): Promise<void> {
     this.paused = false;

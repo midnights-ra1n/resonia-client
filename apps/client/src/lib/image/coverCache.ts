@@ -1,6 +1,7 @@
+import { electronFetch } from "../net/electronFetch";
 import { storage } from "../storage";
 import { createBlobStore } from "../storage/blobStore";
-import { isTauri } from "../platform";
+import { isElectron } from "../platform";
 
 const ROOT_DIR = "resonia-cover-cache";
 const META_KEY = "resonia:coverCache:meta";
@@ -8,9 +9,9 @@ const DEFAULT_MAX_BYTES = 100 * 1024 * 1024; // 100 Mb
 const SIZE_NOTIFY_THROTTLE_MS = 300;
 
 // Même backend que le cache audio (voir cacheStore/opfsStore) : OPFS sur le web, vrai
-// système de fichiers via le plugin Tauri `fs` sur desktop. Un seul cache, une seule
-// famille de stockage, plus robuste que l'ancienne Cache Storage API dont le quota suit
-// les mêmes limites "best-effort" qu'OPFS sur les webviews desktop.
+// système de fichiers via IPC vers le process principal Electron sur desktop. Un seul cache,
+// une seule famille de stockage, plus robuste que l'ancienne Cache Storage API dont le quota
+// suit les mêmes limites "best-effort" qu'OPFS sur les webviews desktop.
 const store = createBlobStore(ROOT_DIR);
 
 // Le cache de pochettes partage le même budget que le cache audio (voir settingsStore) :
@@ -91,16 +92,13 @@ function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
 }
 
 /** Certains hôtes distants (ex. music.apple.com pour le scraping HTML) ne renvoient pas
- *  d'en-tête CORS pour notre origine ; côté bureau, on passe donc par le client HTTP natif
- *  de Tauri, non soumis à la politique CORS du navigateur, pour fiabiliser le
+ *  d'en-tête CORS pour notre origine ; côté bureau, on passe donc par `electronFetch` (process
+ *  principal, non soumis à la politique CORS du renderer) pour fiabiliser le
  *  téléchargement quel que soit l'hôte (les CDN d'artwork type mzstatic envoient bien un
  *  en-tête CORS ouvert, mais ne pas en dépendre reste plus robuste). */
 async function fetchForCache(url: string): Promise<Response> {
   return withCoverFetchLimit(async () => {
-    if (isTauri()) {
-      const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-      return tauriFetch(url);
-    }
+    if (isElectron()) return electronFetch(url);
     return fetch(url);
   });
 }

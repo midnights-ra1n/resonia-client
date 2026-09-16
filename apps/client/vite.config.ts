@@ -2,13 +2,21 @@ import { readFileSync } from 'node:fs'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import svgr from 'vite-plugin-svgr'
 
 // Même version que celle publiée sur GitHub (tag de release / image Docker) : le workflow de
 // release bump cette version à la racine avant de merger/push, voir scripts/set-version.mjs.
 const rootPackageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Icônes Material Symbols (@material-symbols/svg-400, voir components/icons) importées en
+    // composants React via le suffixe `?react` — un fichier SVG local par icône, jamais de
+    // police/CDN Google chargée au runtime (voir le commentaire dans components/icons/index.tsx).
+    svgr(),
+  ],
   define: {
     __APP_VERSION__: JSON.stringify(rootPackageJson.version),
   },

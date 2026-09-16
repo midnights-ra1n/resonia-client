@@ -1,4 +1,4 @@
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight } from "../../components/icons";
 import { useRef, type ReactNode } from "react";
 
 interface ResultSectionProps {

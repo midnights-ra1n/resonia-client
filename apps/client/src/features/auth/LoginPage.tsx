@@ -46,7 +46,9 @@ export function LoginPage() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-neutral-900 p-8 shadow-xl">
 
         <div className="flex justify-center items-center">
-          <img src="/favicon.svg" alt="Description" className="w-48" />
+          {/* Voir Sidebar.tsx : `import.meta.env.BASE_URL`, jamais un chemin racine en dur —
+              casse sous Electron empaqueté (chargé via `file://`, base relative). */}
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="Description" className="w-48" />
         </div>
 
         <h1 className="text-2xl font-bold text-white text-center">{t("auth.login.title")}</h1>

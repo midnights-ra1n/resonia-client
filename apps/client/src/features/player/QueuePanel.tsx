@@ -1,4 +1,4 @@
-import { DotsSixVertical, X } from "@phosphor-icons/react";
+import { DotsSixVertical, X } from "../../components/icons";
 import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCallback, useRef, useState } from "react";
@@ -151,7 +151,9 @@ function QueueItem({
   // retapait le réseau pour une pochette déjà téléchargée (perçu comme un défilement
   // saccadé/lent dans la file d'attente).
   const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, track.coverArtId, 80, track.coverUrl);
-  const coverUrl = cachedCoverUrl ?? "/default-cover.svg";
+  // Voir le même commentaire dans playerStore.ts (DEFAULT_COVER_URL) : `BASE_URL`, jamais un
+  // chemin racine en dur.
+  const coverUrl = cachedCoverUrl ?? `${import.meta.env.BASE_URL}default-cover.svg`;
 
   return (
     <li className="relative">

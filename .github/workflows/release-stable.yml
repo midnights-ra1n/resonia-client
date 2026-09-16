@@ -2,25 +2,33 @@ name: Release (stable)
 
 # Déclenché à chaque push sur la branche stable. La version vient de package.json (racine) : si
 # son contenu correspond à un tag "vX.Y.Z" qui existe déjà, rien ne se passe (push sans bump de
-# version = pas de nouvelle release). Bump la version dans package.json avant de merger/push sur
-# stable pour publier.
+# version = pas de nouvelle release). Bump la version dans package.json (pnpm bump) avant de
+# merger/push sur stable pour publier.
 #
-# La release est créée en DRAFT (invisible publiquement) dès le premier build desktop terminé,
-# et n'est rendue publique par publish-release qu'une fois TOUS les jobs (6 cibles desktop +
-# l'image Docker) terminés avec succès — voir ce job pour le détail. Si une seule cible échoue,
-# la release reste en draft (visible seulement des collaborateurs du repo) au lieu d'être publiée
-# incomplète.
+# La release est créée en DRAFT (invisible publiquement) dès le premier build desktop terminé
+# (electron-builder --publish always crée/complète la release GitHub du tag au fil des jobs), et
+# n'est rendue publique par publish-release qu'une fois TOUS les jobs (4 jobs desktop couvrant 5
+# cibles + l'image Docker) terminés avec succès — voir ce job pour le détail. Si une seule cible
+# échoue, la release reste en draft (visible seulement des collaborateurs du repo) au lieu d'être
+# publiée incomplète.
 #
-# Notes de version : générées automatiquement par GitHub à partir des commits/PR depuis la
-# dernière release (mêmes notes sur la page GitHub et dans l'app, l'app lisant le corps de cette
-# même release — voir lib/update/updateService.ts).
+# 4 jobs desktop et non 5 (mac / linux-x64 / linux-arm64 / win) : win empaquette x64 ET arm64
+# dans le même appel electron-builder, et linux-arm64 attend explicitement linux-x64 — les deux
+# évitent qu'une paire de jobs publiant en parallèle n'écrase le manifeste d'auto-update de
+# l'autre (latest.yml / latest-linux.yml), voir le commentaire sur ces jobs plus bas.
+#
+# Notes de version : extraites à la main depuis CHANGELOG.md (racine), pas générées
+# automatiquement depuis les commits/PR (voir scripts/extract-changelog.mjs et le job
+# publish-release) — mêmes notes sur la page GitHub et dans la pop-up de mise à jour de l'app,
+# celle-ci lisant le corps de cette même release (voir lib/update/updateService.ts). La release
+# échoue si CHANGELOG.md n'a pas de section pour cette version.
 #
 # Artefacts produits par run : Windows (.exe NSIS, x86_64 ET arm64 cross-compilé), macOS (.dmg +
-# .pkg, arm64 uniquement — voir le commentaire sur la matrice), Linux (.deb + .rpm + .AppImage,
-# x86_64 et arm64), image Docker web
-# multi-arch (linux/amd64 + linux/arm64). Le .pkg n'est pas un format Tauri natif : il est
-# construit à la main avec pkgbuild à partir du .app généré, ni signé ni notarisé (aucun
-# certificat Apple Developer configuré) — Gatekeeper avertira à l'ouverture, comme pour le .app.
+# .zip + .pkg, arm64 uniquement — voir le commentaire sur release-mac ; .zip requis par
+# electron-updater côté Mac, .pkg conservé pour parité avec l'ancien build Tauri), Linux (.deb +
+# .rpm + .AppImage, x86_64 et arm64), image Docker web multi-arch (linux/amd64 + linux/arm64).
+# Rien n'est signé ni notarisé (aucun certificat Apple Developer / code-signing Windows
+# configuré) — Gatekeeper/SmartScreen avertiront à l'ouverture, comme pour l'ancien build Tauri.
 on:
   push:
     branches:
@@ -42,8 +50,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Ne crée PAS le tag ici : il est créé par le premier appel à tauri-action ci-dessous, en
-      # même temps que la release (en draft). On se contente de déterminer s'il existe déjà.
+      # Ne crée PAS le tag ici : il est créé par le premier appel à electron-builder --publish
+      # ci-dessous, en même temps que la release (en draft). On se contente de déterminer s'il
+      # existe déjà.
       - name: Déterminer la version et si une release est nécessaire
         id: resolve
         run: |
@@ -64,36 +73,25 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  release:
+  # Pourquoi 4 jobs distincts plutôt qu'une seule matrice comme avant : `--publish always`
+  # télécharge le manifeste d'auto-update existant sur la release (latest.yml / latest-linux.yml),
+  # y fusionne l'entrée de SA cible, et le ré-upload — un simple read-modify-write, pas une
+  # opération atomique côté GitHub. Deux jobs qui publient CE MÊME fichier en parallèle (ex:
+  # linux x64 et linux arm64 dans l'ancienne matrice) peuvent tous les deux lire l'ancienne
+  # version avant que l'autre n'ait écrit la sienne : le dernier à finir écrase le travail du
+  # premier, et l'auto-update casse silencieusement pour UNE des deux architectures à chaque
+  # release (bug electron-builder documenté de longue date, voir issue #5592 upstream). Deux
+  # parades possibles : ne jamais avoir deux jobs séparés publier le même manifeste en même
+  # temps (linux x64/arm64 ci-dessous, forcées séquentielles via `needs`), ou empaqueter
+  # plusieurs arch en un seul appel electron-builder qui gère lui-même la fusion en interne, sans
+  # jamais toucher deux fois le même fichier depuis deux processus (windows ci-dessous — déjà sur
+  # le même runner de toute façon, voir son commentaire).
+
+  release-mac:
     needs: resolve-version
     if: needs.resolve-version.outputs.should_release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Apple Silicon uniquement : les runners hébergés macos-13 (Intel) sont en pénurie
-          # croissante côté GitHub (fin de vie du parc Intel), avec des files d'attente parfois
-          # très longues — on ne construit donc plus pour x86_64-apple-darwin.
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            extraArgs: ""
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            extraArgs: ""
-          # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour
-          # éviter le cross-compile (webkit2gtk et consorts sont pénibles à cross-compiler).
-          - platform: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            extraArgs: ""
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            extraArgs: "--bundles nsis"
-          # Pas de runner Windows ARM hébergé : cross-compilé depuis windows-latest (x64), comme
-          # documenté par Tauri — le toolchain MSVC sait cibler arm64 sans hôte natif.
-          - platform: windows-latest
-            target: aarch64-pc-windows-msvc
-            extraArgs: "--bundles nsis"
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
+    # Seul job à publier latest-mac.yml pour cette release : aucun risque de course.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,103 +107,149 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Dépendances système (Linux)
-        if: startsWith(matrix.platform, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-
       # Le lockfile est à la racine du workspace pnpm : pnpm résout le workspace tout seul même
       # lancé depuis apps/client, mais on installe depuis la racine pour rester explicite.
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
-      - name: Synchroniser tauri.conf.json / Cargo.toml sur la version de package.json
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
         run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
 
-      # releaseDraft: true — la release (et le tag, créés ici au premier run à terminer) reste
-      # invisible publiquement jusqu'à ce que publish-release la publie, une fois tous les jobs
-      # de cette matrice ET docker-web terminés avec succès.
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      # Apple Silicon uniquement : les runners hébergés macos-13 (Intel) sont en pénurie
+      # croissante côté GitHub (fin de vie du parc Intel), avec des files d'attente parfois très
+      # longues qui bloqueraient tout le flux de release — on ne construit donc plus pour
+      # x86_64-apple-darwin, choix assumé plutôt qu'un oubli. CSC_IDENTITY_AUTO_DISCOVERY=false :
+      # aucun certificat de signature configuré, on désactive la recherche automatique d'une
+      # identité de signature plutôt que de laisser electron-builder échouer à en trouver une.
       - name: Build + publication de la release (en draft)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: apps/client
-          tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }} ${{ matrix.extraArgs }}
-          tagName: ${{ needs.resolve-version.outputs.tag }}
-          releaseName: "Resonia ${{ needs.resolve-version.outputs.tag }}"
-          generateReleaseNotes: true
-          updaterJsonPreferNsis: true
-          releaseDraft: true
-          prerelease: false
-
-      - name: Construire l'installateur .pkg (macOS)
-        if: startsWith(matrix.platform, 'macos')
-        run: |
-          BUNDLE_DIR="apps/client/src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          # BUNDLE_DIR contient aussi Resonia.app.tar.gz + .sig (artefacts de l'updater, voir
-          # createUpdaterArtifacts dans tauri.conf.json) : packager --root directement sur ce
-          # dossier les embarquerait dans /Applications avec l'app. On isole donc UNIQUEMENT le
-          # .app dans un dossier de staging avant de packager.
-          STAGING_DIR="$RUNNER_TEMP/pkgroot"
-          mkdir -p "$STAGING_DIR"
-          cp -R "$BUNDLE_DIR"/*.app "$STAGING_DIR"/
-
-          PLIST_PATH="$RUNNER_TEMP/component.plist"
-          PKG_PATH="$RUNNER_TEMP/Resonia_${{ needs.resolve-version.outputs.version }}_${{ matrix.target }}.pkg"
-
-          # Sans --component-plist, pkgbuild génère un paquet "relocatable" par défaut :
-          # l'installeur macOS ignore alors --install-location dès qu'il trouve, via Launch
-          # Services, N'IMPORTE QUELLE app portant le même identifiant ailleurs sur le disque
-          # (reste d'une install .dmg glissée dans Téléchargements, la Corbeille...) et
-          # installe/écrase là au lieu de /Applications — silencieusement, sans erreur. On
-          # désactive donc explicitement la relocation pour garantir la destination.
-          pkgbuild --analyze --root "$STAGING_DIR" "$PLIST_PATH"
-          /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$PLIST_PATH"
-
-          # L'installer .pkg tourne toujours en root, quel que soit l'utilisateur qui l'exécute
-          # (contrairement à un simple glisser-déposer depuis un .dmg) : sans ce postinstall,
-          # Resonia.app appartiendrait à root, et Finder demanderait le mot de passe admin juste
-          # pour le supprimer plus tard. On le rend donc à l'utilisateur de la session graphique.
-          SCRIPTS_DIR="$RUNNER_TEMP/pkgscripts"
-          mkdir -p "$SCRIPTS_DIR"
-          cat > "$SCRIPTS_DIR/postinstall" <<'SCRIPT'
-          #!/bin/bash
-          CONSOLE_USER=$(stat -f "%Su" /dev/console)
-          chown -R "$CONSOLE_USER":staff "/Applications/Resonia.app"
-          exit 0
-          SCRIPT
-          chmod +x "$SCRIPTS_DIR/postinstall"
-
-          pkgbuild --root "$STAGING_DIR" --install-location /Applications \
-            --component-plist "$PLIST_PATH" \
-            --scripts "$SCRIPTS_DIR" \
-            --identifier com.resonia.client --version "${{ needs.resolve-version.outputs.version }}" "$PKG_PATH"
-          echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"
-
-      - name: Publier le .pkg sur la release
-        if: startsWith(matrix.platform, 'macos')
+        working-directory: apps/client
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.resolve-version.outputs.tag }}" "${{ env.PKG_PATH }}" --clobber -R "${{ github.repository }}"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --mac --arm64
+
+  release-linux-x64:
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      - name: Build + publication de la release (en draft)
+        working-directory: apps/client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --linux --x64
+
+  release-linux-arm64:
+    # Volontairement APRÈS release-linux-x64 (jamais en parallèle) : voir le commentaire au-dessus
+    # de release-mac sur la course lors de l'écriture de latest-linux.yml.
+    needs: [resolve-version, release-linux-x64]
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour éviter
+      # le cross-compile.
+      - name: Build + publication de la release (en draft)
+        working-directory: apps/client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --linux --arm64
+
+  release-win:
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      # x64 ET arm64 dans le MÊME appel electron-builder (donc le même job, le même runner) :
+      # aucun risque de course sur latest.yml, un seul processus l'écrit une seule fois avec les
+      # deux archs déjà fusionnées. Pas de runner Windows ARM hébergé de toute façon : comme il
+      # n'y a aucun code natif à compiler dans ce projet, electron-builder empaquette directement
+      # les binaires Electron arm64 déjà compilés depuis ce runner x64, sans toolchain
+      # supplémentaire — le cross-packaging est natif à l'outil.
+      - name: Build + publication de la release (en draft)
+        working-directory: apps/client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --win --x64 --arm64
 
   # Image Docker de la version web (seule plateforme sans téléchargement hors-ligne ni choix de
   # qualité audio : AAC 256 kbps forcé, cf. apps/client/src/lib/audio/qualityOptions.ts). Publiée
-  # à part des binaires de bureau ci-dessus, sur GHCR. Multi-arch (amd64 + arm64) — pas besoin de
-  # QEMU : le Dockerfile force le stage de build (Node/pnpm/Vite) à toujours tourner nativement
-  # (--platform=$BUILDPLATFORM) et ne produit que des assets statiques, indépendants de l'archi ;
-  # seul le stage final (nginx, aucune exécution) varie par plateforme, via ses images de base
-  # officielles déjà multi-arch. Émuler le stage Node sous QEMU plantait ("qemu: uncaught target
-  # signal 4") pendant `pnpm install`.
+  # à part des binaires de bureau ci-dessus, sur GHCR. Multi-arch (amd64 natif, arm64 émulé via
+  # QEMU — l'image est une simple build Vite + nginx, l'émulation reste rapide).
   docker-web:
     needs: resolve-version
     if: needs.resolve-version.outputs.should_release == 'true'
@@ -213,6 +257,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: QEMU (pour la cible arm64 émulée)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -242,40 +291,25 @@ jobs:
   # devient visible publiquement. Une cible en échec laisse la release en draft (visible des
   # seuls collaborateurs) plutôt que de publier une release avec des plateformes manquantes.
   publish-release:
-    needs: [resolve-version, release, docker-web]
+    needs: [resolve-version, release-mac, release-linux-x64, release-linux-arm64, release-win, docker-web]
     if: needs.resolve-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Notes de version écrites à la main (CHANGELOG.md racine), pas `--generate-notes` (liste
+      # brute des commits/PR GitHub, jamais éditorialisée) — voir scripts/extract-changelog.mjs.
+      # Échoue la release si la section de cette version est absente/vide, plutôt que de publier
+      # des notes creuses ou périmées.
+      - name: Extraire les notes de version depuis CHANGELOG.md
+        run: node scripts/extract-changelog.mjs "${{ needs.resolve-version.outputs.version }}" > /tmp/release-notes.md
       - name: Publier la release (toutes les cibles ont réussi)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ needs.resolve-version.outputs.tag }}" --draft=false -R "${{ github.repository }}"
-
-  # Même mécanisme que publish-beta-pointer côté release-beta.yml : l'updater du canal stable
-  # pointe vers une release à tag fixe ("stable-updater") plutôt que vers "latest" (endpoint
-  # GitHub qui aurait aussi fonctionné ici, les releases stables n'étant jamais prerelease — mais
-  # un tag fixe explicite reste immunisé contre tout futur changement d'ordre des releases, et
-  # symétrique avec le canal beta). Dépend de publish-release : ne pointe jamais vers une release
-  # encore en draft ou incomplète.
-  publish-stable-pointer:
-    needs: [resolve-version, publish-release]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Republier latest.json sur la release pointeur "stable-updater"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p dl
-          gh release download "${{ needs.resolve-version.outputs.tag }}" -R "${GITHUB_REPOSITORY}" -D dl --clobber -p 'latest.json'
-
-          if gh release view stable-updater -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload stable-updater dl/latest.json -R "${GITHUB_REPOSITORY}" --clobber
-          else
-            gh release create stable-updater dl/latest.json \
-              -R "${GITHUB_REPOSITORY}" \
-              --title "stable-updater" \
-              --notes "stable updater pointer" \
-              --target "${GITHUB_SHA}"
-          fi
+          gh release edit "${{ needs.resolve-version.outputs.tag }}" \
+            --draft=false --prerelease=false --notes-file /tmp/release-notes.md \
+            --title "Resonia ${{ needs.resolve-version.outputs.tag }}" \
+            -R "${{ github.repository }}"

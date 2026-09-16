@@ -1,0 +1,89 @@
+# Config de packaging desktop — branchée sur le CI de release (voir .github/workflows/
+# release-stable.yml et release-beta.yml), qui l'invoque via `electron-builder --publish`.
+#
+# Mêmes identifiants que l'ancien build Tauri (nom, icône, identifiant système), pour qu'un
+# utilisateur migrant de l'un à l'autre retrouve la même app :
+appId: com.resonia.client
+productName: Resonia
+copyright: Copyright © Resonia
+
+# Cible `electron-updater` (voir electron/main/index.ts, update:check) sur le même dépôt de
+# releases que l'ancien updater Tauri. `channel: latest` par défaut ; les releases marquées
+# prerelease sur GitHub sont ce qu'`autoUpdater.allowPrerelease = true` (canal "beta", réglage
+# utilisateur) va chercher — pas besoin d'un second pointeur de release à tag fixe comme
+# `publish-beta-pointer` le faisait côté CI Tauri, electron-updater résout ça nativement.
+publish:
+  provider: github
+  owner: midnights-ra1n
+  repo: resonia-client
+
+directories:
+  output: dist-electron-build
+  buildResources: build
+
+# Aucun module natif (compilé) dans ce projet : main/preload/renderer sont entièrement
+# pré-bundlés par electron-vite (voir externalizeDepsPlugin — zéro `require()` runtime d'un
+# paquet npm en dehors d'"electron" lui-même, fourni par le runtime). L'étape @electron/rebuild
+# est donc inutile ici, et plante avec `pm=pnpm` en monorepo (parcours des node_modules du
+# workspace racine, buggé côté electron-builder au moment de la migration — voir la trace
+# "Cannot read properties of undefined (reading 'files')" si réactivé).
+npmRebuild: false
+
+# electron-vite a déjà tout bundlé (main/preload/renderer) sans dépendance runtime externe côté
+# main/preload (uniquement Node core + Electron, voir externalizeDepsPlugin dans
+# electron.vite.config.ts) — inutile d'embarquer node_modules dans le paquet final.
+files:
+  - dist-electron/main/**
+  - dist-electron/preload/**
+  - dist-electron/renderer/**
+  - package.json
+  # `build/icon.icns`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
+  # directement depuis `buildResources` (ci-dessus) pour l'icône du BUNDLE lui-même, jamais à
+  # l'exécution. `build/icon.png`, lui, EST lu à l'exécution par electron/main/index.ts
+  # (icône de fenêtre/barre des tâches Windows/Linux) — sans cette ligne il manquait purement
+  # et simplement de l'asar packagé, provoquant un rejet de promesse non catché au démarrage.
+  - build/icon.png
+
+mac:
+  target:
+    # `dmg` : installateur grand public (glisser dans /Applications). `zip` : requis par
+    # electron-updater sur macOS (Squirrel.Mac ne sait s'auto-mettre à jour qu'à partir d'une
+    # archive zip, jamais directement depuis un .dmg). `pkg` : conservé pour parité avec
+    # l'ancien build Tauri, qui publiait aussi un .pkg construit à la main via pkgbuild —
+    # electron-builder le génère nativement, plus besoin du script CI dédié.
+    - target: dmg
+    - target: zip
+    - target: pkg
+  icon: build/icon.icns
+  category: public.app-category.music
+  # Découverte AirPlay (preuve de concept, voir electron/main/index.ts) : macOS affiche bien
+  # l'invite "réseau local" sans ces clés (le socket UDP/multicast brut ouvert par notre lib
+  # mDNS pure JS ne passe pas par l'API Bonjour native d'Apple, seule vraiment filtrée par
+  # `NSBonjourServices`), donc ce n'est probablement pas la cause d'une découverte qui ne trouve
+  # rien — mais ce sont les clés attendues par Apple pour ce genre d'usage (conformité/
+  # App Store), à garder même si elles ne s'avèrent pas être le correctif du problème observé.
+  extendInfo:
+    NSLocalNetworkUsageDescription: >-
+      Resonia a besoin d'accéder au réseau local pour découvrir les enceintes AirPlay.
+    NSBonjourServices:
+      - _raop._tcp
+      - _airplay._tcp
+  # `dir` reste utilisable en local via `electron-builder --dir` pour un `.app` non signé
+  # rapide à inspecter au Finder, sans repasser par toute la matrice ci-dessus.
+
+win:
+  target:
+    - target: nsis
+  icon: build/icon.ico
+
+linux:
+  target:
+    - target: AppImage
+    - target: deb
+    - target: rpm
+  icon: build/icons
+  category: Audio
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

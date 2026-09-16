@@ -1,4 +1,4 @@
-import { Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "@phosphor-icons/react";
+import { Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "../../components/icons";
 import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../../stores/playerStore";
 

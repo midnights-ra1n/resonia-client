@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "../../components/icons";
 import { useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { useTranslation } from "../../lib/i18n";

@@ -1,0 +1,164 @@
+diff --git a/dist/core/deviceAirtunes.js b/dist/core/deviceAirtunes.js
+index fdcda18a4e2e520a1077bcfa4bb09fa34d0ca62f..c179f393b62007772646f2fbf5af4a766f8bbe73 100644
+--- a/dist/core/deviceAirtunes.js	
++++ b/dist/core/deviceAirtunes.js	
+@@ -331,11 +331,14 @@ AirTunesDevice.prototype.relayAudio = function () {
+     let packetCount = 0;
+     let byteCount = 0;
+     let lastLogAt = 0;
+-    this.audioCallback = (packet) => {
+-        const airTunes = makeAirTunesPacket(packet, this.encoder, this.requireEncryption, this.alacEncoding, this.credentials, this.inputCodec);
+-        // if (self.credentials) {
+-        //   airTunes = self.credentials.encrypt(airTunes)
+-        // }
++    // Resonia : ré-active + corrige la retransmission RAOP, désactivée en amont (voir le
++    // commentaire historique conservé plus bas et https://github.com/ciderapp/node_airtunes2,
++    // qui a le même code mort) — udpServers.js décode déjà correctement les demandes de
++    // retransmission du récepteur (`resendRequested`), mais rien ne les honorait : un paquet UDP
++    // perdu sur le Wi-Fi (normal, RAOP prévoit justement ce mécanisme pour ça) restait perdu pour
++    // de bon, entendu comme une micro-coupure côté récepteur. `sendAirTunesPacket` factorise
++    // l'envoi UDP brut pour être réutilisable par le renvoi.
++    this.sendAirTunesPacket = (airTunes) => {
+         if (this.audioSocket == null) {
+             this.audioSocket = node_dgram_1.default.createSocket('udp4');
+             this.audioSocket.on('error', (err) => {
+@@ -355,6 +358,11 @@ AirTunesDevice.prototype.relayAudio = function () {
+                 });
+             }
+         });
++    };
++    this.audioCallback = (packet) => {
++        const airTunes = makeAirTunesPacket(packet, this.encoder, this.requireEncryption, this.alacEncoding, this.credentials, this.inputCodec);
++        this.sendAirTunesPacket(airTunes);
++        this.audioPacketHistory.add(packet.seq, airTunes);
+         packetCount += 1;
+         byteCount += airTunes.length;
+         const now = Date.now();
+@@ -370,33 +378,18 @@ AirTunesDevice.prototype.relayAudio = function () {
+             }
+         }
+     };
+-    //   this.sendAirTunesPacket = function(airTunes) {
+-    //     try{
+-    //     if(self.audioSocket == null){
+-    //       self.audioSocket = dgram.createSocket('udp4');
+-    //     }
+-    //     self.audioSocket.send(
+-    //       airTunes, 0, airTunes.length,
+-    //       self.serverPort, self.host
+-    //     );} catch(e){
+-    //       console.log('send error',e)
+-    //     }
+-    //   };
+-    //   this.audioCallback = function(packet) {
+-    //     var airTunes = makeAirTunesPacket(packet, self.encoder, self.requireEncryption, self.alacEncoding, self.credentials);
+-    //     try{
+-    //     self.sendAirTunesPacket(airTunes);
+-    //     self.audioPacketHistory.add(packet.seq, airTunes); // If we need to resend it
+-    //     } catch(e){}
+-    //   };
+-    //   this.udpServers.on('resendRequested', function (missedSeq, count) {
+-    //     try{
+-    //     for (var i = 0; i < count; i++) {
+-    //     airTunes = self.audioPacketHistory.getLatestNamed(missedSeq + i);
+-    //     if (airTunes != null)
+-    //     self.sendAirTunesPacket(airTunes);}}
+-    //     catch (_){}
+-    //   });
++    this.udpServers.on('resendRequested', (missedSeq, count) => {
++        try {
++            for (let i = 0; i < count; i += 1) {
++                const airTunes = this.audioPacketHistory.getLatestNamed(missedSeq + i);
++                if (airTunes != null)
++                    this.sendAirTunesPacket(airTunes);
++            }
++        }
++        catch (_) {
++            /* paquet trop ancien, déjà expulsé de l'historique (fenêtre de 100 paquets) — rien à renvoyer */
++        }
++    });
+     this.audioOut.on('packet', this.audioCallback);
+ };
+ AirTunesDevice.prototype.onSyncNeeded = function (seq) {
+diff --git a/dist/esm/core/deviceAirtunes.js b/dist/esm/core/deviceAirtunes.js
+index fdcda18a4e2e520a1077bcfa4bb09fa34d0ca62f..c179f393b62007772646f2fbf5af4a766f8bbe73 100644
+--- a/dist/esm/core/deviceAirtunes.js	
++++ b/dist/esm/core/deviceAirtunes.js	
+@@ -331,11 +331,14 @@ AirTunesDevice.prototype.relayAudio = function () {
+     let packetCount = 0;
+     let byteCount = 0;
+     let lastLogAt = 0;
+-    this.audioCallback = (packet) => {
+-        const airTunes = makeAirTunesPacket(packet, this.encoder, this.requireEncryption, this.alacEncoding, this.credentials, this.inputCodec);
+-        // if (self.credentials) {
+-        //   airTunes = self.credentials.encrypt(airTunes)
+-        // }
++    // Resonia : ré-active + corrige la retransmission RAOP, désactivée en amont (voir le
++    // commentaire historique conservé plus bas et https://github.com/ciderapp/node_airtunes2,
++    // qui a le même code mort) — udpServers.js décode déjà correctement les demandes de
++    // retransmission du récepteur (`resendRequested`), mais rien ne les honorait : un paquet UDP
++    // perdu sur le Wi-Fi (normal, RAOP prévoit justement ce mécanisme pour ça) restait perdu pour
++    // de bon, entendu comme une micro-coupure côté récepteur. `sendAirTunesPacket` factorise
++    // l'envoi UDP brut pour être réutilisable par le renvoi.
++    this.sendAirTunesPacket = (airTunes) => {
+         if (this.audioSocket == null) {
+             this.audioSocket = node_dgram_1.default.createSocket('udp4');
+             this.audioSocket.on('error', (err) => {
+@@ -355,6 +358,11 @@ AirTunesDevice.prototype.relayAudio = function () {
+                 });
+             }
+         });
++    };
++    this.audioCallback = (packet) => {
++        const airTunes = makeAirTunesPacket(packet, this.encoder, this.requireEncryption, this.alacEncoding, this.credentials, this.inputCodec);
++        this.sendAirTunesPacket(airTunes);
++        this.audioPacketHistory.add(packet.seq, airTunes);
+         packetCount += 1;
+         byteCount += airTunes.length;
+         const now = Date.now();
+@@ -370,33 +378,18 @@ AirTunesDevice.prototype.relayAudio = function () {
+             }
+         }
+     };
+-    //   this.sendAirTunesPacket = function(airTunes) {
+-    //     try{
+-    //     if(self.audioSocket == null){
+-    //       self.audioSocket = dgram.createSocket('udp4');
+-    //     }
+-    //     self.audioSocket.send(
+-    //       airTunes, 0, airTunes.length,
+-    //       self.serverPort, self.host
+-    //     );} catch(e){
+-    //       console.log('send error',e)
+-    //     }
+-    //   };
+-    //   this.audioCallback = function(packet) {
+-    //     var airTunes = makeAirTunesPacket(packet, self.encoder, self.requireEncryption, self.alacEncoding, self.credentials);
+-    //     try{
+-    //     self.sendAirTunesPacket(airTunes);
+-    //     self.audioPacketHistory.add(packet.seq, airTunes); // If we need to resend it
+-    //     } catch(e){}
+-    //   };
+-    //   this.udpServers.on('resendRequested', function (missedSeq, count) {
+-    //     try{
+-    //     for (var i = 0; i < count; i++) {
+-    //     airTunes = self.audioPacketHistory.getLatestNamed(missedSeq + i);
+-    //     if (airTunes != null)
+-    //     self.sendAirTunesPacket(airTunes);}}
+-    //     catch (_){}
+-    //   });
++    this.udpServers.on('resendRequested', (missedSeq, count) => {
++        try {
++            for (let i = 0; i < count; i += 1) {
++                const airTunes = this.audioPacketHistory.getLatestNamed(missedSeq + i);
++                if (airTunes != null)
++                    this.sendAirTunesPacket(airTunes);
++            }
++        }
++        catch (_) {
++            /* paquet trop ancien, déjà expulsé de l'historique (fenêtre de 100 paquets) — rien à renvoyer */
++        }
++    });
+     this.audioOut.on('packet', this.audioCallback);
+ };
+ AirTunesDevice.prototype.onSyncNeeded = function (seq) {

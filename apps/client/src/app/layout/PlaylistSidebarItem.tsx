@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Pause, Play, Playlist } from "@phosphor-icons/react";
+import { Pause, Play, Playlist } from "../../components/icons";
 import { MarqueeText } from "../../components/MarqueeText";
 import { InfoModal } from "../../components/InfoModal";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";

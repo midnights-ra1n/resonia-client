@@ -1,4 +1,4 @@
-import { Check, CircleNotch, Plus } from "@phosphor-icons/react";
+import { Check, CircleNotch, Plus } from "../icons";
 import { useEffect, useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { usePlaylists } from "../../hooks/usePlaylists";

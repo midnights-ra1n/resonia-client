@@ -1,6 +1,7 @@
 import { fetchLyricsFromLrcLib, type StructuredLyricsDTO } from "@resonia/api-client";
 import { getClientForServer } from "../subsonic/getClientForServer";
-import { isTauri } from "../platform";
+import { electronFetch } from "../net/electronFetch";
+import { isElectron } from "../platform";
 import { storage } from "../storage";
 import { useServersStore } from "../../stores/serversStore";
 import { parseLrcText } from "./parseLrc";
@@ -49,15 +50,12 @@ function storageKeyFor(serverId: string, trackId: string): string {
 const cache = new Map<string, ParsedLyrics | null>();
 const inflight = new Map<string, Promise<ParsedLyrics | null>>();
 
-/** Même client HTTP natif que le reste de l'app côté bureau (voir coverCache.ts,
+/** Même pont HTTP que le reste de l'app côté bureau (voir coverCache.ts,
  *  useAnimatedAlbumCover.ts) : c'est aussi le seul moyen de vraiment envoyer un en-tête
  *  `User-Agent` personnalisé (LRCLIB le recommande pour s'identifier) — un navigateur ignore
  *  silencieusement toute tentative de le surcharger sur un `fetch` normal. */
 async function platformFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (isTauri()) {
-    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    return tauriFetch(input as string, init);
-  }
+  if (isElectron()) return electronFetch(input, init);
   return fetch(input, init);
 }
 

@@ -5,6 +5,26 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Resonia n'a pas de thème clair (voir index.css) : sans ceci, un système en mode clair
+       rend en clair les contrôles natifs par défaut du moteur web (scrollbars, sélections de
+       texte, form controls) tant qu'aucun CSS applicatif ne les recouvre — voir aussi
+       `nativeTheme.themeSource` côté process principal Electron pour le chrome natif de la
+       fenêtre elle-même (barre de titre, menus contextuels système). -->
+  <meta name="color-scheme" content="dark" />
+  <!-- Checklist sécurité Electron ("Define a Content-Security-Policy") — appliquée en meta tag
+       plutôt qu'en en-tête HTTP pour couvrir uniformément les trois façons dont cette même page
+       est servie : nginx (web, voir nginx.conf), `file://` (bureau packagé) et le serveur de dev
+       Vite/electron-vite (aucun des trois n'a de config d'en-têtes HTTP partagée). `connect-src`/
+       `media-src`/`img-src` restent volontairement ouverts à tout http(s) : Resonia est un client
+       multi-serveur, l'instance Navidrome/OpenSubsonic de chaque utilisateur est un hôte arbitraire
+       choisi dans les réglages, jamais connu à l'avance — la protection utile ici porte sur
+       `script-src`/`object-src`/`base-uri`/`frame-src` (empêcher l'exécution de script injecté ou
+       l'embarquement dans une iframe tierce), pas sur la liste des hôtes atteignables. `ws:`/`wss:`
+       uniquement pour ne pas casser le HMR du serveur de dev Vite (aucun usage de WebSocket en
+       production, voir la recherche du code applicatif). `style-src 'unsafe-inline'` : Tailwind/Vite
+       injectent du CSS via des balises `<style>` en dev (HMR) — coût de sécurité minime comparé à
+       `script-src`, jamais assez pour exécuter du code arbitraire à lui seul. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; media-src 'self' blob: http: https:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none';" />
   <title>Resonia</title>
 </head>
 

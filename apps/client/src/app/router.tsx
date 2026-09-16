@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, createHashRouter } from "react-router-dom";
 import { AppLayout } from "./layout/AppLayout";
 
 const HomePage = lazy(() => import("../features/home/HomePage").then((m) => ({ default: m.HomePage })));
@@ -27,7 +27,7 @@ function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={null}>{element}</Suspense>;
 }
 
-export const router = createBrowserRouter([
+const routes = [
   {
     path: "/",
     element: <AppLayout />,
@@ -43,4 +43,17 @@ export const router = createBrowserRouter([
       { path: "playlists/:id", element: withSuspense(<PlaylistPage />) },
     ],
   },
-]);
+];
+
+// `createBrowserRouter` (API History HTML5) exige une vraie origine http(s) servant n'importe
+// quelle sous-route avec le même index.html — vrai en web et en dev Electron (serveur Vite sur
+// http://localhost), mais PAS pour un `.app` empaqueté : `mainWindow.loadFile(...)` charge
+// `index.html` via `file://`, où `pushState`/`replaceState` vers un chemin different
+// (ex: file:///.../dist/albums/42) pointe vers un fichier qui n'existe pas sur le disque —
+// d'où les pages "cassées" au premier changement de route. `createHashRouter` encode la route
+// dans le fragment (`#/albums/42`), jamais envoyé au système de fichiers, donc toujours résolu
+// vers le même `index.html` local quel que soit l'endroit dans l'app.
+export const router =
+  typeof window !== "undefined" && window.location.protocol === "file:"
+    ? createHashRouter(routes)
+    : createBrowserRouter(routes);

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Synchronise la version applicative dans les 3 endroits qui doivent rester alignés :
-// package.json (racine), tauri.conf.json et Cargo.toml. Appelé par les workflows de release
-// (stable et beta) à partir du tag git poussé, pour ne jamais avoir à bump ces fichiers à la main.
+// Synchronise la version applicative dans les 2 endroits qui doivent rester alignés :
+// package.json (racine) et apps/client/package.json (lu par `app.getVersion()` sous Electron,
+// et par electron-builder à l'empaquetage). Appelé par les workflows de release (stable et
+// beta) à partir du tag git poussé, pour ne jamais avoir à bump ces fichiers à la main.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -14,8 +15,7 @@ if (!version) {
 
 const root = path.dirname(fileURLToPath(import.meta.url)) + "/..";
 const rootPackageJsonPath = path.join(root, "package.json");
-const tauriConfPath = path.join(root, "apps/client/src-tauri/tauri.conf.json");
-const cargoTomlPath = path.join(root, "apps/client/src-tauri/Cargo.toml");
+const clientPackageJsonPath = path.join(root, "apps/client/package.json");
 
 function setJsonVersion(filePath) {
   const json = JSON.parse(readFileSync(filePath, "utf8"));
@@ -23,14 +23,7 @@ function setJsonVersion(filePath) {
   writeFileSync(filePath, JSON.stringify(json, null, 2) + "\n");
 }
 
-function setCargoVersion(filePath) {
-  const content = readFileSync(filePath, "utf8");
-  const updated = content.replace(/^version = ".*"$/m, `version = "${version}"`);
-  writeFileSync(filePath, updated);
-}
-
 setJsonVersion(rootPackageJsonPath);
-setJsonVersion(tauriConfPath);
-setCargoVersion(cargoTomlPath);
+setJsonVersion(clientPackageJsonPath);
 
-console.log(`Version fixée à ${version} dans package.json, tauri.conf.json et Cargo.toml.`);
+console.log(`Version fixée à ${version} dans package.json (racine) et apps/client/package.json.`);

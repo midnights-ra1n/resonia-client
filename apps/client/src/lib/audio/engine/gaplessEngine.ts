@@ -25,10 +25,20 @@ const PRESTART_MARGIN_SECONDS = 0.15;
 // planification différée qui romprait la réactivité au clic.
 const COLD_START_FADE_SECONDS = 0.015;
 
+// Voir `handleNativeEnded` : en-deçà de cette durée réellement jouée, un "ended" natif est
+// traité comme un échec de streaming progressif (flux mp4/aac sans faststart, typiquement),
+// jamais comme une vraie fin de piste — aucun morceau musical ne dure moins de 2s.
+const NATIVE_INSTANT_END_THRESHOLD_SECONDS = 2;
+
 // WAV silencieux (0,05s, 8-bit/4kHz mono) utilisé uniquement pour ancrer la session Now
-// Playing du système — voir le commentaire sur `sessionAnchor` ci-dessous.
+// Playing du système — voir le commentaire sur `sessionAnchor` ci-dessous. Le base64 doit
+// rester une longueur multiple de 4 : un caractère surnuméraire introduit ici par le passé
+// (longueur 329 au lieu de 328) passait inaperçu sur WebKit/Chromium plus anciens (decodeur
+// `data:` tolérant) mais échoue franchement sous Safari/WebKit 27 avec "Data URL decoding
+// failed" — ce qui invalidait `sessionAnchor` et cassait la lecture en cascade sur toute
+// webview basée sur ce WebKit (dont l'app de bureau).
 const SILENT_LOOP_DATA_URI =
-  "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAoA8AAKAPAAABAAgAZGF0YcgAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==";
+  "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAoA8AAKAPAAABAAgAZGF0YcgAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
 
 /** `latencyHint: "playback"` (au lieu du défaut `"interactive"`) demande un tampon de sortie
  *  nettement plus généreux — quelques dizaines de ms de latence de sortie en plus, imperceptible
@@ -130,6 +140,16 @@ export class GaplessEngine {
    *  utilisateur ici, `nativeGain` ne sert qu'au micro-fondu natif→buffer. */
   private nativeGain: GainNode;
 
+  /** Noeud intercalé entre `bufferMasterGain`/`nativeGain` et `context.destination` (donc
+   *  APRÈS le tap AirPlay, voir `attachAirplayTap` qui pioche directement sur ces deux
+   *  premiers) — sert UNIQUEMENT à couper la sortie audible locale (haut-parleurs de l'appareil)
+   *  sans toucher au signal envoyé vers AirPlay ni à l'automation de volume utilisateur portée
+   *  par `bufferMasterGain`/`nativeAudio.volume`. Sans ce noeud séparé, muter la sortie locale
+   *  via ces gains existants aurait aussi muté le flux AirPlay, les deux partageant le même
+   *  signal en amont. */
+  private localOutputGain: GainNode;
+  private localOutputMuted = false;
+
   /** Sur WebKit (Safari et la webview macOS de l'app de bureau — WKWebView), l'intégration Now
    *  Playing (MPNowPlayingInfoCenter/MPRemoteCommandCenter) ne reste active que tant qu'un vrai
    *  élément <audio>/<video> est dans l'état "playing" — `navigator.mediaSession.playbackState`
@@ -169,9 +189,39 @@ export class GaplessEngine {
   private pendingMimeType: string | null = null;
   private nativeFallbackAttempted = false;
 
+  // Voir `handleNativeEnded` : certains flux mp4/aac transcodés à la volée (moov atom pas en
+  // tête de fichier — pas de "faststart") laissent WebKit incapable de déterminer une durée
+  // exploitable en streaming progressif ; l'élément <audio> déclenche alors "ended" quasiment
+  // immédiatement après start(), sans jamais avoir vraiment joué ni émettre d'événement
+  // "error" détectable. Un seul essai de repli par chargement, pour ne jamais boucler
+  // indéfiniment si le repli lui-même échoue pour une autre raison.
+  private nativeInstantEndFallbackAttempted = false;
+
+  // Incrémenté à chaque loadAndPlay : capturé par les retries `.play()` après reprise du
+  // contexte (voir plus bas), qui ne s'exécutent en pratique qu'après un délai — le temps
+  // qu'ils se résolvent, un enchaînement rapide de pistes (auto-avance sur "ended", skip
+  // manuel...) a pu déjà lancer un loadAndPlay plus récent sur ce même `nativeAudio` partagé.
+  // Sans ce jeton, le rejet AbortError/NotSupportedError de cette tentative PÉRIMÉE faisait
+  // basculer le moteur en état "error" (reportError) alors que la piste réellement en cours
+  // jouait déjà normalement — perçu comme une lecture "cassée" par intermittence alors que
+  // seul le compte-rendu d'erreur était trompeur.
+  private loadToken = 0;
+
   private _state: EngineState = "idle";
   private _error: EngineError | null = null;
   private stateListeners = new Set<EngineStateListener>();
+
+  // Voir `scheduleRescheduleOfPending` (déclenché par setPlaybackRate) : ces deux champs
+  // suivent la dernière replanification réelle du crossfade en attente, pour la limiter à
+  // une fréquence raisonnable même quand setPlaybackRate est appelé à chaque frame.
+  private lastPendingRescheduleAtMs = 0;
+  private pendingRescheduleTimer: ReturnType<typeof window.setTimeout> | null = null;
+  private static readonly PENDING_RESCHEDULE_MIN_INTERVAL_MS = 150;
+
+  // Voir `startPlaybackWatchdog` : horodatage réel + `context.currentTime` au dernier
+  // contrôle, pour détecter une horloge de contexte qui aurait cessé d'avancer.
+  private lastWatchdogWallMs = 0;
+  private lastWatchdogContextTime = 0;
 
   /** Prévient l'appelant quand la lecture native (piste active) atteint réellement
    *  l'état "playing" — le bon moment pour démarrer les tâches de fond (cache, décodage,
@@ -191,16 +241,140 @@ export class GaplessEngine {
    *  Délibérément découplé du cache : ce moteur ne connaît aucun module de cache. */
   onNetworkPressure: ((active: boolean) => void) | null = null;
 
+  /** Sortie audio demandée par l'utilisateur (voir `setOutputDevice`) — "default" sauf
+   *  sélection explicite via le menu Connect. Un seul `AudioContext.setSinkId` route TOUTE
+   *  la sortie du moteur (chemin natif ET chemin buffer, tous deux connectés à
+   *  `this.context.destination`), donc pas besoin de le répercuter séparément sur
+   *  `nativeAudio`/`bufferMasterGain`. Réappliqué après chaque `rebuildAudioGraph` (nouveau
+   *  contexte = nouveau `destination` par défaut) pour que la sélection survive à une
+   *  reconstruction du graphe déclenchée par un `devicechange` sans rapport. */
+  private _sinkId: string = "default";
+
+  /** Prévient l'appelant que la sortie explicitement sélectionnée n'est plus disponible
+   *  (périphérique débranché/déconnecté) et que le moteur est retombé sur la sortie par
+   *  défaut — pour que l'UI (menu Connect) puisse resynchroniser sa sélection affichée. */
+  onOutputDeviceUnavailable: (() => void) | null = null;
+
+  /** `AudioContext.prototype.setSinkId` est une API encore expérimentale (Chromium récent
+   *  uniquement à ce jour — ni Safari/WebKit ni Firefox ne l'exposent) : la détection se fait
+   *  à l'exécution, jamais en supposant une plateforme donnée. */
+  get outputDeviceSelectionSupported(): boolean {
+    return typeof (this.context as AudioContext & { setSinkId?: unknown }).setSinkId === "function";
+  }
+
+  /** Change la sortie audio du moteur vers `deviceId` (un id de `MediaDeviceInfo` avec
+   *  `kind: "audiooutput"`, ou "default"). Ne fait rien silencieusement si l'API n'est pas
+   *  supportée — l'appelant doit vérifier `outputDeviceSelectionSupported` avant d'offrir le
+   *  choix dans l'UI. */
+  async setOutputDevice(deviceId: string): Promise<void> {
+    this._sinkId = deviceId;
+    await this.applySinkId();
+  }
+
+  // ---- Tap AirPlay (preuve de concept — voir src/lib/audio/airplay côté renderer) ----
+  private airplayTapNode: AudioWorkletNode | null = null;
+  private airplayTapSilentGain: GainNode | null = null;
+  private airplayTapModuleLoaded = false;
+
+  /** Prévient l'appelant qu'un tap AirPlay actif vient d'être perdu (reconstruction du graphe
+   *  suite à un changement de périphérique de sortie, voir `rebuildAudioGraph`) : le nouveau
+   *  contexte n'a plus aucun noeud de l'ancien tap, tous liés à l'AudioContext fermé. */
+  onAirplayTapLost: (() => void) | null = null;
+
+  /** Branche un AudioWorkletNode en DÉRIVATION additive sur les deux sorties existantes
+   *  (`bufferMasterGain`, `nativeGain`) — jamais en coupant/réinsérant une connexion
+   *  existante : la lecture normale garde EXACTEMENT le même graphe, avec juste une prise
+   *  supplémentaire en aval. Le worklet ne fait que ré-emballer les échantillons bruts (voir
+   *  airplayTapProcessor.worklet.js) ; le rééchantillonnage/encodage PCM et l'envoi IPC vers le
+   *  process principal sont à la charge de l'appelant, jamais du thread audio. */
+  async attachAirplayTap(
+    onChunk: (data: { left: Float32Array; right: Float32Array; sampleRate: number }) => void,
+  ): Promise<void> {
+    this.detachAirplayTap();
+    if (!this.airplayTapModuleLoaded) {
+      // Servi depuis `public/` (copié tel quel, jamais transformé par le bundler) plutôt que
+      // résolu via `new URL(..., import.meta.url)` : ce pattern d'émission d'asset au build,
+      // fiable avec Rollup classique, ne copie PAS le fichier dans la sortie buildée avec le
+      // bundler Rolldown utilisé ici (aucune erreur, juste une URL qui pointe vers un fichier
+      // absent une fois empaqueté — silencieux jusqu'au premier test réel). `BASE_URL` reflète
+      // le `base` Vite configuré (`/` en web, `./` pour le renderer Electron, voir
+      // electron.vite.config.ts) pour rester correct dans les deux contextes.
+      const url = `${import.meta.env.BASE_URL}airplayTapProcessor.worklet.js`;
+      await this.context.audioWorklet.addModule(url);
+      this.airplayTapModuleLoaded = true;
+    }
+    const node = new AudioWorkletNode(this.context, "airplay-tap-processor", {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 2,
+    });
+    // Compteur allégé (plus de scan par échantillon — coûteux à ce rythme d'appel, retiré une
+    // fois le pipeline audio validé bout en bout, voir historique) : sert juste à confirmer que
+    // le worklet reçoit toujours des messages si un souci de flux est de nouveau suspecté.
+    let tapMessageCount = 0;
+    node.port.onmessage = (e) => {
+      tapMessageCount++;
+      if (tapMessageCount === 1 || tapMessageCount % 200 === 0) {
+        console.log(`[airplay-tap] message #${tapMessageCount}`);
+      }
+      onChunk(e.data);
+    };
+    // Un AudioWorkletNode dont la sortie n'est reliée à rien peut voir `process()` cesser
+    // d'être appelé selon les navigateurs — un gain à 0 vers `destination` garde le noeud
+    // "actif" sans ajouter le moindre son audible.
+    const silent = this.context.createGain();
+    silent.gain.value = 0;
+    node.connect(silent);
+    silent.connect(this.context.destination);
+    this.bufferMasterGain.connect(node);
+    this.nativeGain.connect(node);
+    this.airplayTapNode = node;
+    this.airplayTapSilentGain = silent;
+  }
+
+  detachAirplayTap(): void {
+    if (!this.airplayTapNode) return;
+    try {
+      this.bufferMasterGain.disconnect(this.airplayTapNode);
+    } catch {
+      /* déjà déconnecté (ex: graphe reconstruit entre-temps) */
+    }
+    try {
+      this.nativeGain.disconnect(this.airplayTapNode);
+    } catch {
+      /* idem */
+    }
+    this.airplayTapNode.port.onmessage = null;
+    this.airplayTapNode.disconnect();
+    this.airplayTapSilentGain?.disconnect();
+    this.airplayTapNode = null;
+    this.airplayTapSilentGain = null;
+  }
+
+  private async applySinkId(): Promise<void> {
+    const ctx = this.context as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+    if (typeof ctx.setSinkId !== "function") return;
+    try {
+      await ctx.setSinkId(this._sinkId);
+    } catch (err) {
+      console.warn("[audio] Sortie audio sélectionnée indisponible, retour à la sortie par défaut", err);
+      this._sinkId = "default";
+      this.onOutputDeviceUnavailable?.();
+    }
+  }
+
   constructor() {
     this.context = createAudioContext();
     this.bufferMasterGain = this.context.createGain();
-    this.bufferMasterGain.connect(this.context.destination);
+    this.localOutputGain = this.context.createGain();
+    this.localOutputGain.connect(this.context.destination);
+    this.bufferMasterGain.connect(this.localOutputGain);
 
     this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
-    this.nativeGain.connect(this.context.destination);
+    this.nativeGain.connect(this.localOutputGain);
     this.applyRateToNativeAudio();
 
     this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
@@ -220,6 +394,77 @@ export class GaplessEngine {
 
     this.installAutoplayUnlock();
     this.installOutputDeviceChangeHandler();
+    this.installContextStateWatcher();
+    this.startPlaybackWatchdog();
+  }
+
+  /** `AudioContext.onstatechange` couvre le cas où WebKit suspend le contexte de son propre
+   *  chef (ex: interruption système sur macOS) sans qu'aucune action locale ne l'ait demandé :
+   *  on retente une reprise avec les mêmes réessais que l'unlock initial. Ne couvre PAS le cas
+   *  où WebKit se prétend "running" tout en ayant arrêté de rendre du son (voir
+   *  `startPlaybackWatchdog`, seul filet de sécurité pour ce second cas). */
+  private installContextStateWatcher() {
+    this.context.addEventListener("statechange", () => {
+      debugLog("engine:contextStateChange", { state: this.context.state });
+      if (
+        this.context.state === "suspended" &&
+        this.trackState &&
+        !this.isTrackStatePaused(this.trackState)
+      ) {
+        this.resumeContextWithRetry();
+      }
+      // `currentTime` reste GELÉ tant que le contexte est "suspended" (ex: entre chaque
+      // piste, via pause()/stop() qui suspendent explicitement — voir leurs commentaires —
+      // et les quelques centaines de ms, parfois plus de 2s au pire cas, que prend
+      // `resumeContextWithRetry` sous WebKit avant que "running" ne revienne). Sans cette
+      // remise à zéro, le prochain contrôle de `startPlaybackWatchdog` compare une fenêtre
+      // où l'horloge audio n'a quasiment pas avancé (gelée la majeure partie du temps,
+      // puis "running" seulement sur sa toute fin) à l'horloge murale qui, elle, a continué
+      // d'avancer normalement pendant toute la suspension — un faux positif quasi garanti à
+      // CHAQUE changement de piste, qui déclenchait une reconstruction complète du graphe en
+      // pleine reprise (coupant le `nativeAudio.play()` en vol, AbortError en cascade).
+      if (this.context.state === "running") {
+        this.lastWatchdogWallMs = performance.now();
+        this.lastWatchdogContextTime = this.context.currentTime;
+      }
+    });
+  }
+
+  /** Filet de sécurité contre un thread audio bloqué côté WebKit sans qu'aucun événement ne le
+   *  signale — observé sur WKWebView (app desktop macOS) après une rafale de créations/
+   *  destructions de noeuds Web Audio en peu de temps (typiquement un glissé rapide et prolongé
+   *  du pitch fader, voir `scheduleRescheduleOfPending`) : le son s'arrête net, `context.state`
+   *  continue pourtant de valoir "running", et sans ce contrôle la seule issue restait un
+   *  redémarrage complet de l'app. `context.currentTime` est l'horloge matérielle du contexte —
+   *  indépendante de `playbackRate`, elle doit toujours avancer au rythme du temps réel tant que
+   *  le contexte tourne, peu importe la vitesse de lecture demandée. Si elle décroche très en
+   *  dessous du temps réel écoulé alors qu'une piste est censée jouer, on reconstruit tout le
+   *  graphe (même mécanisme que sur changement de périphérique) plutôt que de laisser
+   *  l'utilisateur bloqué en silence. */
+  private startPlaybackWatchdog() {
+    if (typeof window === "undefined") return;
+    this.lastWatchdogWallMs = performance.now();
+    this.lastWatchdogContextTime = this.context.currentTime;
+    window.setInterval(() => {
+      const nowWallMs = performance.now();
+      const elapsedWallSec = (nowWallMs - this.lastWatchdogWallMs) / 1000;
+      const elapsedContextSec = this.context.currentTime - this.lastWatchdogContextTime;
+      this.lastWatchdogWallMs = nowWallMs;
+      this.lastWatchdogContextTime = this.context.currentTime;
+
+      const isActivelyPlaying =
+        this._state === "playing" && this.trackState !== null && !this.isTrackStatePaused(this.trackState);
+
+      if (
+        isActivelyPlaying &&
+        this.context.state === "running" &&
+        elapsedWallSec > 1 &&
+        elapsedContextSec < elapsedWallSec * 0.5
+      ) {
+        console.warn("[audio] Horloge du contexte audio bloquée — reconstruction du graphe");
+        this.rebuildAudioGraph();
+      }
+    }, 2000);
   }
 
   /** Crée un élément <audio> "natif" fraîchement câblé avec tous les listeners dont dépend le
@@ -329,6 +574,13 @@ export class GaplessEngine {
   private rebuildAudioGraph() {
     if (!this.trackState) return; // rien ne joue : le prochain loadAndPlay/resume repartira sur un graphe déjà à jour
 
+    // Le tap AirPlay (s'il est actif) référence des noeuds liés à l'ancien contexte sur le
+    // point de fermer — jamais récupérable tel quel (voir attachAirplayTap) : on le détache et
+    // on prévient l'appelant plutôt que de laisser un AudioWorkletNode mort silencieusement.
+    const hadAirplayTap = this.airplayTapNode !== null;
+    this.detachAirplayTap();
+    this.airplayTapModuleLoaded = false; // addModule() est par-AudioContext, à refaire sur le nouveau
+
     const oldContext = this.context;
     const oldNativeAudio = this.nativeAudio;
     const volume = this.bufferMasterGain.gain.value;
@@ -354,15 +606,28 @@ export class GaplessEngine {
     oldNativeAudio.pause();
 
     this.context = createAudioContext();
+    this.installContextStateWatcher();
+    // Nouveau contexte, nouvelle horloge : sans ça, `startPlaybackWatchdog` comparerait le
+    // `currentTime` (proche de 0) du nouveau contexte à la valeur accumulée par l'ancien,
+    // le lirait comme une horloge à l'arrêt et redéclencherait aussitôt une reconstruction —
+    // en boucle.
+    this.lastWatchdogWallMs = performance.now();
+    this.lastWatchdogContextTime = this.context.currentTime;
     this.bufferMasterGain = this.context.createGain();
     this.bufferMasterGain.gain.setValueAtTime(volume, this.context.currentTime);
-    this.bufferMasterGain.connect(this.context.destination);
+    this.localOutputGain = this.context.createGain();
+    // Préserve l'état muet/non-muet de la sortie locale (voir setLocalOutputMuted) à travers la
+    // reconstruction — sans ça, une reconnexion AirPlay active se retrouverait avec le Mac de
+    // nouveau audible après un simple changement de périphérique de sortie sans rapport.
+    this.localOutputGain.gain.setValueAtTime(this.localOutputMuted ? 0 : 1, this.context.currentTime);
+    this.localOutputGain.connect(this.context.destination);
+    this.bufferMasterGain.connect(this.localOutputGain);
 
     this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
-    this.nativeGain.connect(this.context.destination);
+    this.nativeGain.connect(this.localOutputGain);
     this.applyRateToNativeAudio();
 
     this.trackState = null;
@@ -402,6 +667,9 @@ export class GaplessEngine {
     oldNativeAudio.removeAttribute("src");
     oldNativeAudio.load();
     void oldContext.close().catch(() => {});
+
+    void this.applySinkId();
+    if (hadAirplayTap) this.onAirplayTapLost?.();
   }
 
   /** Relance context.resume() avec réessais (délais croissants) tant que le contexte reste
@@ -544,6 +812,21 @@ export class GaplessEngine {
     this.nativeAudio.muted = clamped <= 0;
   }
 
+  /** Coupe/rétablit UNIQUEMENT la sortie audible locale (haut-parleurs/casque de l'appareil),
+   *  sans toucher à `bufferMasterGain`/`nativeGain` ni à leur automation de volume — voir le
+   *  commentaire de `localOutputGain`. Utilisé pour qu'une connexion AirPlay ne fasse pas
+   *  entendre la même piste deux fois avec un décalage (source de l'écho local+réseau signalé
+   *  à l'usage) : le flux AirPlay, lui, continue de recevoir le signal complet puisque le tap le
+   *  pioche EN AMONT de ce noeud. Court fondu (même durée que SWAP_FADE_SECONDS) plutôt qu'un
+   *  gain instantané, pour éviter un clic audible à la coupure/reprise. */
+  setLocalOutputMuted(muted: boolean) {
+    this.localOutputMuted = muted;
+    const now = this.context.currentTime;
+    this.localOutputGain.gain.cancelScheduledValues(now);
+    this.localOutputGain.gain.setValueAtTime(this.localOutputGain.gain.value, now);
+    this.localOutputGain.gain.linearRampToValueAtTime(muted ? 0 : 1, now + SWAP_FADE_SECONDS);
+  }
+
   get playbackRate(): number {
     return this._playbackRate;
   }
@@ -604,9 +887,35 @@ export class GaplessEngine {
     this.applyRateToNativeAudio();
 
     if (this.trackState?.mode === "buffer" && !this.trackState.isPaused) {
-      if (this.pendingNext?.scheduled) this.unschedulePending();
-      this.trySchedulePending();
+      this.scheduleRescheduleOfPending();
     }
+  }
+
+  /** Replanifie le crossfade en attente (voir `trySchedulePending`), mais au maximum une fois
+   *  toutes les `PENDING_RESCHEDULE_MIN_INTERVAL_MS` — `setPlaybackRate` peut être appelé à
+   *  chaque frame pendant un glissé du pitch fader (voir le throttle RAF côté playerStore), et
+   *  chaque replanification crée/détruit un `AudioBufferSourceNode` + un `GainNode` : sans cette
+   *  limite, un glissé rapide et prolongé déclenche des dizaines de créations/destructions de
+   *  noeuds par seconde, un point chaud qui expose un bug WebKit connu sur macOS (WKWebView) où
+   *  le thread audio finit par se bloquer silencieusement (voir `startPlaybackWatchdog`, le
+   *  filet de sécurité si ça arrive quand même). Le premier appel après une pause d'activité
+   *  s'exécute quasi immédiatement (délai nul) ; seuls les appels rapprochés sont coalescés — la
+   *  dernière vitesse demandée est toujours celle appliquée au final, jamais une valeur
+   *  intermédiaire perdue. N'affecte QUE la replanification du crossfade : la vitesse audible de
+   *  la source déjà en cours change, elle, instantanément à chaque appel de setPlaybackRate
+   *  (voir plus haut), jamais retardée. */
+  private scheduleRescheduleOfPending() {
+    if (this.pendingRescheduleTimer !== null) return; // déjà une exécution différée en attente
+    const elapsed = performance.now() - this.lastPendingRescheduleAtMs;
+    const wait = Math.max(0, GaplessEngine.PENDING_RESCHEDULE_MIN_INTERVAL_MS - elapsed);
+    this.pendingRescheduleTimer = window.setTimeout(() => {
+      this.pendingRescheduleTimer = null;
+      this.lastPendingRescheduleAtMs = performance.now();
+      if (this.trackState?.mode === "buffer" && !this.trackState.isPaused) {
+        if (this.pendingNext?.scheduled) this.unschedulePending();
+        this.trySchedulePending();
+      }
+    }, wait);
   }
 
   // ---- décodage ----
@@ -644,11 +953,13 @@ export class GaplessEngine {
    *  progressif (MediaSource) si ce streaming natif échoue (voir handler "error" ci-dessus)
    *  — sans lui, l'appelant ne peut recevoir que le repli `onNativePlaybackUnsupported`. */
   loadAndPlay(url: string, offset = 0, decoded?: DecodedTrack, mimeType?: string) {
+    const token = ++this.loadToken;
     if (this.context.state === "suspended") this.resumeContextWithRetry();
     this.discardPending();
     this.teardownCurrent();
     this.setState("loading");
     this.nativeFallbackAttempted = false;
+    this.nativeInstantEndFallbackAttempted = false;
     this.pendingStreamUrl = url;
     this.pendingMimeType = mimeType ?? null;
 
@@ -672,10 +983,18 @@ export class GaplessEngine {
     // par défaut malgré un pitch fader ou un Master Tempo actifs.
     this.applyRateToNativeAudio();
     this.nativeAudio.play().catch((err) => {
+      if (token !== this.loadToken) return; // un loadAndPlay plus récent a déjà pris le dessus
       this.context
         .resume()
-        .then(() => this.nativeAudio.play().catch((e) => this.reportError("Lecture impossible après reprise du contexte audio", e)))
-        .catch(() => this.reportError("Lecture instantanée impossible", err));
+        .then(() => {
+          if (token !== this.loadToken) return;
+          this.nativeAudio.play().catch((e) => {
+            if (token === this.loadToken) this.reportError("Lecture impossible après reprise du contexte audio", e);
+          });
+        })
+        .catch(() => {
+          if (token === this.loadToken) this.reportError("Lecture instantanée impossible", err);
+        });
     });
 
     this.trackState = { mode: "native", contextStartTime: now, pauseOffset: offset, isPaused: false };
@@ -689,6 +1008,10 @@ export class GaplessEngine {
    *  synchrone juste après l'assignation du src (comme dans loadAndPlay), donc dans le même
    *  contexte d'activation que l'appel initial ; seule l'alimentation du buffer est async. */
   private startNativeViaMediaSource(url: string, mimeType: string) {
+    // Capturé maintenant : reste la référence de CE repli progressif tout au long de son
+    // fetch/pump asynchrone, même si un loadAndPlay ultérieur (skip, auto-avance sur "ended")
+    // prend le dessus entre-temps — voir le commentaire sur `loadToken`.
+    const token = this.loadToken;
     const mediaSource = new MediaSource();
     const objectUrl = URL.createObjectURL(mediaSource);
 
@@ -696,11 +1019,12 @@ export class GaplessEngine {
       "sourceopen",
       () => {
         URL.revokeObjectURL(objectUrl);
+        if (token !== this.loadToken) return;
         let sourceBuffer: SourceBuffer;
         try {
           sourceBuffer = mediaSource.addSourceBuffer(mimeType);
         } catch (err) {
-          this.reportError("Flux progressif non supporté par ce navigateur", err);
+          if (token === this.loadToken) this.reportError("Flux progressif non supporté par ce navigateur", err);
           return;
         }
 
@@ -726,6 +1050,7 @@ export class GaplessEngine {
 
             const pump = (): Promise<void> =>
               reader.read().then(({ done, value }) => {
+                if (token !== this.loadToken) return; // repli périmé, superseded entre-temps
                 if (done) {
                   if (mediaSource.readyState === "open") mediaSource.endOfStream();
                   return;
@@ -735,7 +1060,9 @@ export class GaplessEngine {
 
             return pump();
           })
-          .catch((err) => this.reportError("Flux progressif interrompu", err));
+          .catch((err) => {
+            if (token === this.loadToken) this.reportError("Flux progressif interrompu", err);
+          });
       },
       { once: true },
     );
@@ -749,10 +1076,18 @@ export class GaplessEngine {
     this.nativeAudio.currentTime = 0;
     this.applyRateToNativeAudio();
     this.nativeAudio.play().catch((err) => {
+      if (token !== this.loadToken) return;
       this.context
         .resume()
-        .then(() => this.nativeAudio.play().catch((e) => this.reportError("Lecture progressive impossible après reprise du contexte audio", e)))
-        .catch(() => this.reportError("Lecture progressive impossible", err));
+        .then(() => {
+          if (token !== this.loadToken) return;
+          this.nativeAudio.play().catch((e) => {
+            if (token === this.loadToken) this.reportError("Lecture progressive impossible après reprise du contexte audio", e);
+          });
+        })
+        .catch(() => {
+          if (token === this.loadToken) this.reportError("Lecture progressive impossible", err);
+        });
     });
 
     this.trackState = { mode: "native", contextStartTime: now, pauseOffset: 0, isPaused: false };
@@ -1096,6 +1431,28 @@ export class GaplessEngine {
 
   private handleNativeEnded() {
     if (this.trackState?.mode !== "native") return;
+
+    // Certains flux mp4/aac transcodés à la volée (moov atom pas en tête de fichier — pas de
+    // "faststart") laissent WebKit incapable de déterminer une durée exploitable en streaming
+    // progressif : l'élément <audio> saute directement à "ended" sans qu'un seul échantillon
+    // n'ait réellement été rendu, sans jamais déclencher d'événement "error" détectable —
+    // silence total et avance immédiate à la piste suivante, en boucle sur toute la file. On
+    // distingue ce cas d'une vraie fin de piste par la durée RÉELLEMENT jouée (voir
+    // NATIVE_INSTANT_END_THRESHOLD_SECONDS) plutôt que par un code d'erreur, puisqu'aucun
+    // n'est jamais émis ici — et on retombe sur le même repli que pour un flux au format
+    // explicitement rejeté (fetch complet + decodeAudioData, indépendant du parsing
+    // progressif de WebKit).
+    if (
+      !this.nativeInstantEndFallbackAttempted &&
+      this.nativeAudio.currentTime < NATIVE_INSTANT_END_THRESHOLD_SECONDS &&
+      this.onNativePlaybackUnsupported
+    ) {
+      this.nativeInstantEndFallbackAttempted = true;
+      console.warn("[audio] Flux natif terminé quasi instantanément sans avoir joué — repli sur téléchargement complet + décodage");
+      this.onNativePlaybackUnsupported(this.trackState.pauseOffset);
+      return;
+    }
+
     this.setState("ended");
     console.warn("[audio] Fin du flux natif sans piste suivante prête — repli sur rechargement réseau");
     this.onEndedCallback?.();

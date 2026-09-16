@@ -217,6 +217,11 @@
     "betaUpdatesDescription": "Get early access releases before they reach the stable channel. These may be less stable."
   },
   "update": {
+    "available": "Resonia {{version}} is available",
+    "notesTitle": "What's new",
+    "noNotes": "No release notes available.",
+    "install": "Install",
+    "later": "Later",
     "installing": "Installing update {{version}}...",
     "restarting": "Restarting...",
     "error": "The update couldn't be installed. Try again later.",

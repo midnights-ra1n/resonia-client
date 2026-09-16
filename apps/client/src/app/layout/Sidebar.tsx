@@ -1,4 +1,4 @@
-import { ChartBar, Disc, Download, Folder, GearSix, House, ListBullets, MusicNotes, Plus, Star } from "@phosphor-icons/react";
+import { ChartBar, Disc, Download, Folder, GearSix, House, ListBullets, MusicNotes, Plus, Star } from "../../components/icons";
 import { useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
@@ -33,7 +33,12 @@ export function Sidebar() {
     <aside className="flex w-60 shrink-0 flex-col gap-1 bg-neutral-950 p-4 min-h-0">
       {/* Logo */}
       <div className="flex justify-center items-center gap-4 py-4">
-        <img src="/favicon.svg" alt="Resonia" className="w-16" />
+        {/* `import.meta.env.BASE_URL` (jamais un "/favicon.svg" en dur) : un chemin racine
+            absolu casse une fois l'app empaquetée en Electron, chargée via `file://` où le
+            build utilise une base relative (voir electron.vite.config.ts) — Vite ne réécrit
+            que ce qu'il peut analyser statiquement (import, attribut src d'un <img> côté HTML),
+            jamais une chaîne de caractères JS comme celle-ci. */}
+        <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="Resonia" className="w-16" />
       </div>
 
       {/* Navigation links */}

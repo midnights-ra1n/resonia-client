@@ -217,6 +217,11 @@
     "betaUpdatesDescription": "Accède aux versions en avant-première avant qu'elles n'atteignent le canal stable. Elles peuvent être moins stables."
   },
   "update": {
+    "available": "Resonia {{version}} est disponible",
+    "notesTitle": "Nouveautés",
+    "noNotes": "Aucune note de version disponible.",
+    "install": "Installer",
+    "later": "Plus tard",
     "installing": "Installation de la mise à jour {{version}}...",
     "restarting": "Redémarrage...",
     "error": "La mise à jour n'a pas pu être installée. Réessaie plus tard.",

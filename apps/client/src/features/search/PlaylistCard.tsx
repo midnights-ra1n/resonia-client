@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Play } from "@phosphor-icons/react";
+import { Play } from "../../components/icons";
 import type { PlaylistSummary } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
 import { InfoModal } from "../../components/InfoModal";
@@ -89,7 +89,7 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
           <button
             onClick={handlePlay}
             disabled={loading}
-            className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-emerald-500 opacity-0 shadow-lg transition-all duration-200 hover:scale-105 hover:bg-emerald-400 group-hover:translate-y-0 group-hover:opacity-100 disabled:opacity-50"
+            className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-emerald-500 opacity-0 shadow-lg transition-[opacity,transform,background-color] duration-200 hover:scale-105 hover:bg-emerald-400 group-hover:translate-y-0 group-hover:opacity-100 disabled:opacity-50"
             title={t("album.play")}
           >
             <Play size={18} fill="black" className="ml-0.5 text-neutral-900" />

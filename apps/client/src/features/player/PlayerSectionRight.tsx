@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bug, Microphone, Playlist, Plug, SpeakerHigh, SpeakerX } from "../../components/icons";
+import { Bug, Lyrics, Playlist, Plug, SpeakerHigh, SpeakerX } from "../../components/icons";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { PitchMenu } from "./PitchMenu";
@@ -117,7 +117,7 @@ export function PlayerSectionRight() {
           }`}
         title="Lyrics"
       >
-        <Microphone size={18} />
+        <Lyrics size={18} />
       </button>
 
       {/* Connect */}

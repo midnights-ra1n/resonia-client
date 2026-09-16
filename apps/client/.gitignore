@@ -24,6 +24,3 @@ dist-electron-build
 *.njsproj
 *.sln
 *.sw?
-
-# Debug
-src-tauri/target

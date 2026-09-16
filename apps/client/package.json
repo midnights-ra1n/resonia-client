@@ -1,7 +1,7 @@
 {
   "name": "@resonia/client",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0-beta.2",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {
@@ -20,12 +20,6 @@
     "@material-symbols/svg-400": "^0.47.2",
     "@resonia/api-client": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
-    "@tauri-apps/api": "^2.9.0",
-    "@tauri-apps/plugin-fs": "^2.5.1",
-    "@tauri-apps/plugin-http": "^2.5.2",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-store": "^2.4.4",
-    "@tauri-apps/plugin-updater": "^2.11.0",
     "electron-updater": "^6.8.9",
     "hls.js": "^1.7.1",
     "react": "^19.2.8",
@@ -36,7 +30,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

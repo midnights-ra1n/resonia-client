@@ -5,8 +5,6 @@ node_modules/
 # Build outputs
 dist/
 build/
-**/src-tauri/target/
-**/src-tauri/gen/schemas/
 
 # Env
 .env
@@ -33,6 +31,3 @@ feishin-development/
 
 # AI (i assume it)
 .clinerules
-
-# Updater signing keypair (never commit — private key must only live in GitHub secrets)
-.tauri-updater-secrets/

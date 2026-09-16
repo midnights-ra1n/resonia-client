@@ -1,10 +1,8 @@
-# Config minimale pour valider l'identité de l'app (icône, nom de bundle, Dock/Cmd+Tab) via un
-# vrai build empaqueté local — voir le plan de migration (Phase 1, groundwork pour la Phase 4).
-# La matrice complète (multi-cibles CI, signature, updater electron-updater) sera étoffée en
-# Phase 4 ; ceci n'est volontairement pas encore branché sur le CI de release.
+# Config de packaging desktop — branchée sur le CI de release (voir .github/workflows/
+# release-stable.yml et release-beta.yml), qui l'invoque via `electron-builder --publish`.
 #
-# Mêmes identifiants que l'ancien build Tauri (voir src-tauri/tauri.conf.json), pour qu'un
-# utilisateur migrant de l'un à l'autre retrouve la même app (nom, icône, identifiant système) :
+# Mêmes identifiants que l'ancien build Tauri (nom, icône, identifiant système), pour qu'un
+# utilisateur migrant de l'un à l'autre retrouve la même app :
 appId: com.resonia.client
 productName: Resonia
 copyright: Copyright © Resonia
@@ -48,12 +46,18 @@ files:
 
 mac:
   target:
-    # `dir` (non listé ici, passé en CLI via `--dir` pour un test local rapide) produit un
-    # `.app` non signé directement inspectable au Finder — pas la peine d'une image DMG
-    # complète juste pour vérifier l'identité (nom/icône/Dock).
+    # `dmg` : installateur grand public (glisser dans /Applications). `zip` : requis par
+    # electron-updater sur macOS (Squirrel.Mac ne sait s'auto-mettre à jour qu'à partir d'une
+    # archive zip, jamais directement depuis un .dmg). `pkg` : conservé pour parité avec
+    # l'ancien build Tauri, qui publiait aussi un .pkg construit à la main via pkgbuild —
+    # electron-builder le génère nativement, plus besoin du script CI dédié.
+    - target: dmg
     - target: zip
+    - target: pkg
   icon: build/icon.icns
   category: public.app-category.music
+  # `dir` reste utilisable en local via `electron-builder --dir` pour un `.app` non signé
+  # rapide à inspecter au Finder, sans repasser par toute la matrice ci-dessus.
 
 win:
   target:
@@ -64,6 +68,7 @@ linux:
   target:
     - target: AppImage
     - target: deb
+    - target: rpm
   icon: build/icons
   category: Audio
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bug, Lyrics, Playlist, Plug, SpeakerHigh, SpeakerX } from "../../components/icons";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { ConnectMenu } from "./ConnectMenu";
 import { PitchMenu } from "./PitchMenu";
 
 export function PlayerSectionRight() {
@@ -27,6 +28,7 @@ export function PlayerSectionRight() {
 
   const [isDragging, setIsDragging] = useState(false);
   const pitchMenuRef = useRef<HTMLDivElement>(null);
+  const connectMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!showPitchMenu) return;
@@ -38,6 +40,17 @@ export function PlayerSectionRight() {
     window.addEventListener("pointerdown", handleClickOutside);
     return () => window.removeEventListener("pointerdown", handleClickOutside);
   }, [showPitchMenu, togglePitchMenu]);
+
+  useEffect(() => {
+    if (!showConnect) return;
+    const handleClickOutside = (e: PointerEvent) => {
+      if (connectMenuRef.current && !connectMenuRef.current.contains(e.target as Node)) {
+        toggleConnect();
+      }
+    };
+    window.addEventListener("pointerdown", handleClickOutside);
+    return () => window.removeEventListener("pointerdown", handleClickOutside);
+  }, [showConnect, toggleConnect]);
 
   const effectiveVolume = isMuted ? 0 : volume;
   const volumePercent = Math.round(effectiveVolume * 100);
@@ -121,16 +134,19 @@ export function PlayerSectionRight() {
       </button>
 
       {/* Connect */}
-      <button
-        onClick={toggleConnect}
-        className={`transition-colors ${showConnect
-          ? "text-green-400"
-          : "text-neutral-400 hover:text-white"
-          }`}
-        title="Connect"
-      >
-        <Plug size={18} />
-      </button>
+      <div className="relative" ref={connectMenuRef}>
+        <button
+          onClick={toggleConnect}
+          className={`transition-colors ${showConnect
+            ? "text-green-400"
+            : "text-neutral-400 hover:text-white"
+            }`}
+          title="Connect"
+        >
+          <Plug size={18} />
+        </button>
+        {showConnect && <ConnectMenu />}
+      </div>
 
       {/* Débogueur réseau/décodage — réservé au mode développeur (voir SettingsPage) */}
       {devModeEnabled && (

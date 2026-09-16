@@ -231,6 +231,48 @@ export class GaplessEngine {
    *  Délibérément découplé du cache : ce moteur ne connaît aucun module de cache. */
   onNetworkPressure: ((active: boolean) => void) | null = null;
 
+  /** Sortie audio demandée par l'utilisateur (voir `setOutputDevice`) — "default" sauf
+   *  sélection explicite via le menu Connect. Un seul `AudioContext.setSinkId` route TOUTE
+   *  la sortie du moteur (chemin natif ET chemin buffer, tous deux connectés à
+   *  `this.context.destination`), donc pas besoin de le répercuter séparément sur
+   *  `nativeAudio`/`bufferMasterGain`. Réappliqué après chaque `rebuildAudioGraph` (nouveau
+   *  contexte = nouveau `destination` par défaut) pour que la sélection survive à une
+   *  reconstruction du graphe déclenchée par un `devicechange` sans rapport. */
+  private _sinkId: string = "default";
+
+  /** Prévient l'appelant que la sortie explicitement sélectionnée n'est plus disponible
+   *  (périphérique débranché/déconnecté) et que le moteur est retombé sur la sortie par
+   *  défaut — pour que l'UI (menu Connect) puisse resynchroniser sa sélection affichée. */
+  onOutputDeviceUnavailable: (() => void) | null = null;
+
+  /** `AudioContext.prototype.setSinkId` est une API encore expérimentale (Chromium récent
+   *  uniquement à ce jour — ni Safari/WebKit ni Firefox ne l'exposent) : la détection se fait
+   *  à l'exécution, jamais en supposant une plateforme donnée. */
+  get outputDeviceSelectionSupported(): boolean {
+    return typeof (this.context as AudioContext & { setSinkId?: unknown }).setSinkId === "function";
+  }
+
+  /** Change la sortie audio du moteur vers `deviceId` (un id de `MediaDeviceInfo` avec
+   *  `kind: "audiooutput"`, ou "default"). Ne fait rien silencieusement si l'API n'est pas
+   *  supportée — l'appelant doit vérifier `outputDeviceSelectionSupported` avant d'offrir le
+   *  choix dans l'UI. */
+  async setOutputDevice(deviceId: string): Promise<void> {
+    this._sinkId = deviceId;
+    await this.applySinkId();
+  }
+
+  private async applySinkId(): Promise<void> {
+    const ctx = this.context as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+    if (typeof ctx.setSinkId !== "function") return;
+    try {
+      await ctx.setSinkId(this._sinkId);
+    } catch (err) {
+      console.warn("[audio] Sortie audio sélectionnée indisponible, retour à la sortie par défaut", err);
+      this._sinkId = "default";
+      this.onOutputDeviceUnavailable?.();
+    }
+  }
+
   constructor() {
     this.context = createAudioContext();
     this.bufferMasterGain = this.context.createGain();
@@ -520,6 +562,8 @@ export class GaplessEngine {
     oldNativeAudio.removeAttribute("src");
     oldNativeAudio.load();
     void oldContext.close().catch(() => {});
+
+    void this.applySinkId();
   }
 
   /** Relance context.resume() avec réessais (délais croissants) tant que le contexte reste

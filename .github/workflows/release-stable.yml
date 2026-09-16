@@ -7,17 +7,22 @@ name: Release (stable)
 #
 # La release est créée en DRAFT (invisible publiquement) dès le premier build desktop terminé
 # (electron-builder --publish always crée/complète la release GitHub du tag au fil des jobs), et
-# n'est rendue publique par publish-release qu'une fois TOUS les jobs (5 cibles desktop + l'image
-# Docker) terminés avec succès — voir ce job pour le détail. Si une seule cible échoue, la
-# release reste en draft (visible seulement des collaborateurs du repo) au lieu d'être publiée
-# incomplète.
+# n'est rendue publique par publish-release qu'une fois TOUS les jobs (4 jobs desktop couvrant 5
+# cibles + l'image Docker) terminés avec succès — voir ce job pour le détail. Si une seule cible
+# échoue, la release reste en draft (visible seulement des collaborateurs du repo) au lieu d'être
+# publiée incomplète.
+#
+# 4 jobs desktop et non 5 (mac / linux-x64 / linux-arm64 / win) : win empaquette x64 ET arm64
+# dans le même appel electron-builder, et linux-arm64 attend explicitement linux-x64 — les deux
+# évitent qu'une paire de jobs publiant en parallèle n'écrase le manifeste d'auto-update de
+# l'autre (latest.yml / latest-linux.yml), voir le commentaire sur ces jobs plus bas.
 #
 # Notes de version : générées automatiquement par GitHub à partir des commits/PR depuis la
 # dernière release (mêmes notes sur la page GitHub et dans l'app, l'app lisant le corps de cette
 # même release — voir lib/update/updateService.ts).
 #
 # Artefacts produits par run : Windows (.exe NSIS, x86_64 ET arm64 cross-compilé), macOS (.dmg +
-# .zip + .pkg, arm64 uniquement — voir le commentaire sur la matrice ; .zip requis par
+# .zip + .pkg, arm64 uniquement — voir le commentaire sur release-mac ; .zip requis par
 # electron-updater côté Mac, .pkg conservé pour parité avec l'ancien build Tauri), Linux (.deb +
 # .rpm + .AppImage, x86_64 et arm64), image Docker web multi-arch (linux/amd64 + linux/arm64).
 # Rien n'est signé ni notarisé (aucun certificat Apple Developer / code-signing Windows
@@ -66,32 +71,25 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  release:
+  # Pourquoi 4 jobs distincts plutôt qu'une seule matrice comme avant : `--publish always`
+  # télécharge le manifeste d'auto-update existant sur la release (latest.yml / latest-linux.yml),
+  # y fusionne l'entrée de SA cible, et le ré-upload — un simple read-modify-write, pas une
+  # opération atomique côté GitHub. Deux jobs qui publient CE MÊME fichier en parallèle (ex:
+  # linux x64 et linux arm64 dans l'ancienne matrice) peuvent tous les deux lire l'ancienne
+  # version avant que l'autre n'ait écrit la sienne : le dernier à finir écrase le travail du
+  # premier, et l'auto-update casse silencieusement pour UNE des deux architectures à chaque
+  # release (bug electron-builder documenté de longue date, voir issue #5592 upstream). Deux
+  # parades possibles : ne jamais avoir deux jobs séparés publier le même manifeste en même
+  # temps (linux x64/arm64 ci-dessous, forcées séquentielles via `needs`), ou empaqueter
+  # plusieurs arch en un seul appel electron-builder qui gère lui-même la fusion en interne, sans
+  # jamais toucher deux fois le même fichier depuis deux processus (windows ci-dessous — déjà sur
+  # le même runner de toute façon, voir son commentaire).
+
+  release-mac:
     needs: resolve-version
     if: needs.resolve-version.outputs.should_release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Apple Silicon uniquement : les runners hébergés macos-13 (Intel) sont en pénurie
-          # croissante côté GitHub (fin de vie du parc Intel), avec des files d'attente parfois
-          # très longues — on ne construit donc plus pour x86_64-apple-darwin.
-          - platform: macos-latest
-            builderArgs: "--mac --arm64"
-          - platform: ubuntu-22.04
-            builderArgs: "--linux --x64"
-          # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour
-          # éviter le cross-compile.
-          - platform: ubuntu-24.04-arm
-            builderArgs: "--linux --arm64"
-          - platform: windows-latest
-            builderArgs: "--win --x64"
-          # Pas de runner Windows ARM hébergé : electron-builder empaquette juste des binaires
-          # déjà compilés (aucun code natif à compiler dans ce projet), le cross-packaging arm64
-          # depuis un hôte x64 est donc natif à l'outil, sans toolchain supplémentaire.
-          - platform: windows-latest
-            builderArgs: "--win --arm64"
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
+    # Seul job à publier latest-mac.yml pour cette release : aucun risque de course.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,18 +116,133 @@ jobs:
       - name: Build (main/preload/renderer)
         run: pnpm --filter @resonia/client run electron:build
 
-      # `--publish always` crée (au premier job à terminer) ou complète la release GitHub en
-      # DRAFT du tag "v<version>", et y attache les artefacts de cette cible — publish-release
-      # ne la rend publique qu'une fois tous les jobs de cette matrice ET docker-web terminés.
-      # CSC_IDENTITY_AUTO_DISCOVERY=false : aucun certificat de signature configuré, on
-      # désactive la recherche automatique d'une identité de signature (macOS/Windows) plutôt
-      # que de laisser electron-builder échouer à en trouver une sur le runner CI.
+      # Apple Silicon uniquement : les runners hébergés macos-13 (Intel) sont en pénurie
+      # croissante côté GitHub (fin de vie du parc Intel), avec des files d'attente parfois très
+      # longues qui bloqueraient tout le flux de release — on ne construit donc plus pour
+      # x86_64-apple-darwin, choix assumé plutôt qu'un oubli. CSC_IDENTITY_AUTO_DISCOVERY=false :
+      # aucun certificat de signature configuré, on désactive la recherche automatique d'une
+      # identité de signature plutôt que de laisser electron-builder échouer à en trouver une.
       - name: Build + publication de la release (en draft)
         working-directory: apps/client
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --publish always ${{ matrix.builderArgs }}
+        run: pnpm exec electron-builder --publish always --mac --arm64
+
+  release-linux-x64:
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      - name: Build + publication de la release (en draft)
+        working-directory: apps/client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --linux --x64
+
+  release-linux-arm64:
+    # Volontairement APRÈS release-linux-x64 (jamais en parallèle) : voir le commentaire au-dessus
+    # de release-mac sur la course lors de l'écriture de latest-linux.yml.
+    needs: [resolve-version, release-linux-x64]
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour éviter
+      # le cross-compile.
+      - name: Build + publication de la release (en draft)
+        working-directory: apps/client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --linux --arm64
+
+  release-win:
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Synchroniser apps/client/package.json sur la version de package.json (racine)
+        run: node scripts/set-version.mjs "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+      # x64 ET arm64 dans le MÊME appel electron-builder (donc le même job, le même runner) :
+      # aucun risque de course sur latest.yml, un seul processus l'écrit une seule fois avec les
+      # deux archs déjà fusionnées. Pas de runner Windows ARM hébergé de toute façon : comme il
+      # n'y a aucun code natif à compiler dans ce projet, electron-builder empaquette directement
+      # les binaires Electron arm64 déjà compilés depuis ce runner x64, sans toolchain
+      # supplémentaire — le cross-packaging est natif à l'outil.
+      - name: Build + publication de la release (en draft)
+        working-directory: apps/client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish always --win --x64 --arm64
 
   # Image Docker de la version web (seule plateforme sans téléchargement hors-ligne ni choix de
   # qualité audio : AAC 256 kbps forcé, cf. apps/client/src/lib/audio/qualityOptions.ts). Publiée
@@ -176,7 +289,7 @@ jobs:
   # devient visible publiquement. Une cible en échec laisse la release en draft (visible des
   # seuls collaborateurs) plutôt que de publier une release avec des plateformes manquantes.
   publish-release:
-    needs: [resolve-version, release, docker-web]
+    needs: [resolve-version, release-mac, release-linux-x64, release-linux-arm64, release-win, docker-web]
     if: needs.resolve-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:

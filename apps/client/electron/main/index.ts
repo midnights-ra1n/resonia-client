@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, powerSaveBlocker, screen } from "electron";
+import { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, powerSaveBlocker, screen, session, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { dirname, join } from "node:path";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
@@ -121,6 +121,16 @@ function scheduleSaveWindowState() {
   }, 500);
 }
 
+/** N'ouvre dans le navigateur système QUE des liens http(s) — jamais tel quel une URL arbitraire
+ *  (voir `setWindowOpenHandler`/`will-navigate` ci-dessous) : `shell.openExternal` délègue au
+ *  gestionnaire de protocole par défaut de l'OS, et un schéma non http(s) piloté par un contenu
+ *  distant (lien dans une page de paroles, réponse d'un serveur Navidrome compromis...) pourrait
+ *  y déclencher autre chose qu'une simple ouverture de navigateur (exécution d'un gestionnaire de
+ *  protocole tiers enregistré sur la machine). */
+function openExternalIfHttp(url: string) {
+  if (url.startsWith("http://") || url.startsWith("https://")) void shell.openExternal(url);
+}
+
 async function createWindow() {
   const state = await loadWindowState();
 
@@ -169,6 +179,23 @@ async function createWindow() {
   mainWindow.on("resize", scheduleSaveWindowState);
   mainWindow.on("move", scheduleSaveWindowState);
 
+  // ---- Durcissement navigation (checklist sécurité Electron : "Disable or limit navigation" /
+  // "Disable or limit creation of new windows") — l'app n'a jamais besoin de naviguer hors de son
+  // propre index.html (SPA, React Router en history API, jamais une vraie navigation) ni
+  // d'ouvrir de fenêtre enfant : tout ce qui déclencherait l'un ou l'autre est soit une action
+  // utilisateur légitime (lien externe dans les paroles, le changelog de mise à jour...), qu'on
+  // ouvre dans le navigateur système, soit un comportement qu'on ne veut jamais autoriser. ----
+  const appUrl = process.env["ELECTRON_RENDERER_URL"] ?? `file://${join(__dirname, "../renderer/index.html")}`;
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (url === appUrl) return; // rechargement de la page elle-même, inoffensif
+    event.preventDefault();
+    openExternalIfHttp(url);
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalIfHttp(url);
+    return { action: "deny" };
+  });
+
   // Comportement natif macOS : fermer la fenêtre la masque (l'app reste dans le Dock, la
   // lecture continue) plutôt que de quitter — seul Cmd+Q (before-quit) quitte réellement.
   mainWindow.on("close", (e) => {
@@ -208,7 +235,15 @@ app.on("activate", () => {
  *  effet sur Windows/Linux (pas de barre de menu globale équivalente) — les mêmes icônes de
  *  fenêtre/barre des tâches posées plus haut suffisent là-bas. */
 function installApplicationMenu() {
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin") {
+    // Pas de barre de menu native sur Windows/Linux : le chrome de l'app est entièrement
+    // custom (voir PlayerSectionRight.tsx et consorts, façon Spotify) — le menu par défaut
+    // d'Electron (Fichier/Édition/Affichage/Fenêtre générique, DevTools...) n'a aucune action
+    // utile ici et ne fait qu'ajouter une barre visuelle hors design + un peu de mémoire pour
+    // rien.
+    Menu.setApplicationMenu(null);
+    return;
+  }
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       { label: "Resonia", role: "appMenu" },
@@ -226,6 +261,13 @@ void app.whenReady().then(() => {
   // Uniquement en dev : un .app packagé (electron-builder, `mac.icon`) a déjà la bonne icône de
   // Dock via son propre bundle — appeler ceci en prod n'apporterait rien.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(APP_ICON_PNG);
+
+  // Checklist sécurité Electron ("Verify permission requests"/"Enable Sandboxing") : l'app n'a
+  // besoin d'aucune permission navigateur (caméra, micro, géoloc, notifications...) — refuser
+  // tout par défaut plutôt que de laisser Chromium afficher sa boîte de dialogue native pour une
+  // demande qui, de toute façon, n'a aucun code côté renderer prêt à exploiter l'accord.
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+
   registerIpcHandlers();
   void createWindow();
 });
@@ -358,6 +400,15 @@ function registerIpcHandlers() {
   ipcMain.handle(
     "net:fetch",
     async (_e, url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+      // `net.fetch` tourne dans le process principal, privilégié : sans cette validation, un
+      // renderer compromis (XSS via une réponse serveur, des paroles ou une pochette animée
+      // malveillantes) pourrait demander la lecture d'un `file://` arbitraire sur la machine et
+      // en récupérer le contenu via cet IPC — jamais possible depuis un `fetch()` sandboxé du
+      // renderer lui-même, mais ce pont contourne justement cette protection par conception
+      // (c'est son but pour http/https). On ne l'autorise donc que pour http/https.
+      if (!/^https?:\/\//i.test(url)) {
+        throw new Error(`net:fetch refuse un schéma non http(s) : ${url}`);
+      }
       const res = await net.fetch(url, {
         method: init?.method,
         headers: init?.headers,

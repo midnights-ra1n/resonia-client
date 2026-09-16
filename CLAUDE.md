@@ -15,3 +15,5 @@ L'interface graphique elle devra être très ressemblante à Spotify mais en gar
 
 L'application doit être absolument optimisé de fond en combles pour Safari (WebKit et WebKitGTK) et WebView2. Ainsi que pour un Chromium Embed Framework.
 L'application devra être la plus optimisée et rapide possible. Le moins de consommation CPU, RAM, GPU et sur ordinateur portable le moins de consommation de batterie, je veux l'app la plus discrète.
+
+A chaque ajout de texte, pense bien à adapter aussi chaque traduction.

@@ -5,6 +5,7 @@ import { prefetchScheduler } from "../lib/audio/cache/prefetchScheduler";
 import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
 import { getGaplessEngine } from "../lib/audio/engine/gaplessEngine";
 import type { EngineState } from "../lib/audio/engine/types";
+import { listOutputDevices, type OutputDevice } from "../lib/audio/outputDevices";
 import {
   clearNowPlaying,
   initNowPlaying,
@@ -212,6 +213,14 @@ export interface PlayerState {
   toggleLyrics: () => void;
   showConnect: boolean;
   toggleConnect: () => void;
+  /** Sorties audio déjà connues du système (voir lib/audio/outputDevices) — pas de scan de
+   *  périphériques non appairés, voir le commentaire du module. */
+  outputDevices: OutputDevice[];
+  outputDevicesLoading: boolean;
+  selectedOutputDeviceId: string;
+  outputDeviceSelectionSupported: boolean;
+  refreshOutputDevices: () => Promise<void>;
+  selectOutputDevice: (deviceId: string) => Promise<void>;
 
   showTimeRemaining: boolean;
   toggleTimeDisplay: () => void;
@@ -223,6 +232,10 @@ export interface PlayerState {
 export const usePlayerStore = create<PlayerState>((set, get) => {
   const engine = getGaplessEngine();
   const decodedCache = new DecodedBufferCache();
+
+  // Retombe côté UI sur "default" si la sortie sélectionnée disparaît (périphérique
+  // débranché/déconnecté) — voir GaplessEngine.onOutputDeviceUnavailable.
+  engine.onOutputDeviceUnavailable = () => set({ selectedOutputDeviceId: "default" });
 
   let scrobbledNowPlaying = false;
   let scrobbledSubmission = false;
@@ -959,7 +972,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     showLyrics: false,
     toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
     showConnect: false,
-    toggleConnect: () => set((state) => ({ showConnect: !state.showConnect })),
+    toggleConnect: () => {
+      const opening = !get().showConnect;
+      set((state) => ({ showConnect: !state.showConnect }));
+      if (opening) void get().refreshOutputDevices();
+    },
+    outputDevices: [],
+    outputDevicesLoading: false,
+    selectedOutputDeviceId: "default",
+    outputDeviceSelectionSupported: engine.outputDeviceSelectionSupported,
+    refreshOutputDevices: async () => {
+      set({ outputDevicesLoading: true });
+      try {
+        const devices = await listOutputDevices();
+        set({ outputDevices: devices, outputDevicesLoading: false });
+      } catch (err) {
+        console.warn("[player] Impossible de lister les sorties audio", err);
+        set({ outputDevicesLoading: false });
+      }
+    },
+    selectOutputDevice: async (deviceId: string) => {
+      set({ selectedOutputDeviceId: deviceId });
+      // En cas d'échec (périphérique disparu entre la liste et le clic),
+      // GaplessEngine.onOutputDeviceUnavailable (câblé plus haut) ramène
+      // `selectedOutputDeviceId` à "default" pour refléter le repli réel du moteur.
+      await engine.setOutputDevice(deviceId);
+    },
 
     showTimeRemaining: false,
     toggleTimeDisplay: () =>

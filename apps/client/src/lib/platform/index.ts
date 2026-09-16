@@ -29,6 +29,17 @@ export interface ResoniaBridge {
     start(): Promise<void>;
     stop(): Promise<void>;
   };
+  /** Preuve de concept AirPlay — voir lib/audio/airplay côté renderer et la section AirPlay de
+   *  electron/main/index.ts. Web uniquement pas dispo : pas d'accès socket UDP/multicast brut
+   *  hors d'un process Node, donc `window.resonia` uniquement (isElectron() le garde déjà). */
+  airplay: {
+    discover(): Promise<{ id: string; name: string; host: string; port: number }[]>;
+    connect(host: string, port: number, airplay2: boolean): void;
+    sendPcm(chunk: Uint8Array): void;
+    setVolume(volume: number): Promise<void>;
+    disconnect(): Promise<void>;
+    onEvent(cb: (event: { event: string; message?: string; detail?: unknown }) => void): () => void;
+  };
   update: {
     check(beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null>;
     download(): Promise<void>;

@@ -14,8 +14,16 @@ export default defineConfig({
     // `electron-updater` (et ses propres dépendances transitives) exclu de l'externalisation :
     // bundlé directement dans dist-electron/main/index.js plutôt que laissé en `require()`
     // externe — cohérent avec electron-builder.yml, qui n'embarque volontairement PAS
-    // node_modules dans le paquet final (voir son commentaire "files").
-    plugins: [externalizeDepsPlugin({ exclude: ["electron-updater"] })],
+    // node_modules dans le paquet final (voir son commentaire "files"). Même raison pour
+    // `@lox-audioserver/node-airplay-sender` et `bonjour-service` (envoi AirPlay + découverte
+    // mDNS, voir electron/main/index.ts) : ce sont de VRAIES dépendances runtime du process
+    // principal (contrairement au reste, purement dev-time), toutes deux 100% JS pur (aucun
+    // module natif/node-gyp), donc bundlables sans souci comme electron-updater.
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ["electron-updater", "@lox-audioserver/node-airplay-sender", "bonjour-service"],
+      }),
+    ],
     build: {
       outDir: "dist-electron/main",
       lib: { entry: "electron/main/index.ts" },

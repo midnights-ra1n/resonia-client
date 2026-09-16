@@ -6,6 +6,8 @@ import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
 import { getGaplessEngine } from "../lib/audio/engine/gaplessEngine";
 import type { EngineState } from "../lib/audio/engine/types";
 import { listOutputDevices, type OutputDevice } from "../lib/audio/outputDevices";
+import { AirplayPcmEncoder } from "../lib/audio/airplay/airplayPcmEncoder";
+import { isElectron } from "../lib/platform";
 import {
   clearNowPlaying,
   initNowPlaying,
@@ -222,6 +224,20 @@ export interface PlayerState {
   refreshOutputDevices: () => Promise<void>;
   selectOutputDevice: (deviceId: string) => Promise<void>;
 
+  /** AirPlay — preuve de concept desktop uniquement (voir lib/audio/airplay et la section
+   *  AirPlay de electron/main/index.ts) : découverte mDNS + envoi RAOP, indépendant de la
+   *  liste `outputDevices` ci-dessus (celle-ci ne reflète que ce que l'OS expose déjà comme
+   *  sortie audio classique, jamais AirPlay tant qu'aucune enceinte n'a été ajoutée côté
+   *  système — voir la conversation produit à ce sujet). */
+  airplayDevices: { id: string; name: string; host: string; port: number }[];
+  airplayDevicesLoading: boolean;
+  airplayConnectedId: string | null;
+  airplayConnecting: boolean;
+  airplaySupported: boolean;
+  refreshAirplayDevices: () => Promise<void>;
+  connectAirplayDevice: (deviceId: string, airplay2: boolean) => Promise<void>;
+  disconnectAirplayDevice: () => Promise<void>;
+
   showTimeRemaining: boolean;
   toggleTimeDisplay: () => void;
 
@@ -236,6 +252,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   // Retombe côté UI sur "default" si la sortie sélectionnée disparaît (périphérique
   // débranché/déconnecté) — voir GaplessEngine.onOutputDeviceUnavailable.
   engine.onOutputDeviceUnavailable = () => set({ selectedOutputDeviceId: "default" });
+
+  // AirPlay (preuve de concept) : un seul encodeur PCM réutilisé pour toute la durée du store,
+  // reconstruit (reset()) à chaque (re)connexion pour repartir sans reliquat de
+  // ré-échantillonnage d'une session précédente.
+  const airplayEncoder = new AirplayPcmEncoder((chunk) => window.resonia?.airplay.sendPcm(chunk));
+  engine.onAirplayTapLost = () => {
+    // Le graphe audio a été reconstruit (changement de périphérique de sortie, voir
+    // rebuildAudioGraph) : le tap précédent est mort, mais la connexion réseau AirPlay elle-même
+    // tient toujours côté process principal — on retente juste de rebrancher un nouveau tap
+    // dessus plutôt que de couper toute la session pour un événement qui n'a rien à voir avec
+    // AirPlay.
+    const deviceId = get().airplayConnectedId;
+    if (!deviceId) return;
+    airplayEncoder.reset();
+    void engine.attachAirplayTap((data) => airplayEncoder.push(data.left, data.right, data.sampleRate));
+  };
 
   let scrobbledNowPlaying = false;
   let scrobbledSubmission = false;
@@ -975,7 +1007,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     toggleConnect: () => {
       const opening = !get().showConnect;
       set((state) => ({ showConnect: !state.showConnect }));
-      if (opening) void get().refreshOutputDevices();
+      if (opening) {
+        void get().refreshOutputDevices();
+        if (get().airplaySupported) void get().refreshAirplayDevices();
+      }
     },
     outputDevices: [],
     outputDevicesLoading: false,
@@ -997,6 +1032,47 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       // GaplessEngine.onOutputDeviceUnavailable (câblé plus haut) ramène
       // `selectedOutputDeviceId` à "default" pour refléter le repli réel du moteur.
       await engine.setOutputDevice(deviceId);
+    },
+
+    airplayDevices: [],
+    airplayDevicesLoading: false,
+    airplayConnectedId: null,
+    airplayConnecting: false,
+    // Web uniquement pas dispo : aucun accès socket UDP/multicast brut hors d'un process Node
+    // (voir le commentaire sur `airplay` dans lib/platform/index.ts).
+    airplaySupported: isElectron(),
+    refreshAirplayDevices: async () => {
+      if (!window.resonia) return;
+      set({ airplayDevicesLoading: true });
+      try {
+        const devices = await window.resonia.airplay.discover();
+        set({ airplayDevices: devices, airplayDevicesLoading: false });
+      } catch (err) {
+        console.warn("[player] Découverte AirPlay impossible", err);
+        set({ airplayDevicesLoading: false });
+      }
+    },
+    connectAirplayDevice: async (deviceId: string, airplay2: boolean) => {
+      const resonia = window.resonia;
+      if (!resonia) return;
+      const device = get().airplayDevices.find((d) => d.id === deviceId);
+      if (!device) return;
+      set({ airplayConnecting: true });
+      try {
+        resonia.airplay.connect(device.host, device.port, airplay2);
+        airplayEncoder.reset();
+        await engine.attachAirplayTap((data) => airplayEncoder.push(data.left, data.right, data.sampleRate));
+        set({ airplayConnectedId: deviceId, airplayConnecting: false });
+      } catch (err) {
+        console.warn("[player] Connexion AirPlay impossible", err);
+        set({ airplayConnecting: false });
+      }
+    },
+    disconnectAirplayDevice: async () => {
+      engine.detachAirplayTap();
+      airplayEncoder.reset();
+      set({ airplayConnectedId: null });
+      await window.resonia?.airplay.disconnect();
     },
 
     showTimeRemaining: false,

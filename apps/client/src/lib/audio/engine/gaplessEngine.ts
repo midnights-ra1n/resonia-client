@@ -261,6 +261,76 @@ export class GaplessEngine {
     await this.applySinkId();
   }
 
+  // ---- Tap AirPlay (preuve de concept — voir src/lib/audio/airplay côté renderer) ----
+  private airplayTapNode: AudioWorkletNode | null = null;
+  private airplayTapSilentGain: GainNode | null = null;
+  private airplayTapModuleLoaded = false;
+
+  /** Prévient l'appelant qu'un tap AirPlay actif vient d'être perdu (reconstruction du graphe
+   *  suite à un changement de périphérique de sortie, voir `rebuildAudioGraph`) : le nouveau
+   *  contexte n'a plus aucun noeud de l'ancien tap, tous liés à l'AudioContext fermé. */
+  onAirplayTapLost: (() => void) | null = null;
+
+  /** Branche un AudioWorkletNode en DÉRIVATION additive sur les deux sorties existantes
+   *  (`bufferMasterGain`, `nativeGain`) — jamais en coupant/réinsérant une connexion
+   *  existante : la lecture normale garde EXACTEMENT le même graphe, avec juste une prise
+   *  supplémentaire en aval. Le worklet ne fait que ré-emballer les échantillons bruts (voir
+   *  airplayTapProcessor.worklet.js) ; le rééchantillonnage/encodage PCM et l'envoi IPC vers le
+   *  process principal sont à la charge de l'appelant, jamais du thread audio. */
+  async attachAirplayTap(
+    onChunk: (data: { left: Float32Array; right: Float32Array; sampleRate: number }) => void,
+  ): Promise<void> {
+    this.detachAirplayTap();
+    if (!this.airplayTapModuleLoaded) {
+      // Servi depuis `public/` (copié tel quel, jamais transformé par le bundler) plutôt que
+      // résolu via `new URL(..., import.meta.url)` : ce pattern d'émission d'asset au build,
+      // fiable avec Rollup classique, ne copie PAS le fichier dans la sortie buildée avec le
+      // bundler Rolldown utilisé ici (aucune erreur, juste une URL qui pointe vers un fichier
+      // absent une fois empaqueté — silencieux jusqu'au premier test réel). `BASE_URL` reflète
+      // le `base` Vite configuré (`/` en web, `./` pour le renderer Electron, voir
+      // electron.vite.config.ts) pour rester correct dans les deux contextes.
+      const url = `${import.meta.env.BASE_URL}airplayTapProcessor.worklet.js`;
+      await this.context.audioWorklet.addModule(url);
+      this.airplayTapModuleLoaded = true;
+    }
+    const node = new AudioWorkletNode(this.context, "airplay-tap-processor", {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 2,
+    });
+    node.port.onmessage = (e) => onChunk(e.data);
+    // Un AudioWorkletNode dont la sortie n'est reliée à rien peut voir `process()` cesser
+    // d'être appelé selon les navigateurs — un gain à 0 vers `destination` garde le noeud
+    // "actif" sans ajouter le moindre son audible.
+    const silent = this.context.createGain();
+    silent.gain.value = 0;
+    node.connect(silent);
+    silent.connect(this.context.destination);
+    this.bufferMasterGain.connect(node);
+    this.nativeGain.connect(node);
+    this.airplayTapNode = node;
+    this.airplayTapSilentGain = silent;
+  }
+
+  detachAirplayTap(): void {
+    if (!this.airplayTapNode) return;
+    try {
+      this.bufferMasterGain.disconnect(this.airplayTapNode);
+    } catch {
+      /* déjà déconnecté (ex: graphe reconstruit entre-temps) */
+    }
+    try {
+      this.nativeGain.disconnect(this.airplayTapNode);
+    } catch {
+      /* idem */
+    }
+    this.airplayTapNode.port.onmessage = null;
+    this.airplayTapNode.disconnect();
+    this.airplayTapSilentGain?.disconnect();
+    this.airplayTapNode = null;
+    this.airplayTapSilentGain = null;
+  }
+
   private async applySinkId(): Promise<void> {
     const ctx = this.context as AudioContext & { setSinkId?: (id: string) => Promise<void> };
     if (typeof ctx.setSinkId !== "function") return;
@@ -482,6 +552,13 @@ export class GaplessEngine {
   private rebuildAudioGraph() {
     if (!this.trackState) return; // rien ne joue : le prochain loadAndPlay/resume repartira sur un graphe déjà à jour
 
+    // Le tap AirPlay (s'il est actif) référence des noeuds liés à l'ancien contexte sur le
+    // point de fermer — jamais récupérable tel quel (voir attachAirplayTap) : on le détache et
+    // on prévient l'appelant plutôt que de laisser un AudioWorkletNode mort silencieusement.
+    const hadAirplayTap = this.airplayTapNode !== null;
+    this.detachAirplayTap();
+    this.airplayTapModuleLoaded = false; // addModule() est par-AudioContext, à refaire sur le nouveau
+
     const oldContext = this.context;
     const oldNativeAudio = this.nativeAudio;
     const volume = this.bufferMasterGain.gain.value;
@@ -564,6 +641,7 @@ export class GaplessEngine {
     void oldContext.close().catch(() => {});
 
     void this.applySinkId();
+    if (hadAirplayTap) this.onAirplayTapLost?.();
   }
 
   /** Relance context.resume() avec réessais (délais croissants) tant que le contexte reste

@@ -77,6 +77,7 @@ export const Bug = wrap(IconBugReport);
 export const CaretDown = wrap(IconKeyboardArrowDown);
 export const CaretLeft = wrap(IconChevronLeft);
 export const CaretRight = wrap(IconChevronRight);
+export const Cast = wrap(IconCast);
 export const ChartBar = wrap(IconBarChart);
 export const Check = wrap(IconCheck);
 export const CircleNotch = wrap(IconProgressActivity);

@@ -1,5 +1,9 @@
 import { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, powerSaveBlocker, screen, session, shell } from "electron";
 import { autoUpdater } from "electron-updater";
+import { Bonjour } from "bonjour-service";
+import type { Service as BonjourService } from "bonjour-service";
+import { start as startAirplaySender } from "@lox-audioserver/node-airplay-sender";
+import type { LoxAirplaySender } from "@lox-audioserver/node-airplay-sender";
 import { dirname, join } from "node:path";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
@@ -489,5 +493,113 @@ function registerIpcHandlers() {
 
   ipcMain.handle("update:install", () => {
     autoUpdater.quitAndInstall();
+  });
+
+  // ---- AirPlay (preuve de concept — voir src/lib/audio/airplay côté renderer pour le
+  // prélèvement audio Web Audio -> PCM -> IPC). Découverte mDNS (_raop._tcp, le service que
+  // TOUT récepteur AirPlay annonce pour la réception audio RAOP, v1 comme v2) via
+  // `bonjour-service` (implémentation mDNS pure JS — fonctionne sans le service Bonjour
+  // d'Apple installé, y compris sur Windows), puis envoi RAOP via
+  // `@lox-audioserver/node-airplay-sender` (pure JS aussi, aucun module natif). Les deux
+  // tournent forcément côté process principal : un renderer sandboxé n'a pas accès aux sockets
+  // UDP/multicast bruts qu'exigent la découverte et le flux RAOP. Un seul récepteur actif à la
+  // fois pour cette preuve de concept — pas de synchronisation multi-pièces. ----
+  let airplayBonjour: Bonjour | null = null;
+  let airplaySender: LoxAirplaySender | null = null;
+
+  function getAirplayBonjour(): Bonjour {
+    if (!airplayBonjour) {
+      // `errorCallback` : sans lui, `Server` retombe sur `(err) => { throw err }` (défaut de la
+      // lib) — une erreur socket (permission réseau local refusée, interface indisponible...)
+      // planterait le process principal en silence côté utilisateur (aucune UI ne verrait
+      // jamais l'exception). Les `warning` (échec d'ajout à un groupe multicast sur UNE
+      // interface parmi plusieurs, típiquement inoffensif) ne remontent nulle part par défaut
+      // dans bonjour-service : on les logge nous-mêmes sur l'EventEmitter mDNS sous-jacent pour
+      // pouvoir diagnostiquer une découverte qui ne trouve rien (voir le retour utilisateur).
+      airplayBonjour = new Bonjour({}, (err: unknown) => console.error("[airplay] Erreur mDNS", err));
+      const rawMdns = (airplayBonjour as unknown as { server: { mdns: NodeJS.EventEmitter } }).server.mdns;
+      rawMdns.on("warning", (err: unknown) => console.warn("[airplay] Avertissement mDNS", err));
+      rawMdns.on("ready", () => console.log("[airplay] Socket mDNS prêt (multicast rejoint)"));
+    }
+    return airplayBonjour;
+  }
+
+  interface AirplayDiscovered {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+  }
+
+  ipcMain.handle("airplay:discover", async (): Promise<AirplayDiscovered[]> => {
+    const bonjour = getAirplayBonjour();
+    const found = new Map<string, AirplayDiscovered>();
+
+    function displayNameFor(service: BonjourService): string {
+      // Nom d'instance mDNS typique : "AABBCCDDEEFF@Salon._raop._tcp.local" — le préfixe
+      // hexadécimal avant "@" est un identifiant matériel, jamais destiné à l'affichage.
+      const displayName = service.name.replace(/^[0-9A-Fa-f]+@/, "");
+      return displayName || service.name;
+    }
+
+    // `_raop._tcp` : service RAOP historique, celui dont ce client a besoin (host+port RTSP)
+    // pour émettre — annoncé par tout récepteur compatible RAOP, AirPlay 1 comme 2.
+    // `_airplay._tcp` : service de contrôle/découverte AirPlay 2 — certains récepteurs
+    // (notamment des tiers non-Apple) n'annoncent QUE celui-ci sans `_raop._tcp` du tout ;
+    // scanné en parallèle uniquement pour journaliser ce cas et aider au diagnostic (voir le
+    // commentaire plus bas), jamais utilisé seul pour construire une entrée connectable — cette
+    // preuve de concept ne sait parler QUE RAOP, pas le protocole de contrôle AirPlay 2 complet.
+    let raopCount = 0;
+    let airplayOnlyCount = 0;
+    const raopBrowser = bonjour.find({ type: "raop", protocol: "tcp" }, (service: BonjourService) => {
+      raopCount++;
+      const host = service.referer?.address ?? service.addresses?.[0];
+      if (!host) {
+        console.warn("[airplay] Service _raop._tcp sans adresse résolue, ignoré", service.name);
+        return;
+      }
+      const id = `${host}:${service.port}`;
+      found.set(id, { id, name: displayNameFor(service), host, port: service.port });
+    });
+    const airplayBrowser = bonjour.find({ type: "airplay", protocol: "tcp" }, () => {
+      airplayOnlyCount++;
+    });
+
+    // Fenêtre de scan fixe plutôt qu'un flux d'événements continu : suffisant pour une preuve
+    // de concept (le réseau local d'un utilisateur a rarement plus de quelques récepteurs), et
+    // bien plus simple côté renderer (un seul aller-retour au lieu d'un abonnement à maintenir).
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    raopBrowser.stop();
+    airplayBrowser.stop();
+    console.log(
+      `[airplay] Scan terminé : ${raopCount} service(s) _raop._tcp, ${airplayOnlyCount} service(s) _airplay._tcp au total.`,
+    );
+    return Array.from(found.values());
+  });
+
+  ipcMain.on(
+    "airplay:connect",
+    (_e, host: string, port: number, airplay2: boolean) => {
+      airplaySender?.stop();
+      airplaySender = startAirplaySender({ host, port, airplay2, name: "Resonia" }, (event) => {
+        mainWindow?.webContents.send("airplay:event", event);
+      });
+    },
+  );
+
+  // `.on`/`ipcRenderer.send` (fire-and-forget), pas `.handle`/`invoke` : ce canal reçoit un
+  // chunk PCM plusieurs fois par seconde tant qu'un flux AirPlay est actif — attendre un
+  // aller-retour de promesse par chunk ajouterait une latence inutile sur le chemin audio.
+  ipcMain.on("airplay:sendPcm", (_e, chunk: Uint8Array) => {
+    airplaySender?.sendPcm(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+  });
+
+  ipcMain.handle("airplay:setVolume", (_e, volume: number) => {
+    airplaySender?.setVolume(volume);
+  });
+
+  ipcMain.handle("airplay:disconnect", () => {
+    airplaySender?.stop();
+    airplaySender = null;
   });
 }

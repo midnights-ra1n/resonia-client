@@ -56,6 +56,18 @@ mac:
     - target: pkg
   icon: build/icon.icns
   category: public.app-category.music
+  # Découverte AirPlay (preuve de concept, voir electron/main/index.ts) : macOS affiche bien
+  # l'invite "réseau local" sans ces clés (le socket UDP/multicast brut ouvert par notre lib
+  # mDNS pure JS ne passe pas par l'API Bonjour native d'Apple, seule vraiment filtrée par
+  # `NSBonjourServices`), donc ce n'est probablement pas la cause d'une découverte qui ne trouve
+  # rien — mais ce sont les clés attendues par Apple pour ce genre d'usage (conformité/
+  # App Store), à garder même si elles ne s'avèrent pas être le correctif du problème observé.
+  extendInfo:
+    NSLocalNetworkUsageDescription: >-
+      Resonia a besoin d'accéder au réseau local pour découvrir les enceintes AirPlay.
+    NSBonjourServices:
+      - _raop._tcp
+      - _airplay._tcp
   # `dir` reste utilisable en local via `electron-builder --dir` pour un `.app` non signé
   # rapide à inspecter au Finder, sans repasser par toute la matrice ci-dessus.
 

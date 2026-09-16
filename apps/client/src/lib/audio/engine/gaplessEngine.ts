@@ -140,6 +140,16 @@ export class GaplessEngine {
    *  utilisateur ici, `nativeGain` ne sert qu'au micro-fondu natif→buffer. */
   private nativeGain: GainNode;
 
+  /** Noeud intercalé entre `bufferMasterGain`/`nativeGain` et `context.destination` (donc
+   *  APRÈS le tap AirPlay, voir `attachAirplayTap` qui pioche directement sur ces deux
+   *  premiers) — sert UNIQUEMENT à couper la sortie audible locale (haut-parleurs de l'appareil)
+   *  sans toucher au signal envoyé vers AirPlay ni à l'automation de volume utilisateur portée
+   *  par `bufferMasterGain`/`nativeAudio.volume`. Sans ce noeud séparé, muter la sortie locale
+   *  via ces gains existants aurait aussi muté le flux AirPlay, les deux partageant le même
+   *  signal en amont. */
+  private localOutputGain: GainNode;
+  private localOutputMuted = false;
+
   /** Sur WebKit (Safari et la webview macOS de l'app de bureau — WKWebView), l'intégration Now
    *  Playing (MPNowPlayingInfoCenter/MPRemoteCommandCenter) ne reste active que tant qu'un vrai
    *  élément <audio>/<video> est dans l'état "playing" — `navigator.mediaSession.playbackState`
@@ -298,7 +308,17 @@ export class GaplessEngine {
       numberOfOutputs: 1,
       channelCount: 2,
     });
-    node.port.onmessage = (e) => onChunk(e.data);
+    // Compteur allégé (plus de scan par échantillon — coûteux à ce rythme d'appel, retiré une
+    // fois le pipeline audio validé bout en bout, voir historique) : sert juste à confirmer que
+    // le worklet reçoit toujours des messages si un souci de flux est de nouveau suspecté.
+    let tapMessageCount = 0;
+    node.port.onmessage = (e) => {
+      tapMessageCount++;
+      if (tapMessageCount === 1 || tapMessageCount % 200 === 0) {
+        console.log(`[airplay-tap] message #${tapMessageCount}`);
+      }
+      onChunk(e.data);
+    };
     // Un AudioWorkletNode dont la sortie n'est reliée à rien peut voir `process()` cesser
     // d'être appelé selon les navigateurs — un gain à 0 vers `destination` garde le noeud
     // "actif" sans ajouter le moindre son audible.
@@ -346,13 +366,15 @@ export class GaplessEngine {
   constructor() {
     this.context = createAudioContext();
     this.bufferMasterGain = this.context.createGain();
-    this.bufferMasterGain.connect(this.context.destination);
+    this.localOutputGain = this.context.createGain();
+    this.localOutputGain.connect(this.context.destination);
+    this.bufferMasterGain.connect(this.localOutputGain);
 
     this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
-    this.nativeGain.connect(this.context.destination);
+    this.nativeGain.connect(this.localOutputGain);
     this.applyRateToNativeAudio();
 
     this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
@@ -593,13 +615,19 @@ export class GaplessEngine {
     this.lastWatchdogContextTime = this.context.currentTime;
     this.bufferMasterGain = this.context.createGain();
     this.bufferMasterGain.gain.setValueAtTime(volume, this.context.currentTime);
-    this.bufferMasterGain.connect(this.context.destination);
+    this.localOutputGain = this.context.createGain();
+    // Préserve l'état muet/non-muet de la sortie locale (voir setLocalOutputMuted) à travers la
+    // reconstruction — sans ça, une reconnexion AirPlay active se retrouverait avec le Mac de
+    // nouveau audible après un simple changement de périphérique de sortie sans rapport.
+    this.localOutputGain.gain.setValueAtTime(this.localOutputMuted ? 0 : 1, this.context.currentTime);
+    this.localOutputGain.connect(this.context.destination);
+    this.bufferMasterGain.connect(this.localOutputGain);
 
     this.nativeAudio = this.createNativeAudioElement();
     const mediaSource = this.context.createMediaElementSource(this.nativeAudio);
     this.nativeGain = this.context.createGain();
     mediaSource.connect(this.nativeGain);
-    this.nativeGain.connect(this.context.destination);
+    this.nativeGain.connect(this.localOutputGain);
     this.applyRateToNativeAudio();
 
     this.trackState = null;
@@ -782,6 +810,21 @@ export class GaplessEngine {
     // l'élément est ignoré une fois routé vers Web Audio, donc ceci n'a aucun effet double.
     this.nativeAudio.volume = clamped;
     this.nativeAudio.muted = clamped <= 0;
+  }
+
+  /** Coupe/rétablit UNIQUEMENT la sortie audible locale (haut-parleurs/casque de l'appareil),
+   *  sans toucher à `bufferMasterGain`/`nativeGain` ni à leur automation de volume — voir le
+   *  commentaire de `localOutputGain`. Utilisé pour qu'une connexion AirPlay ne fasse pas
+   *  entendre la même piste deux fois avec un décalage (source de l'écho local+réseau signalé
+   *  à l'usage) : le flux AirPlay, lui, continue de recevoir le signal complet puisque le tap le
+   *  pioche EN AMONT de ce noeud. Court fondu (même durée que SWAP_FADE_SECONDS) plutôt qu'un
+   *  gain instantané, pour éviter un clic audible à la coupure/reprise. */
+  setLocalOutputMuted(muted: boolean) {
+    this.localOutputMuted = muted;
+    const now = this.context.currentTime;
+    this.localOutputGain.gain.cancelScheduledValues(now);
+    this.localOutputGain.gain.setValueAtTime(this.localOutputGain.gain.value, now);
+    this.localOutputGain.gain.linearRampToValueAtTime(muted ? 0 : 1, now + SWAP_FADE_SECONDS);
   }
 
   get playbackRate(): number {

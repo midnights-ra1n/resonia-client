@@ -5,6 +5,7 @@ import type { Service as BonjourService } from "bonjour-service";
 import { start as startAirplaySender } from "@lox-audioserver/node-airplay-sender";
 import type { LoxAirplaySender } from "@lox-audioserver/node-airplay-sender";
 import { dirname, join } from "node:path";
+import { networkInterfaces } from "node:os";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 
@@ -542,6 +543,17 @@ function registerIpcHandlers() {
       return displayName || service.name;
     }
 
+    // Si le récepteur AirPlay intégré de macOS est activé (Réglages > Partage), CETTE machine
+    // s'annonce elle-même en `_raop._tcp` — sans ce filtre elle apparaîtrait dans sa propre
+    // liste Connect, un choix qui n'a jamais de sens (streamer vers soi-même) et qui échoue de
+    // toute façon (port RAOP non écouté par le récepteur système d'Apple).
+    const localAddresses = new Set(
+      Object.values(networkInterfaces())
+        .flat()
+        .filter((iface): iface is NonNullable<typeof iface> => !!iface)
+        .map((iface) => iface.address),
+    );
+
     // `_raop._tcp` : service RAOP historique, celui dont ce client a besoin (host+port RTSP)
     // pour émettre — annoncé par tout récepteur compatible RAOP, AirPlay 1 comme 2.
     // `_airplay._tcp` : service de contrôle/découverte AirPlay 2 — certains récepteurs
@@ -553,9 +565,30 @@ function registerIpcHandlers() {
     let airplayOnlyCount = 0;
     const raopBrowser = bonjour.find({ type: "raop", protocol: "tcp" }, (service: BonjourService) => {
       raopCount++;
-      const host = service.referer?.address ?? service.addresses?.[0];
+      // `addresses` (résolu via les enregistrements A/AAAA que l'appareil publie lui-même pour
+      // son propre nom d'hôte) est la source fiable — c'est ce qu'un vrai client RAOP est censé
+      // utiliser (SRV -> hostname -> A/AAAA), CONTRAIREMENT à `referer.address` (l'adresse
+      // SOURCE du paquet mDNS reçu, donc dépendante du chemin réseau emprunté) : avec un VPN
+      // actif, ce dernier peut pointer vers l'interface du VPN plutôt que vers l'appareil réel.
+      // Mais `addresses` mélange IPv4 ET IPv6 SANS ordre de préférence garanti (souvent IPv6
+      // d'abord en pratique, y compris des adresses "link-local" fe80:: inutilisables telles
+      // quelles) — le socket UDP du sender RAOP est IPv4 uniquement, lui envoyer une IPv6
+      // échoue silencieusement en boucle (`send EINVAL`) sans jamais lever d'erreur visible côté
+      // "connexion établie". On filtre donc explicitement une adresse IPv4 dans `addresses`,
+      // repli sur `referer.address` seulement si l'appareil n'en publie vraiment aucune.
+      const ipv4Pattern = /^\d{1,3}(\.\d{1,3}){3}$/;
+      const host = service.addresses?.find((addr) => ipv4Pattern.test(addr)) ?? service.referer?.address;
+      console.log("[airplay] Service _raop._tcp", service.name, {
+        addresses: service.addresses,
+        refererAddress: service.referer?.address,
+        chosen: host,
+      });
       if (!host) {
         console.warn("[airplay] Service _raop._tcp sans adresse résolue, ignoré", service.name);
+        return;
+      }
+      if (localAddresses.has(host)) {
+        console.log("[airplay] Service _raop._tcp ignoré (c'est cette machine elle-même)", service.name, host);
         return;
       }
       const id = `${host}:${service.port}`;
@@ -579,18 +612,51 @@ function registerIpcHandlers() {
 
   ipcMain.on(
     "airplay:connect",
-    (_e, host: string, port: number, airplay2: boolean) => {
+    (_e, host: string, port: number, airplay2: boolean, initialVolume: number) => {
       airplaySender?.stop();
-      airplaySender = startAirplaySender({ host, port, airplay2, name: "Resonia" }, (event) => {
-        mainWindow?.webContents.send("airplay:event", event);
-      });
+      airplaySender = startAirplaySender(
+        {
+          host,
+          port,
+          airplay2,
+          // Sans ce champ, la lib retombe sur son propre défaut (50/100) — bien plus bas que le
+          // volume réel de l'app au moment de la connexion (voir connectAirplayDevice côté
+          // playerStore.ts, qui envoie le volume courant du lecteur), perçu comme "le son sort
+          // très bas" alors que rien n'est cassé côté flux audio lui-même.
+          volume: initialVolume,
+          name: "Resonia",
+          debug: true,
+          // Réduit le buffer de gigue par défaut de la lib (`packets_in_buffer: 260`, ~2,1s —
+          // voir son utils/config.ts) à environ 1s : coupe d'autant le délai entre une action
+          // (pause, seek) côté app et son effet réel sur le récepteur. Compromis assumé : moins
+          // de marge pour absorber les à-coups du réseau local, donc plus sensible à un Wi-Fi
+          // chargé — à remonter si ça aggrave les micro-coupures plutôt que la latence perçue.
+          config: { packets_in_buffer: 130, stream_latency: 100 },
+          // Sans ce callback, TOUS les messages de diagnostic internes de la lib (code
+          // d'erreur renvoyé par le récepteur, backoff, contenu du TLV de pairing...) partent
+          // dans le vide — silencieux, jamais vus nulle part. Indispensable pour diagnostiquer
+          // un échec de pairing AirPlay 2 (voir "pair_failed").
+          log: (level, message, data) => console.log(`[airplay:sender:${level}]`, message, data ?? ""),
+        },
+        (event) => {
+          console.log("[airplay:event]", event);
+          mainWindow?.webContents.send("airplay:event", event);
+        },
+      );
     },
   );
 
   // `.on`/`ipcRenderer.send` (fire-and-forget), pas `.handle`/`invoke` : ce canal reçoit un
   // chunk PCM plusieurs fois par seconde tant qu'un flux AirPlay est actif — attendre un
-  // aller-retour de promesse par chunk ajouterait une latence inutile sur le chemin audio.
+  // aller-retour de promesse par chunk ajouterait une latence inutile sur le chemin audio. Pas
+  // de scan par échantillon ici (retiré après diagnostic initial, voir historique) : coûteux à
+  // ce rythme d'appel et sans intérêt une fois le pipeline audio validé bout en bout.
+  let sendPcmCount = 0;
   ipcMain.on("airplay:sendPcm", (_e, chunk: Uint8Array) => {
+    sendPcmCount++;
+    if (sendPcmCount === 1 || sendPcmCount % 200 === 0) {
+      console.log(`[airplay:sendPcm] appel #${sendPcmCount}, ${chunk.byteLength} octets`);
+    }
     airplaySender?.sendPcm(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
   });
 
@@ -601,5 +667,14 @@ function registerIpcHandlers() {
   ipcMain.handle("airplay:disconnect", () => {
     airplaySender?.stop();
     airplaySender = null;
+  });
+
+  // Vide le buffer circulaire de la lib (~2,1s d'audio bufferisés en avance pour absorber la
+  // gigue réseau, voir config.ts:packets_in_buffer) sans fermer la session RTSP — appelé sur
+  // pause côté playerStore.ts. Sans ça, une pause laisse ces ~2s d'audio déjà en file continuer
+  // de jouer sur le récepteur (puis du silence zero-fill jusqu'à la reprise), perçu comme "le
+  // son met du temps à s'arrêter".
+  ipcMain.handle("airplay:reset", () => {
+    airplaySender?.reset();
   });
 }

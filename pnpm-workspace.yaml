@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   electron-winstaller: true
   esbuild: true
+patchedDependencies:
+  '@lox-audioserver/node-airplay-sender@0.4.10': patches/@lox-audioserver__node-airplay-sender@0.4.10.patch

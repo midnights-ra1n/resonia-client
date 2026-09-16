@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Cast, Check, CircleNotch, SpeakerHigh, X } from "../../components/icons";
 import { usePlayerStore } from "../../stores/playerStore";
 
@@ -11,8 +10,10 @@ import { usePlayerStore } from "../../stores/playerStore";
  *  Section AirPlay séparée, desktop uniquement (voir lib/audio/airplay) : PREUVE DE CONCEPT —
  *  découverte mDNS + envoi RAOP direct depuis Resonia, indépendant de la liste ci-dessus (une
  *  enceinte AirPlay non ajoutée côté système n'apparaît jamais dans `outputDevices`, voir son
- *  commentaire). Non testé en conditions réelles, qualité audio dégradée (ré-échantillonnage
- *  linéaire, voir airplayPcmEncoder.ts), AirPlay 2 "best-effort" côté bibliothèque. */
+ *  commentaire). Mode AirPlay 2 volontairement absent : son pairing dépend du chiffrement
+ *  `chacha20-poly1305`, absent du runtime crypto de Node embarqué par Electron (vérifié via
+ *  `ELECTRON_RUN_AS_NODE=1` — `require('crypto').getCiphers()` ne le liste pas) — jamais
+ *  connectable, quoi qu'on fasse côté app. Seul le RAOP classique (AirPlay 1) est proposé. */
 export function ConnectMenu() {
   const supported = usePlayerStore((s) => s.outputDeviceSelectionSupported);
   const devices = usePlayerStore((s) => s.outputDevices);
@@ -28,11 +29,6 @@ export function ConnectMenu() {
   const refreshAirplayDevices = usePlayerStore((s) => s.refreshAirplayDevices);
   const connectAirplayDevice = usePlayerStore((s) => s.connectAirplayDevice);
   const disconnectAirplayDevice = usePlayerStore((s) => s.disconnectAirplayDevice);
-
-  // Pas de détection protocolaire AirPlay 1 vs 2 dans cette preuve de concept (voir le
-  // commentaire de découverte côté electron/main/index.ts) : un interrupteur manuel, à essayer
-  // si la connexion échoue avec le réglage par défaut.
-  const [airplay2Mode, setAirplay2Mode] = useState(false);
 
   return (
     <div
@@ -120,7 +116,7 @@ export function ConnectMenu() {
               {airplayDevices.map((device) => (
                 <li key={device.id}>
                   <button
-                    onClick={() => void connectAirplayDevice(device.id, airplay2Mode)}
+                    onClick={() => void connectAirplayDevice(device.id, false)}
                     disabled={airplayConnecting}
                     className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[12px] text-left text-neutral-300 hover:bg-neutral-700/40 transition-colors disabled:opacity-50"
                     title={`${device.host}:${device.port}`}
@@ -133,16 +129,6 @@ export function ConnectMenu() {
               ))}
             </ul>
           )}
-
-          <label className="flex items-center justify-between gap-2 px-1 text-[11px] text-neutral-400">
-            <span>Mode AirPlay 2 (HomePod, Apple TV récents)</span>
-            <input
-              type="checkbox"
-              checked={airplay2Mode}
-              onChange={(e) => setAirplay2Mode(e.target.checked)}
-              className="accent-green-400"
-            />
-          </label>
         </>
       )}
 

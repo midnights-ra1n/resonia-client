@@ -22,6 +22,7 @@ export function PlayerSectionRight() {
   const toggleLyrics = usePlayerStore((s) => s.toggleLyrics);
   const showConnect = usePlayerStore((s) => s.showConnect);
   const toggleConnect = usePlayerStore((s) => s.toggleConnect);
+  const airplayConnectedId = usePlayerStore((s) => s.airplayConnectedId);
   const showDebugPanel = usePlayerStore((s) => s.showDebugPanel);
   const toggleDebugPanel = usePlayerStore((s) => s.toggleDebugPanel);
   const devModeEnabled = useSettingsStore((s) => s.devModeEnabled);
@@ -137,11 +138,11 @@ export function PlayerSectionRight() {
       <div className="relative" ref={connectMenuRef}>
         <button
           onClick={toggleConnect}
-          className={`transition-colors ${showConnect
+          className={`transition-colors ${showConnect || airplayConnectedId
             ? "text-green-400"
             : "text-neutral-400 hover:text-white"
             }`}
-          title="Connect"
+          title={airplayConnectedId ? "Connect (AirPlay actif)" : "Connect"}
         >
           <Plug size={18} />
         </button>

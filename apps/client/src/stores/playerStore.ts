@@ -268,6 +268,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     airplayEncoder.reset();
     void engine.attachAirplayTap((data) => airplayEncoder.push(data.left, data.right, data.sampleRate));
   };
+  // La session RAOP peut se terminer côté récepteur sans qu'on ait rien demandé (réseau coupé,
+  // enceinte éteinte, pairing qui échoue en cours de route...) — sans cette écoute, la sortie
+  // locale resterait mutée indéfiniment (voir setLocalOutputMuted dans connectAirplayDevice) et
+  // l'app deviendrait silencieuse sans que rien dans l'UI n'explique pourquoi.
+  window.resonia?.airplay.onEvent((event) => {
+    if (event.event !== "session-ended") return;
+    if (!get().airplayConnectedId) return;
+    console.warn("[player] Session AirPlay terminée de façon inattendue", event);
+    engine.detachAirplayTap();
+    engine.setLocalOutputMuted(false);
+    airplayEncoder.reset();
+    set({ airplayConnectedId: null });
+  });
 
   let scrobbledNowPlaying = false;
   let scrobbledSubmission = false;
@@ -748,6 +761,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       }
       if (isPlaying) {
         engine.pause();
+        if (get().airplayConnectedId) void window.resonia?.airplay.reset();
         set({ isPlaying: false });
         setNowPlayingPlaybackState("paused");
         setNowPlayingPositionState(engine.duration, engine.currentTime, true, engine.playbackRate);
@@ -760,7 +774,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
     setPlaying: (playing) => {
       if (playing) engine.resume();
-      else engine.pause();
+      else {
+        engine.pause();
+        if (get().airplayConnectedId) void window.resonia?.airplay.reset();
+      }
       set({ isPlaying: playing });
       setNowPlayingPlaybackState(playing ? "playing" : "paused");
       setNowPlayingPositionState(engine.duration, engine.currentTime, true, engine.playbackRate);
@@ -900,6 +917,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       engine.setVolume(volume);
       set({ volume, isMuted: volume === 0 });
       storage.set(VOLUME_STORAGE_KEY, volume);
+      // Garde le volume du récepteur AirPlay aligné sur celui de l'app tant qu'une session est
+      // active — sans ça, un changement de volume dans l'UI n'aurait aucun effet perceptible
+      // côté enceinte AirPlay (voir aussi le volume initial envoyé par connectAirplayDevice).
+      if (get().airplayConnectedId) void window.resonia?.airplay.setVolume(Math.round(volume * 100));
     },
     toggleMute: () =>
       set((state) => {
@@ -1059,9 +1080,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (!device) return;
       set({ airplayConnecting: true });
       try {
-        resonia.airplay.connect(device.host, device.port, airplay2);
+        resonia.airplay.connect(device.host, device.port, airplay2, Math.round(get().volume * 100));
         airplayEncoder.reset();
         await engine.attachAirplayTap((data) => airplayEncoder.push(data.left, data.right, data.sampleRate));
+        // Façon Spotify Connect : une fois connecté, le son ne sort QUE de l'enceinte AirPlay —
+        // sans ça, le Mac et l'enceinte jouaient la même piste avec un décalage réseau audible
+        // comme un écho (retour utilisateur). Le tap AirPlay lui-même n'est pas affecté, voir
+        // GaplessEngine.setLocalOutputMuted.
+        engine.setLocalOutputMuted(true);
         set({ airplayConnectedId: deviceId, airplayConnecting: false });
       } catch (err) {
         console.warn("[player] Connexion AirPlay impossible", err);
@@ -1070,6 +1096,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
     disconnectAirplayDevice: async () => {
       engine.detachAirplayTap();
+      engine.setLocalOutputMuted(false);
       airplayEncoder.reset();
       set({ airplayConnectedId: null });
       await window.resonia?.airplay.disconnect();

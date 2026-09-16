@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@lox-audioserver/node-airplay-sender@0.4.10': 9b4abc18e863c2ea127c942cc4119ddf9779956a0a8dc9c9c19a8f6bca67e336
+
 importers:
 
   .:
@@ -25,7 +28,7 @@ importers:
     dependencies:
       '@lox-audioserver/node-airplay-sender':
         specifier: ^0.4.10
-        version: 0.4.10
+        version: 0.4.10(patch_hash=9b4abc18e863c2ea127c942cc4119ddf9779956a0a8dc9c9c19a8f6bca67e336)
       '@material-symbols/svg-400':
         specifier: ^0.47.2
         version: 0.47.2
@@ -3434,7 +3437,7 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
-  '@lox-audioserver/node-airplay-sender@0.4.10':
+  '@lox-audioserver/node-airplay-sender@0.4.10(patch_hash=9b4abc18e863c2ea127c942cc4119ddf9779956a0a8dc9c9c19a8f6bca67e336)':
     dependencies:
       '@noble/ed25519': 1.7.5
       async: 3.2.6

@@ -45,13 +45,14 @@ contextBridge.exposeInMainWorld("resonia", {
   airplay: {
     discover: (): Promise<{ id: string; name: string; host: string; port: number }[]> =>
       ipcRenderer.invoke("airplay:discover"),
-    connect: (host: string, port: number, airplay2: boolean): void =>
-      ipcRenderer.send("airplay:connect", host, port, airplay2),
+    connect: (host: string, port: number, airplay2: boolean, initialVolume: number): void =>
+      ipcRenderer.send("airplay:connect", host, port, airplay2, initialVolume),
     // Fire-and-forget (voir le commentaire équivalent côté main/index.ts) : pas d'`invoke` sur
     // le chemin audio actif plusieurs fois par seconde.
     sendPcm: (chunk: Uint8Array): void => ipcRenderer.send("airplay:sendPcm", chunk),
     setVolume: (volume: number): Promise<void> => ipcRenderer.invoke("airplay:setVolume", volume),
     disconnect: (): Promise<void> => ipcRenderer.invoke("airplay:disconnect"),
+    reset: (): Promise<void> => ipcRenderer.invoke("airplay:reset"),
     onEvent: (cb: (event: { event: string; message?: string; detail?: unknown }) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, data: { event: string; message?: string; detail?: unknown }) =>
         cb(data);

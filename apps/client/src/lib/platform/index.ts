@@ -34,10 +34,11 @@ export interface ResoniaBridge {
    *  hors d'un process Node, donc `window.resonia` uniquement (isElectron() le garde déjà). */
   airplay: {
     discover(): Promise<{ id: string; name: string; host: string; port: number }[]>;
-    connect(host: string, port: number, airplay2: boolean): void;
+    connect(host: string, port: number, airplay2: boolean, initialVolume: number): void;
     sendPcm(chunk: Uint8Array): void;
     setVolume(volume: number): Promise<void>;
     disconnect(): Promise<void>;
+    reset(): Promise<void>;
     onEvent(cb: (event: { event: string; message?: string; detail?: unknown }) => void): () => void;
   };
   update: {

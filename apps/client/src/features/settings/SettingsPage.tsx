@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Check, CircleNotch, X } from "../../components/icons";
+import {
+  ArrowsClockwise,
+  Check,
+  CircleNotch,
+  Code,
+  Download,
+  Globe,
+  HardDrive,
+  Plug,
+  X,
+} from "../../components/icons";
 import {
   checkAnimatedArtworkHealth,
   DEFAULT_ANIMATED_ARTWORK_BASE_URL,

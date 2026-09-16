@@ -222,9 +222,6 @@
     "noNotes": "No release notes available.",
     "install": "Install",
     "later": "Later",
-    "installing": "Installing update {{version}}...",
-    "restarting": "Restarting...",
-    "error": "The update couldn't be installed. Try again later.",
     "restartButton": "Restart to install update",
     "restartTooltip": "Version {{version}} has been downloaded and is ready to install."
   },

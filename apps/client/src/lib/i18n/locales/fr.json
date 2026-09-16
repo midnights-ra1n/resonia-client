@@ -222,9 +222,6 @@
     "noNotes": "Aucune note de version disponible.",
     "install": "Installer",
     "later": "Plus tard",
-    "installing": "Installation de la mise à jour {{version}}...",
-    "restarting": "Redémarrage...",
-    "error": "La mise à jour n'a pas pu être installée. Réessaie plus tard.",
     "restartButton": "Redémarrer pour installer la mise à jour",
     "restartTooltip": "La version {{version}} a été téléchargée et est prête à être installée."
   },

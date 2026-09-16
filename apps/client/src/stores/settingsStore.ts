@@ -23,6 +23,10 @@ interface SettingsState {
   devModeEnabled: boolean;
   checkUpdatesOnLaunch: boolean;
   betaUpdatesEnabled: boolean;
+  /** Version que l'utilisateur a explicitement choisi de reporter ("Plus tard" dans la pop-up
+   *  de mise à jour, voir UpdateNotifier.tsx) — évite de la re-proposer à chaque lancement tant
+   *  qu'aucune version plus récente n'est sortie. */
+  dismissedUpdateVersion: string | null;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setAudioQuality: (id: string) => Promise<void>;
@@ -36,6 +40,7 @@ interface SettingsState {
   setDevModeEnabled: (enabled: boolean) => Promise<void>;
   setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
   setBetaUpdatesEnabled: (enabled: boolean) => Promise<void>;
+  setDismissedUpdateVersion: (version: string | null) => Promise<void>;
 }
 
 const STORAGE_KEY = "resonia:settings:audioQuality";
@@ -50,6 +55,7 @@ const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
   "resonia:settings:checkUpdatesOnLaunch";
 const BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
+const DISMISSED_UPDATE_VERSION_STORAGE_KEY = "resonia:settings:dismissedUpdateVersion";
 
 export const GIGABYTE = 1024 * 1024 * 1024;
 export const DEFAULT_CACHE_MAX_BYTES = 2 * GIGABYTE;
@@ -88,6 +94,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   devModeEnabled: false,
   checkUpdatesOnLaunch: true,
   betaUpdatesEnabled: false,
+  dismissedUpdateVersion: null,
   hydrated: false,
 
   hydrate: async () => {
@@ -101,6 +108,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       devModeEnabled,
       checkUpdatesOnLaunch,
       betaUpdatesEnabled,
+      dismissedUpdateVersion,
     ] = await Promise.all([
       storage.get<string>(STORAGE_KEY),
       storage.get<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -111,6 +119,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.get<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
       storage.get<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
       storage.get<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
+      storage.get<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
     ]);
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -132,6 +141,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       devModeEnabled: devModeEnabled ?? false,
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
       betaUpdatesEnabled: betaUpdatesEnabled ?? false,
+      dismissedUpdateVersion: dismissedUpdateVersion ?? null,
       hydrated: true,
     });
   },
@@ -182,5 +192,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setBetaUpdatesEnabled: async (enabled) => {
     await storage.set(BETA_UPDATES_ENABLED_STORAGE_KEY, enabled);
     set({ betaUpdatesEnabled: enabled });
+  },
+  setDismissedUpdateVersion: async (version) => {
+    if (version === null) await storage.remove(DISMISSED_UPDATE_VERSION_STORAGE_KEY);
+    else await storage.set(DISMISSED_UPDATE_VERSION_STORAGE_KEY, version);
+    set({ dismissedUpdateVersion: version });
   },
 }));

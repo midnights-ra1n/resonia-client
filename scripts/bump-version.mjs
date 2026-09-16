@@ -30,4 +30,20 @@ clientJson.version = version;
 writeFileSync(clientPackageJsonPath, JSON.stringify(clientJson, null, 2) + "\n");
 
 console.log(`Version : ${previous} → ${version}`);
-console.log(`\nProchaines étapes :\n  git add package.json apps/client/package.json\n  git commit -m "bump version to ${version}"\n  git push origin <beta|stable>`);
+
+// Rappel local seulement — le vrai garde-fou est côté CI (scripts/extract-changelog.mjs, appelé
+// par .github/workflows/release-*.yml), qui fait échouer la release si cette section manque
+// encore au moment du push. Ici on se contente de prévenir tout de suite plutôt que de laisser
+// découvrir l'oubli seulement après un run CI complet (build desktop des 4 plateformes).
+const changelogPath = path.join(root, "CHANGELOG.md");
+const changelog = readFileSync(changelogPath, "utf8");
+const hasSection = new RegExp(`^##\\s+\\[?${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]?\\s*$`, "m").test(
+  changelog,
+);
+if (!hasSection) {
+  console.warn(
+    `\n⚠️  CHANGELOG.md n'a pas encore de section "## ${version}" — la release échouera en CI tant qu'elle n'est pas ajoutée.`,
+  );
+}
+
+console.log(`\nProchaines étapes :\n  git add package.json apps/client/package.json CHANGELOG.md\n  git commit -m "bump version to ${version}"\n  git push origin <beta|stable>`);

@@ -17,9 +17,11 @@ name: Release (stable)
 # évitent qu'une paire de jobs publiant en parallèle n'écrase le manifeste d'auto-update de
 # l'autre (latest.yml / latest-linux.yml), voir le commentaire sur ces jobs plus bas.
 #
-# Notes de version : générées automatiquement par GitHub à partir des commits/PR depuis la
-# dernière release (mêmes notes sur la page GitHub et dans l'app, l'app lisant le corps de cette
-# même release — voir lib/update/updateService.ts).
+# Notes de version : extraites à la main depuis CHANGELOG.md (racine), pas générées
+# automatiquement depuis les commits/PR (voir scripts/extract-changelog.mjs et le job
+# publish-release) — mêmes notes sur la page GitHub et dans la pop-up de mise à jour de l'app,
+# celle-ci lisant le corps de cette même release (voir lib/update/updateService.ts). La release
+# échoue si CHANGELOG.md n'a pas de section pour cette version.
 #
 # Artefacts produits par run : Windows (.exe NSIS, x86_64 ET arm64 cross-compilé), macOS (.dmg +
 # .zip + .pkg, arm64 uniquement — voir le commentaire sur release-mac ; .zip requis par
@@ -294,11 +296,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Notes de version écrites à la main (CHANGELOG.md racine), pas `--generate-notes` (liste
+      # brute des commits/PR GitHub, jamais éditorialisée) — voir scripts/extract-changelog.mjs.
+      # Échoue la release si la section de cette version est absente/vide, plutôt que de publier
+      # des notes creuses ou périmées.
+      - name: Extraire les notes de version depuis CHANGELOG.md
+        run: node scripts/extract-changelog.mjs "${{ needs.resolve-version.outputs.version }}" > /tmp/release-notes.md
       - name: Publier la release (toutes les cibles ont réussi)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release edit "${{ needs.resolve-version.outputs.tag }}" \
-            --draft=false --prerelease=false --generate-notes \
+            --draft=false --prerelease=false --notes-file /tmp/release-notes.md \
             --title "Resonia ${{ needs.resolve-version.outputs.tag }}" \
             -R "${{ github.repository }}"

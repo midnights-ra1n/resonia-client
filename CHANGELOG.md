@@ -16,6 +16,9 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.0.0-beta.4
+- re-release of beta 4
+
 ## 1.0.0-beta.3
 - Dropped Tauri V2 support for Electron
 - Google Fonts icons are now used by default in local

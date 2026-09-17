@@ -84,8 +84,14 @@ win:
 linux:
   target:
     - target: AppImage
+    # `name` (package.json) est le paquet scopé "@resonia/client" : le template par défaut de
+    # nom de fichier deb/rpm l'utilise tel quel ("/" compris), ce qui fait échouer fpm en
+    # tentant d'écrire dans un dossier "@resonia" inexistant. On force `productName` (Resonia)
+    # à la place, uniquement pour deb/rpm — AppImage utilise déjà productName par défaut.
     - target: deb
+      artifactName: ${productName}-${version}-${arch}.${ext}
     - target: rpm
+      artifactName: ${productName}-${version}-${arch}.${ext}
   icon: build/icons
   category: Audio
   # Explicite plutôt que dérivé de `author` (package.json) : le maintainer .deb doit rester

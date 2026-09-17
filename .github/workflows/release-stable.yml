@@ -133,8 +133,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
-          working_directory: apps/client
-          command: pnpm exec electron-builder --publish always --mac --arm64
+          command: cd apps/client && pnpm exec electron-builder --publish always --mac --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -172,8 +171,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
-          working_directory: apps/client
-          command: pnpm exec electron-builder --publish always --linux --x64
+          command: cd apps/client && pnpm exec electron-builder --publish always --linux --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -215,8 +213,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
-          working_directory: apps/client
-          command: pnpm exec electron-builder --publish always --linux --arm64
+          command: cd apps/client && pnpm exec electron-builder --publish always --linux --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -260,8 +257,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
-          working_directory: apps/client
-          command: pnpm exec electron-builder --publish always --win --x64 --arm64
+          command: cd apps/client && pnpm exec electron-builder --publish always --win --x64 --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"

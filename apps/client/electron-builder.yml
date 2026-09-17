@@ -88,6 +88,9 @@ linux:
     - target: rpm
   icon: build/icons
   category: Audio
+  # Explicite plutôt que dérivé de `author` (package.json) : le maintainer .deb doit rester
+  # stable même si `author` change un jour pour une autre raison (branding, etc.).
+  maintainer: midnights-ra1n <midnights-ra1n@users.noreply.github.com>
 
 nsis:
   oneClick: false

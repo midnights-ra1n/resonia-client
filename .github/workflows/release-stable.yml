@@ -124,12 +124,20 @@ jobs:
       # x86_64-apple-darwin, choix assumé plutôt qu'un oubli. CSC_IDENTITY_AUTO_DISCOVERY=false :
       # aucun certificat de signature configuré, on désactive la recherche automatique d'une
       # identité de signature plutôt que de laisser electron-builder échouer à en trouver une.
+      # Retry : l'upload des artefacts (.dmg/.zip/.pkg, plusieurs dizaines de Mo) vers l'API
+      # GitHub Releases time out ponctuellement depuis les runners hébergés (erreur réseau
+      # transitoire, pas un problème de config) — `--publish always` est idempotent (ré-upload
+      # sur le même tag/release en draft), donc rejouer la commande est sûr.
       - name: Build + publication de la release (en draft)
-        working-directory: apps/client
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          working_directory: apps/client
+          command: pnpm exec electron-builder --publish always --mac --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --publish always --mac --arm64
 
   release-linux-x64:
     needs: resolve-version
@@ -160,11 +168,15 @@ jobs:
         run: pnpm --filter @resonia/client run electron:build
 
       - name: Build + publication de la release (en draft)
-        working-directory: apps/client
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          working_directory: apps/client
+          command: pnpm exec electron-builder --publish always --linux --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --publish always --linux --x64
 
   release-linux-arm64:
     # Volontairement APRÈS release-linux-x64 (jamais en parallèle) : voir le commentaire au-dessus
@@ -199,11 +211,15 @@ jobs:
       # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour éviter
       # le cross-compile.
       - name: Build + publication de la release (en draft)
-        working-directory: apps/client
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          working_directory: apps/client
+          command: pnpm exec electron-builder --publish always --linux --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --publish always --linux --arm64
 
   release-win:
     needs: resolve-version
@@ -240,11 +256,15 @@ jobs:
       # les binaires Electron arm64 déjà compilés depuis ce runner x64, sans toolchain
       # supplémentaire — le cross-packaging est natif à l'outil.
       - name: Build + publication de la release (en draft)
-        working-directory: apps/client
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          working_directory: apps/client
+          command: pnpm exec electron-builder --publish always --win --x64 --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --publish always --win --x64 --arm64
 
   # Image Docker de la version web (seule plateforme sans téléchargement hors-ligne ni choix de
   # qualité audio : AAC 256 kbps forcé, cf. apps/client/src/lib/audio/qualityOptions.ts). Publiée

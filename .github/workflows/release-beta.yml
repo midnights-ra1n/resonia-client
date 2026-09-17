@@ -134,6 +134,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
+          shell: bash
           command: cd apps/client && pnpm exec electron-builder --publish always --mac --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -172,6 +173,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
+          shell: bash
           command: cd apps/client && pnpm exec electron-builder --publish always --linux --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -214,6 +216,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
+          shell: bash
           command: cd apps/client && pnpm exec electron-builder --publish always --linux --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -258,6 +261,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
+          shell: bash
           command: cd apps/client && pnpm exec electron-builder --publish always --win --x64 --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

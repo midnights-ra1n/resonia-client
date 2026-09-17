@@ -5,6 +5,11 @@
 # utilisateur migrant de l'un à l'autre retrouve la même app :
 appId: com.resonia.client
 productName: Resonia
+# electron-builder dérive executableName du champ "name" de package.json (@resonia/client) à
+# défaut de valeur explicite ici — une fois les caractères non sûrs retirés ça donne
+# "@resoniaclient", rejeté par le build AppImage ("contains characters that cannot be safely
+# used in file paths"). On fixe donc un nom explicite plutôt que de dépendre du nom du package.
+executableName: resonia
 copyright: Copyright © Resonia
 
 # Cible `electron-updater` (voir electron/main/index.ts, update:check) sur le même dépôt de

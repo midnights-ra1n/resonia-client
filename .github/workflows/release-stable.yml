@@ -10,7 +10,9 @@ name: Release (stable)
 # n'est rendue publique par publish-release qu'une fois TOUS les jobs (4 jobs desktop couvrant 5
 # cibles + l'image Docker) terminés avec succès — voir ce job pour le détail. Si une seule cible
 # échoue, la release reste en draft (visible seulement des collaborateurs du repo) au lieu d'être
-# publiée incomplète.
+# publiée incomplète. Un DRAFT n'a pas de tag git réel tant qu'il n'est pas publié (GitHub ne crée
+# le ref qu'à la publication) : un push qui corrige un bug après un run raté relance donc bien tout
+# depuis zéro (resolve-version ne voit aucun tag existant) sans laisser de tag orphelin.
 #
 # 4 jobs desktop et non 5 (mac / linux-x64 / linux-arm64 / win) : win empaquette x64 ET arm64
 # dans le même appel electron-builder, et linux-arm64 attend explicitement linux-x64 — les deux
@@ -23,12 +25,14 @@ name: Release (stable)
 # celle-ci lisant le corps de cette même release (voir lib/update/updateService.ts). La release
 # échoue si CHANGELOG.md n'a pas de section pour cette version.
 #
-# Artefacts produits par run : Windows (.exe NSIS, x86_64 ET arm64 cross-compilé), macOS (.dmg +
-# .zip + .pkg, arm64 uniquement — voir le commentaire sur release-mac ; .zip requis par
-# electron-updater côté Mac, .pkg conservé pour parité avec l'ancien build Tauri), Linux (.deb +
-# .rpm + .AppImage, x86_64 et arm64), image Docker web multi-arch (linux/amd64 + linux/arm64).
+# Artefacts produits par run :
+#   - macOS   : .dmg + .zip + .pkg, Apple Silicon (arm64) uniquement — voir le commentaire sur
+#               release-mac pour pourquoi pas d'Intel.
+#   - Windows : .exe NSIS, x86_64 ET arm64 (cross-packagé depuis le même runner x64).
+#   - Linux   : .AppImage + .deb (Debian/Ubuntu) + .rpm, x86_64 et arm64.
+#   - Docker  : image web multi-arch (linux/amd64 + linux/arm64), poussée à part sur GHCR.
 # Rien n'est signé ni notarisé (aucun certificat Apple Developer / code-signing Windows
-# configuré) — Gatekeeper/SmartScreen avertiront à l'ouverture, comme pour l'ancien build Tauri.
+# configuré) — Gatekeeper/SmartScreen avertiront à l'ouverture.
 on:
   push:
     branches:
@@ -52,7 +56,7 @@ jobs:
 
       # Ne crée PAS le tag ici : il est créé par le premier appel à electron-builder --publish
       # ci-dessous, en même temps que la release (en draft). On se contente de déterminer s'il
-      # existe déjà.
+      # existe déjà (c'est-à-dire si cette version a déjà été publiée avec succès).
       - name: Déterminer la version et si une release est nécessaire
         id: resolve
         run: |
@@ -73,19 +77,18 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  # Pourquoi 4 jobs distincts plutôt qu'une seule matrice comme avant : `--publish always`
-  # télécharge le manifeste d'auto-update existant sur la release (latest.yml / latest-linux.yml),
-  # y fusionne l'entrée de SA cible, et le ré-upload — un simple read-modify-write, pas une
-  # opération atomique côté GitHub. Deux jobs qui publient CE MÊME fichier en parallèle (ex:
-  # linux x64 et linux arm64 dans l'ancienne matrice) peuvent tous les deux lire l'ancienne
-  # version avant que l'autre n'ait écrit la sienne : le dernier à finir écrase le travail du
-  # premier, et l'auto-update casse silencieusement pour UNE des deux architectures à chaque
-  # release (bug electron-builder documenté de longue date, voir issue #5592 upstream). Deux
-  # parades possibles : ne jamais avoir deux jobs séparés publier le même manifeste en même
-  # temps (linux x64/arm64 ci-dessous, forcées séquentielles via `needs`), ou empaqueter
-  # plusieurs arch en un seul appel electron-builder qui gère lui-même la fusion en interne, sans
-  # jamais toucher deux fois le même fichier depuis deux processus (windows ci-dessous — déjà sur
-  # le même runner de toute façon, voir son commentaire).
+  # Pourquoi 4 jobs distincts plutôt qu'une seule matrice : `--publish always` télécharge le
+  # manifeste d'auto-update existant sur la release (latest.yml / latest-linux.yml), y fusionne
+  # l'entrée de SA cible, et le ré-upload — un simple read-modify-write, pas une opération
+  # atomique côté GitHub. Deux jobs qui publient CE MÊME fichier en parallèle (ex: linux x64 et
+  # linux arm64 dans une matrice) peuvent tous les deux lire l'ancienne version avant que l'autre
+  # n'ait écrit la sienne : le dernier à finir écrase le travail du premier, et l'auto-update
+  # casse silencieusement pour UNE des deux architectures à chaque release (bug electron-builder
+  # documenté de longue date, voir issue #5592 upstream). Deux parades possibles : ne jamais
+  # avoir deux jobs séparés publier le même manifeste en même temps (linux x64/arm64 ci-dessous,
+  # forcées séquentielles via `needs`), ou empaqueter plusieurs arch en un seul appel
+  # electron-builder qui gère lui-même la fusion en interne (windows ci-dessous — déjà sur le
+  # même runner de toute façon).
 
   release-mac:
     needs: resolve-version
@@ -124,20 +127,30 @@ jobs:
       # x86_64-apple-darwin, choix assumé plutôt qu'un oubli. CSC_IDENTITY_AUTO_DISCOVERY=false :
       # aucun certificat de signature configuré, on désactive la recherche automatique d'une
       # identité de signature plutôt que de laisser electron-builder échouer à en trouver une.
-      # Retry : l'upload des artefacts (.dmg/.zip/.pkg, plusieurs dizaines de Mo) vers l'API
-      # GitHub Releases time out ponctuellement depuis les runners hébergés (erreur réseau
-      # transitoire, pas un problème de config) — `--publish always` est idempotent (ré-upload
-      # sur le même tag/release en draft), donc rejouer la commande est sûr.
+      #
+      # Retry manuel en bash plutôt qu'une action tierce : l'upload des artefacts (plusieurs
+      # dizaines de Mo) vers l'API GitHub Releases time out ponctuellement depuis les runners
+      # hébergés (erreur réseau transitoire, pas un problème de config) — `--publish always` est
+      # idempotent (ré-upload sur le même tag/release en draft), donc rejouer la commande est
+      # sûr. `shell: bash` est explicite : le shell par défaut de `run:` change selon l'OS du
+      # runner (pwsh sur Windows, bash sur macOS/Linux) — l'expliciter partout évite toute
+      # surprise si ce fichier est un jour copié-collé vers un autre OS.
       - name: Build + publication de la release (en draft)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          shell: bash
-          command: cd apps/client && pnpm exec electron-builder --publish always --mac --arm64
+        working-directory: apps/client
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm exec electron-builder --publish always --mac --arm64; then
+              exit 0
+            fi
+            echo "::warning::Tentative ${attempt}/3 échouée (probable timeout réseau), nouvel essai dans 15s..."
+            sleep 15
+          done
+          echo "::error::Échec après 3 tentatives."
+          exit 1
 
   release-linux-x64:
     needs: resolve-version
@@ -167,16 +180,26 @@ jobs:
       - name: Build (main/preload/renderer)
         run: pnpm --filter @resonia/client run electron:build
 
+      # AppImage + .deb (Debian/Ubuntu) + .rpm. Le nom de fichier .deb/.rpm est forcé sur
+      # productName dans electron-builder.yml (linux.target[deb|rpm].artifactName) : le nom de
+      # package.json est scopé ("@resonia/client"), et le template par défaut l'utilise tel
+      # quel — fpm plante alors en tentant d'écrire dans un dossier "@resonia" inexistant.
       - name: Build + publication de la release (en draft)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          shell: bash
-          command: cd apps/client && pnpm exec electron-builder --publish always --linux --x64
+        working-directory: apps/client
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm exec electron-builder --publish always --linux --x64; then
+              exit 0
+            fi
+            echo "::warning::Tentative ${attempt}/3 échouée, nouvel essai dans 15s..."
+            sleep 15
+          done
+          echo "::error::Échec après 3 tentatives."
+          exit 1
 
   release-linux-arm64:
     # Volontairement APRÈS release-linux-x64 (jamais en parallèle) : voir le commentaire au-dessus
@@ -211,15 +234,21 @@ jobs:
       # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour éviter
       # le cross-compile.
       - name: Build + publication de la release (en draft)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          shell: bash
-          command: cd apps/client && pnpm exec electron-builder --publish always --linux --arm64
+        working-directory: apps/client
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm exec electron-builder --publish always --linux --arm64; then
+              exit 0
+            fi
+            echo "::warning::Tentative ${attempt}/3 échouée, nouvel essai dans 15s..."
+            sleep 15
+          done
+          echo "::error::Échec après 3 tentatives."
+          exit 1
 
   release-win:
     needs: resolve-version
@@ -255,16 +284,26 @@ jobs:
       # n'y a aucun code natif à compiler dans ce projet, electron-builder empaquette directement
       # les binaires Electron arm64 déjà compilés depuis ce runner x64, sans toolchain
       # supplémentaire — le cross-packaging est natif à l'outil.
+      #
+      # `shell: bash` : le défaut de `run:` sur windows-latest est PowerShell, qui n'a pas la
+      # même syntaxe de boucle/test — Git Bash est présent nativement sur les runners Windows
+      # hébergés, on le force explicitement pour garder un seul script partagé entre OS.
       - name: Build + publication de la release (en draft)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          shell: bash
-          command: cd apps/client && pnpm exec electron-builder --publish always --win --x64 --arm64
+        working-directory: apps/client
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm exec electron-builder --publish always --win --x64 --arm64; then
+              exit 0
+            fi
+            echo "::warning::Tentative ${attempt}/3 échouée, nouvel essai dans 15s..."
+            sleep 15
+          done
+          echo "::error::Échec après 3 tentatives."
+          exit 1
 
   # Image Docker de la version web (seule plateforme sans téléchargement hors-ligne ni choix de
   # qualité audio : AAC 256 kbps forcé, cf. apps/client/src/lib/audio/qualityOptions.ts). Publiée

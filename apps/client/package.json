@@ -8,6 +8,7 @@
     "email": "midnights-ra1n@users.noreply.github.com"
   },
   "homepage": "https://github.com/midnights-ra1n/resonia-client",
+  "desktopName": "resonia.desktop",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {

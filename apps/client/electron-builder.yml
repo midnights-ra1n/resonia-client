@@ -98,6 +98,20 @@ linux:
   # ici, au niveau linux, où il s'applique à toutes les cibles (AppImage y compris, sans risque :
   # juste un nom de fichier différent, productName au lieu du nom de package).
   artifactName: ${productName}-${version}-${arch}.${ext}
+  # electron-builder ne génère aucune métadonnée AppStream pour les cibles fpm (deb/rpm) — sans
+  # elle, KDE Discover/GNOME Software n'ont pas de quoi construire une fiche d'app et restent
+  # bloqués en boucle de chargement à l'ouverture du paquet (observé avec le .rpm). `linux.fpm`
+  # passe des arguments bruts à fpm ; la syntaxe SOURCE=DEST y installe ce fichier directement à
+  # l'emplacement système attendu. Ne s'applique qu'à deb/rpm (fpm) — l'AppImage n'a pas
+  # d'équivalent dans electron-builder. Chemin relatif à `working-directory: apps/client` (voir
+  # les workflows de release), résolu par fpm depuis là où electron-builder l'exécute.
+  fpm:
+    - "build/com.resonia.client.metainfo.xml=/usr/share/metainfo/com.resonia.client.metainfo.xml"
+  # Aligne le WM_CLASS Electron sur le nom du .desktop généré (déjà "resonia.desktop", dérivé
+  # d'`executableName`) — sans ça, electron-builder avertit que les environnements de bureau
+  # peuvent ne pas rattacher les fenêtres en cours d'exécution à cette entrée .desktop. Nécessite
+  # `desktopName: "resonia.desktop"` dans apps/client/package.json (lu par app-builder-lib).
+  syncDesktopName: true
 
 nsis:
   oneClick: false

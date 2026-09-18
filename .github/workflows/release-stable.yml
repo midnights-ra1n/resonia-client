@@ -112,6 +112,19 @@ jobs:
 
       # Le lockfile est à la racine du workspace pnpm : pnpm résout le workspace tout seul même
       # lancé depuis apps/client, mais on installe depuis la racine pour rester explicite.
+      # electron-builder télécharge le zip Electron + les toolsets NSIS/AppImage/winCodeSign/7zip
+      # dans ce seul dossier (~/Library/Caches/electron-builder ici) à chaque run tant qu'il n'est
+      # pas mis en cache — plusieurs dizaines de Mo re-téléchargés à l'identique à chaque release
+      # sans lui. `hashFiles('pnpm-lock.yaml')` invalide le cache quand la version d'electron/
+      # electron-builder change (verrouillée dans le lockfile).
+      - name: Cache electron-builder (Electron, toolsets)
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron-builder
+          key: electron-builder-cache-macos-arm64-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-cache-macos-arm64-
+
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
@@ -171,6 +184,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Cache electron-builder (Electron, toolsets)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: electron-builder-cache-linux-x64-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-cache-linux-x64-
+
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
@@ -222,6 +243,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Cache electron-builder (Electron, toolsets)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: electron-builder-cache-linux-arm64-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-cache-linux-arm64-
+
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
@@ -268,6 +297,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      # `~` se résout vers le profil du runner (équivalent à %LOCALAPPDATA%\electron-builder\Cache
+      # ici) : mêmes toolsets (Electron, NSIS, winCodeSign…) qu'en local, jamais re-téléchargés
+      # tant que la version verrouillée dans pnpm-lock.yaml ne change pas.
+      - name: Cache electron-builder (Electron, toolsets)
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-cache-windows-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-cache-windows-
 
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile

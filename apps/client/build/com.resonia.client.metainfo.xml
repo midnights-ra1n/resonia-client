@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Métadonnées AppStream : electron-builder ne génère rien de tel nativement pour les cibles
+  deb/rpm (aucune trace de support AppStream dans app-builder-lib). Sans ce fichier installé en
+  /usr/share/metainfo/, les magasins d'applications (KDE Discover, GNOME Software) n'ont pas de
+  quoi construire une fiche complète pour le paquet et restent bloqués en boucle de chargement —
+  voir le mapping fichier dans electron-builder.yml (linux.fpm) qui l'installe au bon endroit.
+
+  <id> doit correspondre au <launchable> ci-dessous, lui-même le nom exact du .desktop généré
+  (resonia.desktop, dérivé de executableName — voir electron-builder.yml), pas l'appId
+  (com.resonia.client) : c'est ce qui permet à Discover de relier cette fiche au lanceur installé.
+-->
+<component type="desktop-application">
+  <id>com.resonia.client</id>
+  <name>Resonia</name>
+  <summary>Client musical Spotify-like pour Navidrome et OpenSubsonic</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Resonia est un client musical inspiré de Spotify, conçu pour les serveurs Navidrome et
+      OpenSubsonic.
+    </p>
+    <p>Fonctionnalités principales :</p>
+    <ul>
+      <li>Lecture gapless, sans coupure entre les morceaux</li>
+      <li>Préchargement automatique des prochaines pistes</li>
+      <li>Cache audio réutilisable pour une lecture fluide</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">resonia.desktop</launchable>
+  <url type="homepage">https://github.com/midnights-ra1n/resonia-client</url>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>Audio</category>
+    <category>Music</category>
+  </categories>
+</component>

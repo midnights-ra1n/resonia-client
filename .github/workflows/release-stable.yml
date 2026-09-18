@@ -143,14 +143,21 @@ jobs:
       #
       # Retry manuel en bash plutôt qu'une action tierce : l'upload des artefacts (plusieurs
       # dizaines de Mo) vers l'API GitHub Releases time out ponctuellement depuis les runners
-      # hébergés (erreur réseau transitoire, pas un problème de config) — `--publish always` est
-      # idempotent (ré-upload sur le même tag/release en draft), donc rejouer la commande est
-      # sûr. `shell: bash` est explicite : le shell par défaut de `run:` change selon l'OS du
-      # runner (pwsh sur Windows, bash sur macOS/Linux) — l'expliciter partout évite toute
-      # surprise si ce fichier est un jour copié-collé vers un autre OS.
+      # hébergés (erreur réseau transitoire, pas un problème de config). ATTENTION : rejouer
+      # `--publish always` n'est PAS toujours sûr en pratique — si un fichier a déjà été uploadé
+      # avec succès lors d'une tentative précédente, la tentative suivante doit le supprimer puis
+      # le re-uploader ("overwrite published file" dans les logs), et cet appel peut rester
+      # bloqué indéfiniment côté electron-publish (observé en prod sur linux-arm64 et win).
+      # `timeout-minutes` au niveau de l'étape borne donc les 3 tentatives cumulées : sans lui,
+      # un blocage réseau peut faire pendre le job jusqu'à la limite par défaut de GitHub Actions
+      # (6h) sans jamais laisser la boucle passer à la tentative suivante. `shell: bash` est
+      # explicite : le shell par défaut de `run:` change selon l'OS du runner (pwsh sur Windows,
+      # bash sur macOS/Linux) — l'expliciter partout évite toute surprise si ce fichier est un
+      # jour copié-collé vers un autre OS.
       - name: Build + publication de la release (en draft)
         working-directory: apps/client
         shell: bash
+        timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -205,9 +212,13 @@ jobs:
       # productName dans electron-builder.yml (linux.target[deb|rpm].artifactName) : le nom de
       # package.json est scopé ("@resonia/client"), et le template par défaut l'utilise tel
       # quel — fpm plante alors en tentant d'écrire dans un dossier "@resonia" inexistant.
+      # `timeout-minutes` : borne les 3 tentatives cumulées, voir le commentaire équivalent sur
+      # release-mac — sans lui, un blocage réseau lors du ré-upload d'un fichier déjà publié
+      # ("overwrite published file") peut faire pendre le job indéfiniment.
       - name: Build + publication de la release (en draft)
         working-directory: apps/client
         shell: bash
+        timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -262,9 +273,14 @@ jobs:
 
       # Pas de runner hébergé "ubuntu-22.04-arm" : on build nativement sur 24.04 arm pour éviter
       # le cross-compile.
+      #
+      # `timeout-minutes` : borne les 3 tentatives cumulées, voir le commentaire équivalent sur
+      # release-mac — sans lui, un blocage réseau lors du ré-upload d'un fichier déjà publié
+      # ("overwrite published file") peut faire pendre le job indéfiniment (observé en prod ici).
       - name: Build + publication de la release (en draft)
         working-directory: apps/client
         shell: bash
+        timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -328,9 +344,14 @@ jobs:
       # `shell: bash` : le défaut de `run:` sur windows-latest est PowerShell, qui n'a pas la
       # même syntaxe de boucle/test — Git Bash est présent nativement sur les runners Windows
       # hébergés, on le force explicitement pour garder un seul script partagé entre OS.
+      #
+      # `timeout-minutes` : borne les 3 tentatives cumulées, voir le commentaire équivalent sur
+      # release-mac — sans lui, un blocage réseau lors du ré-upload d'un fichier déjà publié
+      # ("overwrite published file") peut faire pendre le job indéfiniment (observé en prod).
       - name: Build + publication de la release (en draft)
         working-directory: apps/client
         shell: bash
+        timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"

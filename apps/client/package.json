@@ -1,7 +1,7 @@
 {
   "name": "@resonia/client",
   "private": true,
-  "version": "1.0.0-beta.4",
+  "version": "1.0.0-beta.5",
   "description": "Resonia — client Spotify-like pour Navidrome / OpenSubsonic",
   "author": {
     "name": "midnights-ra1n",

@@ -16,6 +16,9 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.0.0-beta.5
+- Fixed missing app description and infinite loading in KDE Discover / GNOME Software for the .deb and .rpm packages (added AppStream metadata)
+
 ## 1.0.0-beta.4
 - re-release of beta 4
 

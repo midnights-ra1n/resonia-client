@@ -238,6 +238,7 @@ export function AlbumPage() {
           </p>
           <h1 className="mt-2">
             <MarqueeText
+              auto
               text={album.name}
               className="text-5xl font-black text-white"
             />

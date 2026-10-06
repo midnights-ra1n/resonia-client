@@ -41,6 +41,23 @@ export function AppLayout() {
   const debouncedQuery = useDebouncedValue(query, 300);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const showLyrics = usePlayerStore((s) => s.showLyrics);
+  const showQueue = usePlayerStore((s) => s.showQueue);
+  const queueOpen = showQueue && !showLyrics;
+  // Paroles : fondu d'entrée à l'ouverture, fondu de sortie à la fermeture (la vue reste montée
+  // jusqu'à la fin du fondu, pendant que sidebar et file d'attente se redéploient).
+  const [lyricsMounted, setLyricsMounted] = useState(showLyrics);
+  if (showLyrics && !lyricsMounted) setLyricsMounted(true);
+  const lyricsLeaving = lyricsMounted && !showLyrics;
+  const lyricsLayout = showLyrics || lyricsLeaving;
+  const finishLyricsExit = (e: React.AnimationEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && lyricsLeaving) setLyricsMounted(false);
+  };
+  // Repli si `animationend` ne se déclenche pas (fenêtre masquée : animations suspendues).
+  useEffect(() => {
+    if (!lyricsLeaving) return;
+    const timer = window.setTimeout(() => setLyricsMounted(false), 400);
+    return () => window.clearTimeout(timer);
+  }, [lyricsLeaving]);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const loadFavorites = useFavoritesStore((s) => s.load);
   const mainRef = useRef<HTMLElement>(null);
@@ -114,8 +131,20 @@ export function AppLayout() {
     // `pb` de <main> garantit que la dernière ligne reste atteignable au-dessus d'elle).
     // `overflow-hidden` + `isolate` sur le panneau de contenu : le rayon découpe le scroll, et
     // le panneau forme son propre contexte d'empilement (aucun z-index de page ne déborde).
-    <div className="flex h-screen gap-3 bg-bg-sunken p-3">
-      {!showLyrics && <Sidebar />}
+    <div className="flex h-screen bg-bg-sunken p-3">
+      {/* Sidebar et file d'attente REPLIÉES (largeur animée) plutôt que démontées à l'ouverture
+          des paroles : la colonne de contenu — et le lecteur flottant qui y est ancré —
+          s'élargit en douceur au lieu de sauter. Marges plutôt que `gap` : elles s'animent
+          avec la largeur, sans laisser d'espace fantôme une fois replié. `inert` : contenu
+          replié hors du parcours clavier/lecteur d'écran. */}
+      <div
+        inert={showLyrics}
+        className={`flex min-h-0 shrink-0 overflow-hidden transition-[width,margin-right,opacity] duration-[320ms] ${
+          showLyrics ? "mr-0 w-0 opacity-0" : "mr-3 w-60 opacity-100"
+        }`}
+      >
+        <Sidebar />
+      </div>
       <div className="relative flex flex-1 min-w-0 min-h-0">
         <div className="isolate flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden rounded-panel border border-white/5 bg-neutral-900 shadow-e2">
           <header className="z-10 shrink-0">
@@ -172,8 +201,13 @@ export function AppLayout() {
             </form>
           </header>
 
-          {showLyrics ? (
-            <LyricsView />
+          {lyricsLayout ? (
+            <div
+              className={`flex flex-1 min-h-0 flex-col ${lyricsLeaving ? "pointer-events-none animate-fade-out" : "animate-fade-in"}`}
+              onAnimationEnd={finishLyricsExit}
+            >
+              <LyricsView />
+            </div>
           ) : (
             <main ref={setMainRef} className="flex-1 min-h-0 overflow-y-auto pb-[104px]">
               <ScrollRootContext.Provider value={scrollRoot}>
@@ -191,7 +225,14 @@ export function AppLayout() {
           </div>
         </div>
       </div>
-      {!showLyrics && <QueuePanel />}
+      <div
+        inert={!queueOpen}
+        className={`flex min-h-0 shrink-0 overflow-hidden transition-[width,margin-left,opacity] duration-[320ms] ${
+          queueOpen ? "ml-3 w-80 opacity-100" : "ml-0 w-0 opacity-0"
+        }`}
+      >
+        <QueuePanel />
+      </div>
       <DebugPanel />
     </div>
   );

@@ -108,7 +108,7 @@ function AlbumCard({ album, onPlay, onOpen }: AlbumCardProps) {
             opacity-0 translate-y-2
             group-hover:opacity-100 group-hover:translate-y-0
             focus-visible:opacity-100 focus-visible:translate-y-0
-            transition-[opacity,transform,background-color] duration-200 ease-out
+            transition-[opacity,transform,translate,scale,background-color] duration-200 ease-out
             hover:scale-105 hover:bg-accent-hover
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-hover
           "

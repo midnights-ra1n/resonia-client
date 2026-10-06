@@ -234,7 +234,7 @@ export function LyricsView() {
                   // prochain changement) : sur TOUTES les lignes, il réservait une couche GPU
                   // pleine largeur par ligne pendant toute la vue — des dizaines de Mo de
                   // mémoire graphique pour un texte statique.
-                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,color,opacity] duration-[260ms] ease-out ${Math.abs(i - activeIndex) <= 1 ? "will-change-transform" : ""} ${
+                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,translate,scale,color,opacity] duration-[260ms] ease-out ${Math.abs(i - activeIndex) <= 1 ? "will-change-transform" : ""} ${
                     isActive ? "scale-[1.1] text-white opacity-100" : "scale-100 text-white/35 opacity-90 hover:text-white/60"
                   }`}
                 >

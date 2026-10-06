@@ -190,7 +190,7 @@ function MenuPanel({
       ref={panelRef}
       data-context-menu-panel
       style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1000 }}
-      className={`min-w-[220px] max-w-[280px] origin-top-left overflow-visible rounded-panel border border-white/5 bg-surface-2 py-1.5 shadow-e2 transition-[opacity,transform] duration-100 ease-out ${
+      className={`min-w-[220px] max-w-[280px] origin-top-left overflow-visible rounded-panel border border-white/5 bg-surface-2 py-1.5 shadow-e2 transition-[opacity,transform,translate,scale] duration-100 ease-out ${
         visible ? "scale-100 opacity-100" : "scale-95 opacity-0"
       }`}
       onContextMenu={(e) => e.preventDefault()}

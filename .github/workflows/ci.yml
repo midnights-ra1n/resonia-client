@@ -78,7 +78,7 @@ jobs:
       matrix:
         include:
           - name: macos
-            runner: macos-latest
+            runner: macos-26
             args: --mac --arm64
           - name: windows
             runner: windows-latest
@@ -94,6 +94,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # L'icône macOS est un document Icon Composer (.icon, Liquid Glass) : electron-builder le
+      # compile avec actool, qui doit venir de Xcode 26 ou plus récent. On sélectionne le Xcode
+      # le plus récent du runner et on échoue tôt, avec un message clair, s'il est trop ancien.
+      - name: Xcode 26+ (actool pour l'icône Liquid Glass)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1 || true)
+          if [[ -n "$latest" ]]; then sudo xcode-select -s "$latest"; fi
+          version=$(actool --version | grep -A1 short-bundle-version | tail -1 | sed -E 's/.*<string>([0-9.]+)<.*/\1/')
+          echo "actool $version ($(xcode-select -p))"
+          if (( ${version%%.*} < 26 )); then
+            echo "::error::actool $version trop ancien : Xcode 26+ requis pour compiler build/Resonia.icon."
+            exit 1
+          fi
       - run: pnpm --filter @resonia/client run electron:build
       - name: electron-builder --dir
         working-directory: apps/client

@@ -6,6 +6,7 @@ import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
 import { CreatePlaylistModal } from "./CreatePlaylistModal";
 import { PlaylistSidebarItem } from "./PlaylistSidebarItem";
+import LogoFull from "../../assets/Logo_full.svg?react";
 
 const navLinks = [
   { to: "/", icon: House, key: "nav.home" },
@@ -34,14 +35,11 @@ export function Sidebar() {
     // bloc : la bibliothèque se lit comme un objet à part, à la manière de Spotify.
     <aside className="flex w-60 shrink-0 flex-col gap-3 min-h-0">
       <div className="flex shrink-0 flex-col gap-1 rounded-panel border border-white/5 bg-neutral-900 p-3 shadow-e2">
-        {/* Logo */}
-        <div className="flex justify-center items-center gap-4 py-3">
-          {/* `import.meta.env.BASE_URL` (jamais un "/favicon.svg" en dur) : un chemin racine
-              absolu casse une fois l'app empaquetée en Electron, chargée via `file://` où le
-              build utilise une base relative (voir electron.vite.config.ts) — Vite ne réécrit
-              que ce qu'il peut analyser statiquement (import, attribut src d'un <img> côté HTML),
-              jamais une chaîne de caractères JS comme celle-ci. */}
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="Resonia" className="w-16" />
+        {/* Logo complet (icône + nom), aligné à gauche sur les entrées de navigation. SVG
+            intégré au bundle (svgr) : aucune requête, net à toute densité d'écran, et aucun
+            chemin à résoudre sous Electron (`file://`). */}
+        <div className="flex items-center px-2 pt-2 pb-3">
+          <LogoFull role="img" aria-label="Resonia" className="h-8 w-auto" />
         </div>
 
         {/* Navigation links */}

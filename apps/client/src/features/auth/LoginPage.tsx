@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "../../lib/i18n";
 import { useServersStore } from "../../stores/serversStore";
 import { encryptPassword } from "../../lib/security/passwordVault";
+import LogoFull from "../../assets/Logo_full.svg?react";
 
 export function LoginPage() {
   const addServer = useServersStore((s) => s.addServer);
@@ -45,10 +46,9 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-neutral-900 p-8 shadow-xl">
 
-        <div className="flex justify-center items-center">
-          {/* Voir Sidebar.tsx : `import.meta.env.BASE_URL`, jamais un chemin racine en dur —
-              casse sous Electron empaqueté (chargé via `file://`, base relative). */}
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="Description" className="w-48" />
+        <div className="flex justify-center items-center pb-2">
+          {/* Même logo complet que la sidebar (SVG intégré au bundle, voir Sidebar.tsx). */}
+          <LogoFull role="img" aria-label="Resonia" className="h-12 w-auto" />
         </div>
 
         <h1 className="text-2xl font-bold text-white text-center">{t("auth.login.title")}</h1>

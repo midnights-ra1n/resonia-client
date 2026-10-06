@@ -13,6 +13,7 @@ import { useArtist } from "./useArtist";
 import { useArtistPopularSongs } from "./useArtistPopularSongs";
 import { CoverImage } from "../../components/CoverImage";
 import { PageSkeleton } from "../../components/PageSkeleton";
+import { MarqueeText } from "../../components/MarqueeText";
 
 export function ArtistPage() {
   const { id } = useParams<{ id: string }>();
@@ -95,7 +96,9 @@ export function ArtistPage() {
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/10 to-black/20" />
         <div className="absolute bottom-6 left-8 right-8">
-          <h1 className="truncate text-6xl font-black text-white drop-shadow-lg">{artist.name}</h1>
+          <h1>
+            <MarqueeText auto text={artist.name} className="text-6xl font-black text-white drop-shadow-lg" />
+          </h1>
           {artist.albumCount > 0 && (
             <p className="mt-2 text-sm text-neutral-200 drop-shadow">
               {t("artist.albumCount", { count: artist.albumCount })}

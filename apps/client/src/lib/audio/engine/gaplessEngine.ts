@@ -40,6 +40,43 @@ const NATIVE_INSTANT_END_THRESHOLD_SECONDS = 2;
 const SILENT_LOOP_DATA_URI =
   "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAoA8AAKAPAAABAAgAZGF0YcgAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
 
+/** Silence WAV (PCM 8 bits non signé mono 4 kHz : l'octet 0x80 est le zéro numérique) généré
+ *  en mémoire pour `sessionAnchor`. 10 s plutôt que les 0,05 s de SILENT_LOOP_DATA_URI : en
+ *  boucle, l'élément <audio> redémarre son pipeline média à CHAQUE tour — 20 redémarrages par
+ *  seconde pendant toute l'écoute avec le clip court, une des principales sources de CPU
+ *  résiduel en lecture. 10 s = 200× moins de tours, pour 40 Ko de mémoire et aucun octet de
+ *  plus dans le bundle. Repli sur le data: URI si Blob/URL ne sont pas disponibles. */
+function createSilentLoopUrl(seconds = 10, sampleRate = 4000): string {
+  if (typeof Blob === "undefined" || typeof URL === "undefined" || !URL.createObjectURL) {
+    return SILENT_LOOP_DATA_URI;
+  }
+  const dataBytes = seconds * sampleRate;
+  const buffer = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buffer);
+  const ascii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  view.setUint32(16, 16, true); // taille du bloc fmt
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true); // octets/s (8 bits mono)
+  view.setUint16(32, 1, true); // alignement de bloc
+  view.setUint16(34, 8, true); // bits par échantillon
+  ascii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  new Uint8Array(buffer, 44).fill(0x80);
+  try {
+    return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+  } catch {
+    return SILENT_LOOP_DATA_URI;
+  }
+}
+
 /** `latencyHint: "playback"` (au lieu du défaut `"interactive"`) demande un tampon de sortie
  *  nettement plus généreux — quelques dizaines de ms de latence de sortie en plus, imperceptible
  *  pour de la lecture musicale (à l'inverse d'un jeu ou d'une app d'instrument). En échange,
@@ -377,7 +414,7 @@ export class GaplessEngine {
     this.nativeGain.connect(this.localOutputGain);
     this.applyRateToNativeAudio();
 
-    this.sessionAnchor = new Audio(SILENT_LOOP_DATA_URI);
+    this.sessionAnchor = new Audio(createSilentLoopUrl());
     this.sessionAnchor.loop = true;
     // Ni `muted` ni `volume` ne sont nécessaires pour garantir le silence : le WAV
     // lui-même ne contient que du silence numérique (PCM au point médian). Les deux ont
@@ -395,7 +432,6 @@ export class GaplessEngine {
     this.installAutoplayUnlock();
     this.installOutputDeviceChangeHandler();
     this.installContextStateWatcher();
-    this.startPlaybackWatchdog();
   }
 
   /** `AudioContext.onstatechange` couvre le cas où WebKit suspend le contexte de son propre
@@ -441,11 +477,19 @@ export class GaplessEngine {
    *  dessous du temps réel écoulé alors qu'une piste est censée jouer, on reconstruit tout le
    *  graphe (même mécanisme que sur changement de périphérique) plutôt que de laisser
    *  l'utilisateur bloqué en silence. */
+  private watchdogTimer: number | null = null;
+
+  /** Ne tourne QUE pendant la lecture (relancé par setState("playing"), s'arrête de lui-même
+   *  sinon) : un intervalle permanent réveillait l'app toutes les 2 s même à l'arrêt, ce qui
+   *  empêche notamment macOS de mettre l'app de bureau en veille profonde (App Nap) une fois
+   *  réduite. Références de temps remises à zéro à chaque démarrage : sans ça, l'horloge
+   *  audio figée pendant la pause serait comparée au temps réel écoulé depuis, et lue comme un
+   *  blocage du contexte (reconstruction intempestive du graphe à la reprise). */
   private startPlaybackWatchdog() {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || this.watchdogTimer !== null) return;
     this.lastWatchdogWallMs = performance.now();
     this.lastWatchdogContextTime = this.context.currentTime;
-    window.setInterval(() => {
+    this.watchdogTimer = window.setInterval(() => {
       const nowWallMs = performance.now();
       const elapsedWallSec = (nowWallMs - this.lastWatchdogWallMs) / 1000;
       const elapsedContextSec = this.context.currentTime - this.lastWatchdogContextTime;
@@ -454,6 +498,11 @@ export class GaplessEngine {
 
       const isActivelyPlaying =
         this._state === "playing" && this.trackState !== null && !this.isTrackStatePaused(this.trackState);
+      if (!isActivelyPlaying && this._state !== "buffering" && this._state !== "loading") {
+        window.clearInterval(this.watchdogTimer!);
+        this.watchdogTimer = null;
+        return;
+      }
 
       if (
         isActivelyPlaying &&
@@ -740,6 +789,7 @@ export class GaplessEngine {
     // pause fait perdre à l'app son statut de cible valide pour les commandes distantes
     // système (macOS/Windows/Linux), et le bouton play du widget Now Playing cesse alors de
     // répondre — seul un retour à `idle` (rien de chargé) doit vraiment l'arrêter.
+    if (state === "playing") this.startPlaybackWatchdog();
     if (state === "playing" || state === "paused") this.startSessionAnchor();
     else if (state === "idle") this.stopSessionAnchor();
     this.stateListeners.forEach((cb) => cb(state, error));
@@ -1114,7 +1164,19 @@ export class GaplessEngine {
     this.nativeGain.gain.linearRampToValueAtTime(0, now + SWAP_FADE_SECONDS);
     this.nativeGain.gain.setValueAtTime(1, now + SWAP_FADE_SECONDS + 0.02);
     window.setTimeout(() => {
-      if (nativeAudioRef === this.nativeAudio) nativeAudioRef.pause();
+      if (nativeAudioRef !== this.nativeAudio) return;
+      nativeAudioRef.pause();
+      // La piste joue désormais depuis son AudioBuffer : on LIBÈRE la source native au lieu de
+      // la laisser en pause. Avec `preload="auto"`, un élément en pause garde son pipeline de
+      // décodage et peut continuer de remplir son tampon réseau/média — CPU en arrière-plan et
+      // mémoire qui s'accumulait piste après piste. Toujours valide : seule une piste encore en
+      // mode natif réutilise la source native (seek, reconstruction du graphe), jamais celle-ci.
+      // Les événements émis par cette réinitialisation sont ignorés (trackState n'est plus
+      // "native").
+      if (this.trackState?.mode === "buffer") {
+        nativeAudioRef.removeAttribute("src");
+        nativeAudioRef.load();
+      }
     }, SWAP_FADE_SECONDS * 1000 + 20);
 
     this.startBufferAt(decoded.buffer, decoded.trim, position, wasPaused);

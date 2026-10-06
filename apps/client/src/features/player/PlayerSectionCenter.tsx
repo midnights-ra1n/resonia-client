@@ -52,7 +52,7 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={togglePlay}
-          className="w-9 h-9 rounded-full bg-accent shadow-play flex items-center justify-center hover:scale-105 hover:bg-accent-hover active:bg-accent-pressed transition-[transform,background-color]"
+          className="w-9 h-9 rounded-full bg-accent shadow-play flex items-center justify-center hover:scale-105 hover:bg-accent-hover active:bg-accent-pressed transition-[transform,translate,scale,background-color]"
           title={isPlaying ? "Pause" : "Play"}
         >
           {isPlaying ? (

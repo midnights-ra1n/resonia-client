@@ -107,6 +107,7 @@ export function FavoritesPage() {
           <p className="text-sm font-medium text-white">{t("favorites.title")}</p>
           <h1 className="mt-2">
             <MarqueeText
+              auto
               text={t("favorites.title")}
               className="text-5xl font-black text-white"
             />

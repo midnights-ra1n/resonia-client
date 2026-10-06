@@ -43,7 +43,7 @@ files:
   - dist-electron/preload/**
   - dist-electron/renderer/**
   - package.json
-  # `build/icon.icns`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
+  # `build/Resonia.icon`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
   # directement depuis `buildResources` (ci-dessus) pour l'icône du BUNDLE lui-même, jamais à
   # l'exécution. `build/icon.png`, lui, EST lu à l'exécution par electron/main/index.ts
   # (icône de fenêtre/barre des tâches Windows/Linux) — sans cette ligne il manquait purement
@@ -60,7 +60,17 @@ mac:
     - target: dmg
     - target: zip
     - target: pkg
-  icon: build/icon.icns
+  # Icône Icon Composer (`.icon`, format « Liquid Glass » de macOS Tahoe et suivants). À partir
+  # de ce seul fichier, electron-builder compile via `actool` (Xcode 26+ requis sur la machine
+  # de build — voir le job macOS du workflow de release) :
+  #   - Contents/Resources/Assets.car + CFBundleIconName → icône Liquid Glass (variantes
+  #     claire/sombre/teintée) lue par macOS 26 Tahoe, 27 et suivants ;
+  #   - Contents/Resources/icon.icns + CFBundleIconFile → icône classique, lue par les macOS
+  #     antérieurs à Tahoe (qui ignorent Assets.car) — et réutilisée pour le .dmg/.pkg.
+  # Chaque version de macOS choisit automatiquement celle qu'elle sait afficher. Le .icns
+  # d'actool ne contient que 16 et 128 px : build/afterPack.cjs le remplace par build/icon.icns
+  # (16 → 1024 px, voir scripts/build-mac-icns.sh).
+  icon: build/Resonia.icon
   category: public.app-category.music
   # Arch toujours explicite dans le nom : le CI construit arm64 ET x64 dans le même appel, et
   # le nom par défaut omet "x64" (ambigu à côté du fichier arm64 sur la page de release).
@@ -107,6 +117,13 @@ linux:
   # peuvent ne pas rattacher les fenêtres en cours d'exécution à cette entrée .desktop. Nécessite
   # `desktopName: "resonia.desktop"` dans apps/client/package.json (lu par app-builder-lib).
   syncDesktopName: true
+
+# Icône du volume .dmg monté (Finder, bureau) : le .icns complet plutôt que celui d'actool.
+dmg:
+  icon: build/icon.icns
+
+# Voir build/afterPack.cjs : installe l'icône .icns complète des macOS antérieurs à Tahoe.
+afterPack: build/afterPack.cjs
 
 nsis:
   # Sans espace : le nom par défaut ("Resonia Setup X.exe") est renommé en "Resonia.Setup.X.exe"

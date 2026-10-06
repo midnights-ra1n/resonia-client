@@ -107,7 +107,7 @@ function QuickAccessTile({
         onClick={handlePlay}
         disabled={play.loadingId === id}
         title={t("album.play")}
-        className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent shadow-play transition-[opacity,transform] hover:scale-105 disabled:opacity-60 ${
+        className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent shadow-play transition-[opacity,transform,translate,scale] hover:scale-105 disabled:opacity-60 ${
           isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         }`}
       >

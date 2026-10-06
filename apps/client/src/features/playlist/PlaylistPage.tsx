@@ -328,6 +328,7 @@ export function PlaylistPage() {
           </p>
           <h1 className="mt-2">
             <MarqueeText
+              auto
               text={name}
               className="text-5xl font-black text-white"
             />

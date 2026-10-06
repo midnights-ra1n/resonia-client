@@ -60,7 +60,7 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
             <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
           )}
 
-          <div className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-play transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+          <div className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-play transition-[opacity,transform,translate,scale] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
             <Play size={18} fill="currentColor" className="ml-0.5 text-on-accent" />
           </div>
         </div>

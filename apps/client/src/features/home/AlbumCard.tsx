@@ -76,7 +76,7 @@ export function AlbumCard({ album }: AlbumCardProps) {
         <button
           onClick={handlePlay}
           disabled={loading}
-          className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-play transition-[opacity,transform,background-color] duration-200 hover:scale-105 hover:bg-accent-hover group-hover:translate-y-0 group-hover:opacity-100 disabled:opacity-50"
+          className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-play transition-[opacity,transform,translate,scale,background-color] duration-200 hover:scale-105 hover:bg-accent-hover group-hover:translate-y-0 group-hover:opacity-100 disabled:opacity-50"
           title={t("album.play")}
         >
           <Play size={18} fill="currentColor" className="ml-0.5 text-on-accent" />

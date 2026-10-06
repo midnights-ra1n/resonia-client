@@ -83,7 +83,7 @@ export function PlayerSectionLeft() {
         key={currentTrack?.id ?? "empty"}
         src={coverUrl}
         alt="Cover"
-        className="w-12 h-12 rounded-cover object-cover shrink-0 bg-surface-3"
+        className="w-12 h-12 rounded object-cover shrink-0 bg-surface-3"
         decoding="async"
       />
 
@@ -110,11 +110,13 @@ export function PlayerSectionLeft() {
             changement de piste plutôt que de garder l'état de la précédente. */}
         <div key={currentTrack?.id ?? "empty"}>
           <MarqueeText
+            auto
             text={title}
             to={currentTrack?.albumId ? `/albums/${currentTrack.albumId}` : undefined}
             className="text-sm text-white hover:underline"
           />
           <MarqueeText
+            auto
             text={artist}
             to={currentTrack?.artistId ? `/artists/${currentTrack.artistId}` : undefined}
             className="text-xs text-neutral-400 hover:text-white hover:underline"

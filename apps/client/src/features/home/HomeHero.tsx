@@ -82,7 +82,7 @@ export function HomeHero({ album, loading }: HomeHeroProps) {
             <button
               onClick={handlePlay}
               disabled={loadingId === album.id}
-              className="flex h-11 items-center gap-2 rounded-full bg-accent pl-4 pr-6 font-medium text-on-accent shadow-play transition-[transform,background-color] hover:scale-[1.03] hover:bg-accent-hover active:bg-accent-pressed disabled:opacity-60"
+              className="flex h-11 items-center gap-2 rounded-full bg-accent pl-4 pr-6 font-medium text-on-accent shadow-play transition-[transform,translate,scale,background-color] hover:scale-[1.03] hover:bg-accent-hover active:bg-accent-pressed disabled:opacity-60"
             >
               {isThisAlbumPlaying ? (
                 <Pause size={22} fill="currentColor" />

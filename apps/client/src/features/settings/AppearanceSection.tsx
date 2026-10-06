@@ -8,7 +8,7 @@ import {
 } from "../../lib/appearance/fonts";
 
 const SELECT_CLASS =
-  "mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]";
+  "select-pill mt-2 w-full rounded-full bg-neutral-900 border border-neutral-700 pl-4 pr-10 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]";
 
 /** Paramètres → Apparence : police de l'interface et police des paroles. Le choix s'applique
  *  en direct à toute l'app (variables CSS), les aperçus ci-dessous le reflètent donc sans

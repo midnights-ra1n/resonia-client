@@ -212,7 +212,7 @@ function MenuPanel({
                 onMouseEnter={(e) => openSubmenu(index, e.currentTarget)}
                 onFocus={(e) => openSubmenu(index, e.currentTarget)}
                 onClick={(e) => openSubmenu(index, e.currentTarget)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
+                className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
               >
                 {Icon && (
                   <Icon size={16} className="shrink-0 text-neutral-400" />
@@ -239,7 +239,7 @@ function MenuPanel({
                 item.onClick();
                 onClose();
               }}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-sm outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 item.danger
                   ? "text-red-400 hover:bg-red-500/10 hover:text-red-300 focus-visible:bg-red-500/10 focus-visible:text-red-300"
                   : "text-neutral-200 hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"

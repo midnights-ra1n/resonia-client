@@ -22,9 +22,10 @@ export function ArtistCard({ artist }: ArtistCardProps) {
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? artist.coverArt : undefined,
+    artist.coverArt,
     300,
     coverUrl,
+    coverInView,
   );
 
   return (

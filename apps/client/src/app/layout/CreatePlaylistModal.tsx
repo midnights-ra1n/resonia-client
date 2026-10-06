@@ -5,6 +5,7 @@ import { useTranslation } from "../../lib/i18n";
 import { uploadPlaylistArtwork } from "../../lib/navidrome/nativeApi";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { useServersStore } from "../../stores/serversStore";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface CreatePlaylistModalProps {
   onClose: () => void;
@@ -57,6 +58,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
         }
       }
 
+      emitPlaylistsChanged();
       onCreated?.(created);
       onClose();
     } catch (err) {
@@ -100,7 +102,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+              className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -110,7 +112,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full resize-none rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+              className="w-full resize-none rounded-[20px] bg-neutral-800 px-4 py-2.5 text-white outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 

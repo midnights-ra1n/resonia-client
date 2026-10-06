@@ -8,6 +8,7 @@ import { useServersStore } from "../../stores/serversStore";
 import { usePlayCollection } from "./usePlayCollection";
 import { CoverImage } from "../../components/CoverImage";
 import { albumPrefetchProps } from "../album/useAlbum";
+import { useAlbumContextMenu } from "../../components/menu/useAlbumContextMenu";
 
 export type QuickAccessItem =
   | { kind: "album"; album: AlbumSummary }
@@ -74,6 +75,9 @@ function QuickAccessTile({
   const coverUrl = play.client && coverArt ? play.client.getCoverArtUrl(coverArt, 120) : undefined;
   const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, coverArt, 120, coverUrl);
 
+  // Clic droit : menu album (les playlists ont le leur sur leurs cartes et dans la sidebar).
+  const albumMenu = useAlbumContextMenu(item.kind === "album" ? item.album : undefined, cachedCoverUrl);
+
   function handlePlay() {
     if (isPlaying) togglePlay();
     else if (item.kind === "album") void play.playAlbum(item.album);
@@ -83,7 +87,7 @@ function QuickAccessTile({
   return (
     <div
       className="group relative flex h-16 items-center gap-3 overflow-hidden rounded-xl bg-surface-2 pr-3 shadow-e1 transition-colors hover:bg-surface-3"
-      {...(item.kind === "album" ? albumPrefetchProps(id) : {})}
+      {...(item.kind === "album" ? { ...albumPrefetchProps(id), onContextMenu: albumMenu.onContextMenu } : {})}
     >
       {/* Lien en calque sur toute la tuile, bouton Play en FRÈRE au-dessus (z-10) : jamais de
           bouton imbriqué dans un lien (voir AlbumCard pour le bug de rechargement évité). */}
@@ -113,6 +117,7 @@ function QuickAccessTile({
       >
         {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
       </button>
+      {albumMenu.menuElement}
     </div>
   );
 }

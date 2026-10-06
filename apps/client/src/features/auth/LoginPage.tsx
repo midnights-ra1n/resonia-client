@@ -55,7 +55,7 @@ export function LoginPage() {
             placeholder={t("auth.login.serverUrlPlaceholder")}
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -66,7 +66,7 @@ export function LoginPage() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -77,7 +77,7 @@ export function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 

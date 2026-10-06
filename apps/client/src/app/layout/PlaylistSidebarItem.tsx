@@ -15,6 +15,7 @@ import type { PlaylistItem } from "../../hooks/usePlaylists";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { RenamePlaylistModal } from "./RenamePlaylistModal";
 import { CoverImage } from "../../components/CoverImage";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface PlaylistSidebarItemProps {
   playlist: PlaylistItem;
@@ -162,6 +163,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
           onCancel={() => setDeleteOpen(false)}
           onConfirm={async () => {
             await client.deletePlaylist(playlist.id);
+            emitPlaylistsChanged();
             onChanged();
           }}
         />

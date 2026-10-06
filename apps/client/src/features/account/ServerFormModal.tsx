@@ -75,7 +75,7 @@ export function ServerFormModal({ server, onClose, onAdded }: ServerFormModalPro
   }
 
   const inputClass =
-    "w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent";
+    "w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent";
 
   return (
     <div

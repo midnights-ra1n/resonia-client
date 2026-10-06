@@ -52,9 +52,10 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? song.coverArt : undefined,
+    song.coverArt,
     80,
     coverUrl,
+    coverInView,
   );
 
   const isCurrent = currentTrackId === song.id;

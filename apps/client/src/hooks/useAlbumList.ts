@@ -1,41 +1,21 @@
-import { useEffect, useState } from "react";
 import type { AlbumSummary } from "@resonia/api-client";
-import { useServersStore } from "../stores/serversStore";
+import { useCachedQuery } from "../lib/cache/queryCache";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
+import { useServersStore } from "../stores/serversStore";
 
 type AlbumListType = "frequent" | "recent" | "newest" | "random" | "highest";
 
+// Référence stable : un nouveau [] à chaque rendu relancerait les useMemo des appelants.
+const NO_ALBUMS: AlbumSummary[] = [];
+
+/** Listes d'albums de l'accueil, servies par le cache mémoire (voir lib/cache/queryCache) :
+ *  revenir sur l'accueil réaffiche instantanément les mêmes carrousels — y compris la
+ *  sélection « random », qui ne change donc pas à chaque retour. */
 export function useAlbumList(type: AlbumListType, size = 20) {
-  const [albums, setAlbums] = useState<AlbumSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const server = useServersStore((s) => s.servers.find((x) => x.id === s.activeServerId));
+  const key = server ? `${server.id}:albumList:${type}:${size}` : null;
 
-  const servers = useServersStore((s) => s.servers);
-  const activeServerId = useServersStore((s) => s.activeServerId);
+  const { data, loading } = useCachedQuery(key, () => getClientForServer(server!).getAlbumList2(type, size));
 
-  useEffect(() => {
-    const server = servers.find((s) => s.id === activeServerId);
-    if (!server) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-
-    getClientForServer(server)
-      .getAlbumList2(type, size)
-      .then((result) => {
-        if (!cancelled) setAlbums(result);
-      })
-      .catch((err) => console.error(`[home] Échec du chargement des albums (${type})`, err))
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [servers, activeServerId, type, size]);
-
-  return { albums, loading };
+  return { albums: data ?? NO_ALBUMS, loading };
 }

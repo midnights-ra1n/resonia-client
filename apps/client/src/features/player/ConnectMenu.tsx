@@ -60,7 +60,7 @@ export function ConnectMenu() {
               <li key={device.deviceId}>
                 <button
                   onClick={() => void selectOutputDevice(device.deviceId)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[12px] text-left transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] text-left transition-colors ${
                     isSelected ? "bg-neutral-700/70 text-white" : "text-neutral-300 hover:bg-neutral-700/40"
                   }`}
                   title={device.label}
@@ -118,7 +118,7 @@ export function ConnectMenu() {
                   <button
                     onClick={() => void connectAirplayDevice(device.id, false)}
                     disabled={airplayConnecting}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[12px] text-left text-neutral-300 hover:bg-neutral-700/40 transition-colors disabled:opacity-50"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] text-left text-neutral-300 hover:bg-neutral-700/40 transition-colors disabled:opacity-50"
                     title={`${device.host}:${device.port}`}
                   >
                     <Cast size={14} className="shrink-0 text-neutral-400" />

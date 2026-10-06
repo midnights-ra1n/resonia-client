@@ -33,6 +33,7 @@ import { useTracksDownloadStatus } from "../../lib/downloads/useTracksDownloadSt
 import { useDownloadedTrackIds } from "../../lib/downloads/useDownloadedTrackIds";
 import { CoverImage } from "../../components/CoverImage";
 import { PageSkeleton } from "../../components/PageSkeleton";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
 
@@ -698,6 +699,7 @@ export function PlaylistPage() {
           onCancel={() => setDeleteOpen(false)}
           onConfirm={async () => {
             await client.deletePlaylist(playlist.id);
+            emitPlaylistsChanged();
             navigate("/");
           }}
         />

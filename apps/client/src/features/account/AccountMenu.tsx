@@ -12,7 +12,7 @@ import { AccountAvatar } from "./AccountAvatar";
 import { ServerFormModal } from "./ServerFormModal";
 
 const itemClass =
-  "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-neutral-200 transition-colors hover:bg-white/10 hover:text-white";
+  "flex w-full items-center gap-3 rounded-full px-3 py-2 text-left text-sm text-neutral-200 transition-colors hover:bg-white/10 hover:text-white";
 
 /** Bulle du compte (barre supérieure, à droite) : au clic, un menu liste les serveurs
  *  Navidrome enregistrés (bascule, ajout, modification, retrait), mène aux paramètres et
@@ -157,7 +157,7 @@ export function AccountMenu() {
                           }}
                           title={t("account.editServer")}
                           aria-label={t("account.editServer")}
-                          className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                          className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                         >
                           <PencilSimple size={16} />
                         </button>
@@ -169,7 +169,7 @@ export function AccountMenu() {
                           }}
                           title={t("account.deleteServer")}
                           aria-label={t("account.deleteServer")}
-                          className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 opacity-0 transition-opacity hover:bg-white/10 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                          className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 opacity-0 transition-opacity hover:bg-white/10 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                         >
                           <Trash size={16} />
                         </button>

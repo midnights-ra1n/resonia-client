@@ -1,18 +1,12 @@
-import { useState } from "react";
 import { MusicNotes, Play } from "../../components/icons";
 import type { AlbumSummary } from "@resonia/api-client";
 import { useServersStore } from "../../stores/serversStore";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
-import { usePlayerStore } from "../../stores/playerStore";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { useInViewport } from "../../hooks/useInViewport";
 import { usePlayCollection } from "./usePlayCollection";
-import { Link, useNavigate } from "react-router-dom";
-import { InfoModal } from "../../components/InfoModal";
-import { ContextMenu } from "../../components/menu/ContextMenu";
-import { buildAlbumMenuItems } from "../../components/menu/buildAlbumMenuItems";
-import { useContextMenu } from "../../components/menu/useContextMenu";
-import { formatAlbumDuration } from "../../lib/format/duration";
+import { Link } from "react-router-dom";
+import { useAlbumContextMenu } from "../../components/menu/useAlbumContextMenu";
 import { useTranslation } from "../../lib/i18n";
 import { CoverImage } from "../../components/CoverImage";
 import { albumPrefetchProps } from "../album/useAlbum";
@@ -23,14 +17,10 @@ interface AlbumCardProps {
 
 export function AlbumCard({ album }: AlbumCardProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const { playAlbum, loadingId } = usePlayCollection();
   const loading = loadingId === album.id;
-  const addToQueue = usePlayerStore((s) => s.addToQueue);
-  const menu = useContextMenu();
-  const [infoOpen, setInfoOpen] = useState(false);
 
   const server = servers.find((s) => s.id === activeServerId);
   const client = server ? getClientForServer(server) : null;
@@ -38,10 +28,13 @@ export function AlbumCard({ album }: AlbumCardProps) {
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? album.coverArt : undefined,
+    album.coverArt,
     300,
     coverUrl,
+    coverInView,
   );
+
+  const { onContextMenu, menuElement } = useAlbumContextMenu(album, cachedCoverUrl);
 
   function handlePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -52,7 +45,7 @@ export function AlbumCard({ album }: AlbumCardProps) {
   return (
     <div
       className="group relative w-full rounded-panel p-3 transition-colors hover:bg-surface-2"
-      onContextMenu={menu.handleContextMenu}
+      onContextMenu={onContextMenu}
       {...albumPrefetchProps(album.id)}
     >
       {/* Le bouton Play est volontairement HORS du <Link> (frère de la pochette, pas enfant) :
@@ -98,34 +91,7 @@ export function AlbumCard({ album }: AlbumCardProps) {
         <p className="truncate text-xs text-neutral-400">{album.artist}</p>
       )}
 
-      {menu.open && client && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          onClose={menu.close}
-          items={buildAlbumMenuItems({
-            album,
-            client,
-            t,
-            navigate,
-            addToQueue,
-            onOpenInfo: () => setInfoOpen(true),
-          })}
-        />
-      )}
-
-      {infoOpen && (
-        <InfoModal
-          title={album.name}
-          coverUrl={cachedCoverUrl ?? undefined}
-          onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: album.artist },
-            ...(album.year ? [{ label: t("album.yearLabel"), value: String(album.year) }] : []),
-            { label: t("album.trackCount", { count: album.songCount }), value: formatAlbumDuration(album.duration, t) },
-          ]}
-        />
-      )}
+      {menuElement}
     </div>
   );
 }

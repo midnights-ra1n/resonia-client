@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { usePlaylists } from "../../hooks/usePlaylists";
 import { useTranslation } from "../../lib/i18n";
-import { emitPlaylistSongsChanged } from "../../lib/playlists/playlistEvents";
+import { emitPlaylistSongsChanged, emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface AddToPlaylistSubmenuProps {
   client: SubsonicClient;
@@ -122,6 +122,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
       const playlist = await client.createPlaylist(trimmed);
       await client.addSongsToPlaylist(playlist.id, songIds);
       setAddedIds((prev) => new Set(prev).add(playlist.id));
+      emitPlaylistsChanged();
       setCreating(false);
       setNewName("");
     } catch (err) {
@@ -141,12 +142,12 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t("playlists.nameLabel")}
-            className="w-full rounded-md bg-white/10 px-2 py-1.5 text-sm text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-white/10 px-3 py-1.5 text-sm text-white outline-none focus:ring-2 focus:ring-accent"
           />
           <button
             type="submit"
             disabled={creatingBusy || !newName.trim()}
-            className="mt-2 w-full rounded-md bg-accent py-1.5 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
+            className="mt-2 w-full rounded-full bg-accent py-1.5 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {t("playlists.create")}
           </button>
@@ -156,7 +157,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
+            className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
           >
             <Plus size={16} className="shrink-0 text-neutral-400" />
             {t("contextMenu.newPlaylist")}
@@ -181,7 +182,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
                 type="button"
                 disabled={pending || songIds === null}
                 onClick={() => toggle(playlist.id)}
-                className="flex w-full items-center gap-2.5 truncate rounded-md px-2.5 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:cursor-default disabled:hover:bg-transparent"
+                className="flex w-full items-center gap-2.5 truncate rounded-full px-3 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:cursor-default disabled:hover:bg-transparent"
               >
                 <span
                   className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors ${

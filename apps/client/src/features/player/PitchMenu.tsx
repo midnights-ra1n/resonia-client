@@ -186,7 +186,7 @@ export function PitchMenu() {
             <button
               key={range}
               onClick={() => setPitchRange(range)}
-              className={`rounded px-1 py-0.5 text-[11px] tabular-nums transition-colors ${
+              className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums transition-colors ${
                 pitchRange === range
                   ? "bg-accent text-on-accent font-semibold"
                   : "bg-neutral-700/50 text-neutral-300 hover:bg-neutral-700"

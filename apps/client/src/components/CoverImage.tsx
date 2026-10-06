@@ -4,6 +4,13 @@ import type { ImgHTMLAttributes, SyntheticEvent } from "react";
  *  se peindre brutalement (voire par bandes) au fil du défilement. L'état « chargé » est posé
  *  directement sur le DOM (`data-loaded`, voir `.cover-img` dans index.css) : aucun re-render
  *  React, coût nul même sur des grilles de centaines de pochettes. */
+/** Image déjà en mémoire (pochette réaffichée en revenant sur une page, voir useCoverArt) :
+ *  `complete` est vrai dès l'insertion — on la montre aussitôt, avant le premier paint, plutôt
+ *  que de rejouer le fondu qui donnait l'impression d'un rechargement. */
+function revealIfReady(img: HTMLImageElement | null) {
+  if (img?.complete && img.naturalWidth > 0) img.setAttribute("data-loaded", "");
+}
+
 export function CoverImage({ className = "", onLoad, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
   function handleLoad(e: SyntheticEvent<HTMLImageElement>) {
     const img = e.currentTarget;
@@ -15,5 +22,7 @@ export function CoverImage({ className = "", onLoad, ...props }: ImgHTMLAttribut
     onLoad?.(e);
   }
 
-  return <img {...props} decoding="async" className={`cover-img ${className}`} onLoad={handleLoad} />;
+  return (
+    <img {...props} ref={revealIfReady} decoding="async" className={`cover-img ${className}`} onLoad={handleLoad} />
+  );
 }

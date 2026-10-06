@@ -17,6 +17,7 @@ import { usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useTranslation } from "../../lib/i18n";
 import { CoverImage } from "../../components/CoverImage";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface PlaylistCardProps {
   playlist: PlaylistSummary;
@@ -43,9 +44,10 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? playlist.coverArt : undefined,
+    playlist.coverArt,
     300,
     coverUrl,
+    coverInView,
   );
 
   function handlePlay(e: React.MouseEvent) {
@@ -139,6 +141,7 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
           onCancel={() => setDeleteOpen(false)}
           onConfirm={async () => {
             await client.deletePlaylist(playlist.id);
+            emitPlaylistsChanged();
             onDeleted?.();
           }}
         />

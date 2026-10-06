@@ -2,6 +2,7 @@ import { X } from "../../components/icons";
 import { useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { useTranslation } from "../../lib/i18n";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface RenamePlaylistModalProps {
   playlistId: string;
@@ -26,6 +27,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
     setError(null);
     try {
       await client.updatePlaylist(playlistId, { name: trimmed });
+      emitPlaylistsChanged();
       onRenamed(trimmed);
       onClose();
     } catch (err) {
@@ -57,7 +59,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
 
           {error && <p className="text-sm text-red-500">{error}</p>}

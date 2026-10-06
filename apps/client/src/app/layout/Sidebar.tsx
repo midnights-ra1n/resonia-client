@@ -1,4 +1,4 @@
-import { ChartBar, Disc, Download, Folder, GearSix, House, ListBullets, MusicNotes, Plus, Star } from "../../components/icons";
+import { ChartBar, Disc, Download, Folder, House, ListBullets, MusicNotes, Plus, Star } from "../../components/icons";
 import { useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { usePlaylists } from "../../hooks/usePlaylists";
@@ -17,7 +17,6 @@ const navLinks = [
   { to: "/folders", icon: Folder, key: "nav.folders" },
   { to: "/downloads", icon: Download, key: "nav.downloads" },
   { to: "/stats", icon: ChartBar, key: "nav.stats" },
-  { to: "/settings", icon: GearSix, key: "nav.settings" },
 ];
 
 export function Sidebar() {
@@ -49,7 +48,7 @@ export function Sidebar() {
             to={to}
             end={to === "/"}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${isActive ? "bg-accent-soft text-accent" : "text-neutral-400 hover:bg-surface-2 hover:text-white"
+              `flex items-center gap-3 rounded-full px-3 py-2 text-sm font-medium transition-colors ${isActive ? "bg-accent-soft text-accent" : "text-neutral-400 hover:bg-surface-2 hover:text-white"
               }`
             }
           >

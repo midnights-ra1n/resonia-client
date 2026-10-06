@@ -19,6 +19,11 @@ function decodeJwtExpiry(token: string): number {
   }
 }
 
+/** Oublie le JWT natif d'un serveur (identifiants modifiés, déconnexion, suppression). */
+export function invalidateNativeToken(serverId: string): void {
+  tokenCache.delete(serverId);
+}
+
 export async function getNativeClientForServer(server: StoredServer): Promise<NavidromeNativeClient | null> {
   if (!server.encryptedPassword) return null;
 

@@ -1,20 +1,11 @@
-import { createContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { I18nContext } from "./context";
 import { storage } from "../storage";
 import { resolveTranslation } from "./resolvePath";
 import { translations } from "./translations";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, isSupportedLocale, type Locale } from "./types";
 
 const STORAGE_KEY = "resonia:locale";
-
-interface I18nContextValue {
-  locale: Locale;
-  setLocale: (locale: Locale) => void;
-  supportedLocales: Locale[];
-  t: (key: string, vars?: Record<string, string | number>) => string;
-  ready: boolean;
-}
-
-export const I18nContext = createContext<I18nContextValue | null>(null);
 
 function detectBrowserLocale(): Locale {
   const browserLang = navigator.language.split("-")[0];

@@ -8,6 +8,7 @@ import { usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { usePlayCollection } from "./usePlayCollection";
 import { CoverImage } from "../../components/CoverImage";
+import { useAlbumContextMenu } from "../../components/menu/useAlbumContextMenu";
 
 interface HomeHeroProps {
   album: AlbumSummary | undefined;
@@ -30,6 +31,7 @@ export function HomeHero({ album, loading }: HomeHeroProps) {
   const coverUrl = client && album?.coverArt ? client.getCoverArtUrl(album.coverArt, 600) : undefined;
   const cachedCoverUrl = useCoverArt(activeServerId ?? undefined, album?.coverArt, 600, coverUrl);
   const dominantColor = useDominantColor(cachedCoverUrl);
+  const { onContextMenu, menuElement } = useAlbumContextMenu(album, cachedCoverUrl);
 
   if (loading && !album) {
     return <div className="mb-10 h-[232px] animate-pulse rounded-panel bg-surface-2" />;
@@ -47,7 +49,10 @@ export function HomeHero({ album, loading }: HomeHeroProps) {
   }
 
   return (
-    <section className="relative mb-10 overflow-hidden rounded-panel border border-white/5 bg-surface-2 shadow-e2">
+    <section
+      onContextMenu={onContextMenu}
+      className="relative mb-10 overflow-hidden rounded-panel border border-white/5 bg-surface-2 shadow-e2"
+    >
       {dominantColor && (
         <div
           aria-hidden
@@ -100,6 +105,7 @@ export function HomeHero({ album, loading }: HomeHeroProps) {
           </div>
         </div>
       </div>
+      {menuElement}
     </section>
   );
 }

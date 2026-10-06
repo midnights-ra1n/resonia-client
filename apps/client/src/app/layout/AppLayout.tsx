@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, WifiSlash } from "../../components/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { AccountMenu } from "../../features/account/AccountMenu";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
 import { UpdateRestartButton } from "./UpdateRestartButton";
 import { LyricsView } from "../../features/lyrics/LyricsView";
@@ -192,11 +193,13 @@ export function AppLayout() {
                 />
               </div>
 
-              {/* Indicateur de téléchargements en cours et bouton de redémarrage (si une mise à
-                  jour installée en arrière-plan attend d'être appliquée), à droite */}
+              {/* Indicateur de téléchargements en cours, bouton de redémarrage (si une mise à
+                  jour installée en arrière-plan attend d'être appliquée) et bulle du compte
+                  (serveurs, paramètres, déconnexion), à droite */}
               <div className="flex items-center justify-end gap-2 pl-2">
                 <UpdateRestartButton />
                 <DownloadsIndicator />
+                <AccountMenu />
               </div>
             </form>
           </header>

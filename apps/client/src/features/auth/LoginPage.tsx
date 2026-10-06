@@ -1,8 +1,7 @@
-import { SubsonicClient } from "@resonia/api-client";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "../../lib/i18n";
-import { useServersStore } from "../../stores/serversStore";
-import { encryptPassword } from "../../lib/security/passwordVault";
+import { authenticateServer } from "../../lib/subsonic/authenticateServer";
+import { pickAvatarColor, useServersStore } from "../../stores/serversStore";
 import LogoFull from "../../assets/Logo_full.svg?react";
 
 export function LoginPage() {
@@ -21,18 +20,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const client = new SubsonicClient({ url: serverUrl, username, password });
-      await client.ping();
-
-      const encryptedPassword = await encryptPassword(password);
+      const session = await authenticateServer(serverUrl, username, password);
 
       await addServer({
         id: crypto.randomUUID(),
         name: new URL(serverUrl).hostname,
-        url: serverUrl,
-        username,
-        ...client.credentials,
-        encryptedPassword,
+        ...session,
+        avatarColor: pickAvatarColor(),
         createdAt: Date.now(),
       });
     } catch (err) {
@@ -61,7 +55,7 @@ export function LoginPage() {
             placeholder={t("auth.login.serverUrlPlaceholder")}
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -72,7 +66,7 @@ export function LoginPage() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -83,7 +77,7 @@ export function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 

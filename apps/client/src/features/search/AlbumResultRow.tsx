@@ -38,9 +38,10 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? album.coverArt : undefined,
+    album.coverArt,
     80,
     coverUrl,
+    coverInView,
   );
 
   async function handlePlay(e: React.MouseEvent) {

@@ -95,7 +95,7 @@ export function DownloadsIndicator() {
           <Link
             to="/downloads"
             onClick={() => setOpen(false)}
-            className="mt-3 block rounded-md px-2 py-1.5 text-center text-xs font-medium text-neutral-400 transition hover:bg-white/10 hover:text-white"
+            className="mt-3 block rounded-full px-3 py-1.5 text-center text-xs font-medium text-neutral-400 transition hover:bg-white/10 hover:text-white"
           >
             {t("downloads.viewAll")}
           </Link>

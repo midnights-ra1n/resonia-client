@@ -14,6 +14,7 @@ import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useLikedSongs } from "./useLikedSongs";
+import { PageSkeleton } from "../../components/PageSkeleton";
 
 export function FavoritesPage() {
   const { songs, loading, error, unlike } = useLikedSongs();
@@ -48,7 +49,7 @@ export function FavoritesPage() {
   } = useTrackListSelection(songs.length);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !client) {
@@ -121,7 +122,7 @@ export function FavoritesPage() {
           <>
             <button
               onClick={handlePlayAll}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover"
               title={t("favorites.play")}
             >
               {isThisListPlaying ? (
@@ -183,8 +184,8 @@ export function FavoritesPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_40px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
-                      isSelected ? "bg-neutral-800/70" : ""
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_40px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
+                      isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""
                     }`}
                   >
                     <div className="flex items-center justify-center text-sm text-neutral-400">

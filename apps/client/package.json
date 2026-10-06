@@ -21,9 +21,20 @@
     "electron:dev": "electron-vite dev",
     "electron:build": "electron-vite build",
     "electron:preview": "electron-vite preview",
-    "electron:package": "electron-vite build && electron-builder --dir"
+    "electron:package": "electron-vite build && electron-builder --dir",
+    "electron:dist": "electron-vite build && electron-builder --publish never",
+    "electron:dist:mac": "electron-vite build && electron-builder --publish never --mac --arm64",
+    "electron:dist:win": "electron-vite build && electron-builder --publish never --win --x64 --arm64",
+    "electron:dist:linux": "electron-vite build && electron-builder --publish never --linux"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/google-sans": "^5.3.1",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/reddit-sans": "^5.3.0",
+    "@fontsource/fira-sans": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
+    "@fontsource/ubuntu": "^5.3.0",
     "@lox-audioserver/node-airplay-sender": "^0.4.10",
     "@material-symbols/svg-400": "^0.47.6",
     "@resonia/api-client": "workspace:*",

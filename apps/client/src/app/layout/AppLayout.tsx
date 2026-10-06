@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, WifiSlash } from "../../components/icons";
-import { useEffect, useRef, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
 import { UpdateRestartButton } from "./UpdateRestartButton";
 import { LyricsView } from "../../features/lyrics/LyricsView";
@@ -8,12 +8,14 @@ import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
 import { DebugPanel } from "../../features/player/debug/DebugPanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { ScrollRootContext } from "../../hooks/useInViewport";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
 import { useTranslation } from "../../lib/i18n";
 import { useOnlineStore } from "../../lib/network/onlineStatus";
 import { useFavoritesStore } from "../../stores/favoritesStore";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
+import { PageTransition } from "./PageTransition";
 import { Sidebar } from "./Sidebar";
 
 const MIN_QUERY_LENGTH = 2;
@@ -43,6 +45,14 @@ export function AppLayout() {
   const loadFavorites = useFavoritesStore((s) => s.load);
   const mainRef = useRef<HTMLElement>(null);
   useScrollingClass(mainRef);
+  // Le conteneur qui défile, exposé aux IntersectionObserver des pochettes (voir
+  // ScrollRootContext). Ref callback STABLE (useCallback) : appelée au montage/démontage
+  // seulement, jamais à chaque rendu.
+  const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null);
+  const setMainRef = useCallback((el: HTMLElement | null) => {
+    mainRef.current = el;
+    setScrollRoot(el);
+  }, []);
   const isOnline = useOnlineStore((s) => s.isOnline);
 
   useEffect(() => {
@@ -98,15 +108,17 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-neutral-950">
-      <div className="flex flex-1 min-h-0">
-        {!showLyrics && <Sidebar />}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* Pas de backdrop-blur ici : un filtre de flou d'arrière-plan sticky force WKWebView à
-              recomposer le flou à chaque peinture sous le header (scroll, pochette animée en
-              lecture...) — un coût GPU permanent pour un gain visuel marginal. Fond quasi-opaque
-              à la place, même lisibilité sans recomposition continue. */}
-          <header className="sticky top-0 z-10 bg-neutral-950/95 border-b border-neutral-800">
+    // Cartes flottantes sur fond `bg-sunken`, séparées par 12px : sidebar (2 cartes), contenu,
+    // file d'attente (si ouverte). La barre de lecture ne prend AUCUNE place dans la mise en
+    // page : elle flotte par-dessus le bas de la colonne de contenu, qui défile dessous (le
+    // `pb` de <main> garantit que la dernière ligne reste atteignable au-dessus d'elle).
+    // `overflow-hidden` + `isolate` sur le panneau de contenu : le rayon découpe le scroll, et
+    // le panneau forme son propre contexte d'empilement (aucun z-index de page ne déborde).
+    <div className="flex h-screen gap-3 bg-bg-sunken p-3">
+      {!showLyrics && <Sidebar />}
+      <div className="relative flex flex-1 min-w-0 min-h-0">
+        <div className="isolate flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden rounded-panel border border-white/5 bg-neutral-900 shadow-e2">
+          <header className="z-10 shrink-0">
             {!isOnline && (
               <div className="flex items-center justify-center gap-2 bg-amber-500/10 px-4 py-1.5 text-xs font-medium text-amber-400">
                 <WifiSlash size={14} />
@@ -115,20 +127,20 @@ export function AppLayout() {
             )}
             <form
               onSubmit={handleSubmit}
-              className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3 gap-2"
+              className="grid grid-cols-[auto_1fr_auto] items-center px-4 pt-4 pb-2 gap-2"
             >
               {/* Boutons navigation à gauche de la barre de recherche */}
-              <div className="flex items-center gap-1 pr-2">
+              <div className="flex items-center gap-2 pr-2">
                 <button
                   onClick={handleGoBack}
-                  className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-neutral-400 shadow-e1 hover:bg-surface-3 hover:text-white transition-colors"
                   title="Aller à la page précédente"
                 >
                   <ArrowLeft size={16} />
                 </button>
                 <button
                   onClick={handleGoForward}
-                  className="rounded-full p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-neutral-400 shadow-e1 hover:bg-surface-3 hover:text-white transition-colors"
                   title="Aller à la page suivante"
                 >
                   <ArrowRight size={16} />
@@ -147,7 +159,7 @@ export function AppLayout() {
                   autoComplete="off"
                   data-1p-ignore
                   data-lpignore="true"
-                  className="w-full rounded-full bg-neutral-900 border border-neutral-700 px-5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                  className="h-10 w-full rounded-full bg-surface-2 border border-white/5 px-5 text-sm text-white placeholder-neutral-500 shadow-e1 hover:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[border-color,box-shadow]"
                 />
               </div>
 
@@ -163,15 +175,24 @@ export function AppLayout() {
           {showLyrics ? (
             <LyricsView />
           ) : (
-            <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto">
-              <Outlet />
+            <main ref={setMainRef} className="flex-1 min-h-0 overflow-y-auto pb-[104px]">
+              <ScrollRootContext.Provider value={scrollRoot}>
+                <PageTransition scrollRoot={scrollRoot} />
+              </ScrollRootContext.Provider>
             </main>
           )}
         </div>
-        {!showLyrics && <QueuePanel />}
+
+        {/* Lecteur flottant : `pointer-events-none` sur le calque pleine largeur pour que les
+            clics passent au contenu sur les côtés, réactivés sur la barre elle-même. */}
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex justify-center">
+          <div className="pointer-events-auto w-full max-w-[1200px]">
+            <PlayerBar />
+          </div>
+        </div>
       </div>
+      {!showLyrics && <QueuePanel />}
       <DebugPanel />
-      <PlayerBar />
     </div>
   );
 }

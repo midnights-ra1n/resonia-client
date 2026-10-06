@@ -14,6 +14,7 @@ import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
+import { CoverImage } from "../../components/CoverImage";
 
 function formatDuration(seconds: number): string {
   return formatTrackDuration(seconds);
@@ -95,7 +96,7 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
     >
       <div ref={coverRef} className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          <CoverImage src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}

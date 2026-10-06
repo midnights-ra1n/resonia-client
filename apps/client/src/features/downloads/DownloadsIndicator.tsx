@@ -66,12 +66,12 @@ export function DownloadsIndicator() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-neutral-900/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-panel border border-white/5 bg-surface-2 p-4 shadow-e2">
           <h3 className="text-sm font-semibold text-white">{t("downloads.indicatorHeading")}</h3>
 
           <div className="mt-3">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
-              <div className="h-full rounded-full bg-accent transition-all duration-300" style={{ width: `${percent}%` }} />
+              <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${percent}%` }} />
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-neutral-400">
               <span>{t("downloads.indicatorTracks", { done: stats.completedTracks, total: stats.totalTracks })}</span>

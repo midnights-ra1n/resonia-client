@@ -11,6 +11,8 @@ import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useArtist } from "./useArtist";
 import { useArtistPopularSongs } from "./useArtistPopularSongs";
+import { CoverImage } from "../../components/CoverImage";
+import { PageSkeleton } from "../../components/PageSkeleton";
 
 export function ArtistPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,7 +52,7 @@ export function ArtistPage() {
     .filter((songId): songId is string => songId !== undefined);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !artist) {
@@ -89,7 +91,7 @@ export function ArtistPage() {
     <div>
       <div className="relative h-80 w-full overflow-hidden bg-neutral-800">
         {cachedPhotoUrl && (
-          <img src={cachedPhotoUrl} alt={artist.name} className="absolute inset-0 h-full w-full object-cover" decoding="async" />
+          <CoverImage src={cachedPhotoUrl} alt={artist.name} className="absolute inset-0 h-full w-full object-cover" decoding="async" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/10 to-black/20" />
         <div className="absolute bottom-6 left-8 right-8">
@@ -106,7 +108,7 @@ export function ArtistPage() {
         <button
           onClick={handlePlay}
           disabled={popularSongs.length === 0}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover disabled:opacity-50"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover disabled:opacity-50"
           title={t("artist.play")}
         >
           {isThisArtistPlaying ? (

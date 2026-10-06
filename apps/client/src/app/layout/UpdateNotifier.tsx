@@ -97,8 +97,8 @@ export function UpdateNotifier() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in">
+      <div className="w-full max-w-sm rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in">
         <h2 className="mb-3 text-center text-sm font-semibold text-white">
           {t("update.available", { version: version ?? "" })}
         </h2>

@@ -12,6 +12,7 @@ import { formatTrackDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { LikeButton } from "./LikeButton";
+import { CoverImage } from "../../components/CoverImage";
 
 // Bouton like : 20px (h-5 w-5) + 8px d'écart avant le texte.
 const BUTTON_WIDTH = 20;
@@ -78,11 +79,11 @@ export function PlayerSectionLeft() {
 
   return (
     <div className="flex items-center gap-3 h-full min-w-0">
-      <img
+      <CoverImage
         key={currentTrack?.id ?? "empty"}
         src={coverUrl}
         alt="Cover"
-        className="w-12 h-12 rounded-md object-cover shrink-0 bg-neutral-800"
+        className="w-12 h-12 rounded-cover object-cover shrink-0 bg-surface-3"
         decoding="async"
       />
 

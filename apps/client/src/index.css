@@ -54,6 +54,66 @@
   --color-warning: #f2c14e;
   --color-danger: #e5675a;
 
+  /* Formes : 12 pochettes, 18 panneaux, 24 barre de lecture (`rounded-cover/panel/bar`). */
+  --radius-cover: 12px;
+  --radius-panel: 18px;
+  --radius-bar: 24px;
+
+  /* Élévation : le « flottant » vient de l'ombre et du rayon, pas des marges. Ombres
+   * STATIQUES uniquement (jamais animées) : rasterisées une fois puis composées, aucun coût
+   * par frame — contrairement à un backdrop-filter, banni de l'app. */
+  --shadow-e1: 0 4px 14px rgb(0 0 0 / 0.45);
+  --shadow-e2: 0 14px 36px rgb(0 0 0 / 0.6);
+  --shadow-e3: 0 14px 36px rgb(0 0 0 / 0.6), 0 0 32px -12px rgb(255 163 67 / 0.22);
+  --shadow-play: 0 6px 20px -6px rgb(255 163 67 / 0.55);
+
+  /* Mouvement : une seule courbe douce (décélération longue, sans rebond) pour toute l'app.
+   * Redéfinir les valeurs PAR DÉFAUT de Tailwind suffit à adoucir chaque `transition-*` déjà
+   * présent dans le code. N'animer que opacity/transform : composition GPU, jamais de layout. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --default-transition-duration: 220ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-page-in: page-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-page-out: page-out 140ms cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-fade-in: fade-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop-in: pop-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-panel-in: panel-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes page-out {
+    to {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.97);
+    }
+  }
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+  }
+
+  /* Police de l'interface, choisie dans Paramètres → Apparence (voir lib/appearance/fonts.ts).
+   * `font-sans` (défaut Tailwind, champs de formulaire compris via le preflight) la suit. */
+  --font-sans: var(--font-ui, "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif);
+
   /* Les classes amber/red existantes suivent les états de la palette. */
   --color-amber-400: #f5cd6e;
   --color-amber-500: #f2c14e;
@@ -79,7 +139,7 @@ body,
 }
 
 body {
-  font-family: "Roboto", sans-serif;
+  font-family: var(--font-sans);
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -179,4 +239,26 @@ img {
 .lyrics-scrollable::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* Pochettes : apparition en fondu une fois l'image DÉCODÉE (voir components/CoverImage.tsx)
+ * plutôt qu'un affichage brut ligne par ligne. Opacity seule : composition GPU. */
+.cover-img {
+  opacity: 0;
+  transition: opacity 260ms var(--ease-out);
+}
+.cover-img[data-loaded] {
+  opacity: 1;
+}
+
+/* Réglage système « Réduire les animations » : tout mouvement décoratif devient instantané. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -28,14 +28,14 @@ export function ConfirmDeleteModal({ title, message, confirmLabel, onConfirm, on
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in"
       onClick={(e) => {
         e.stopPropagation();
         onCancel();
       }}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-neutral-900 p-6 shadow-xl"
+        className="w-full max-w-sm rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">

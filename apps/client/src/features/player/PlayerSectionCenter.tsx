@@ -52,7 +52,7 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={togglePlay}
-          className="w-9 h-9 rounded-full bg-accent flex items-center justify-center hover:scale-105 hover:bg-accent-hover active:bg-accent-pressed transition-[transform,background-color]"
+          className="w-9 h-9 rounded-full bg-accent shadow-play flex items-center justify-center hover:scale-105 hover:bg-accent-hover active:bg-accent-pressed transition-[transform,background-color]"
           title={isPlaying ? "Pause" : "Play"}
         >
           {isPlaying ? (
@@ -87,6 +87,12 @@ export function PlayerSectionCenter() {
   );
 }
 
+// La position n'est rafraîchie que toutes les 250 ms (voir tickProgress) : une transition
+// linéaire de même durée sur le `transform` interpole le mouvement entre deux ticks — barre
+// parfaitement continue, sans à-coups, pour un coût nul (composition GPU uniquement).
+// Désactivée pendant un glisser, où la barre doit coller au curseur.
+const SMOOTH_TICK = "transition-transform duration-[250ms] ease-linear";
+
 // Seul ce composant re-rend au rythme de tickProgress (currentTime) : isolé du reste des
 // contrôles pour que le tick de lecture n'entraîne pas un re-render des boutons ci-dessus.
 function ProgressBar() {
@@ -120,7 +126,16 @@ function ProgressBar() {
   const [isDragging, setIsDragging] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
-  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  // Native streaming en attente de données (typiquement juste après un seek hors de la zone
+  // déjà téléchargée) : la position ne peut réellement pas avancer — on le signale par une
+  // pulsation douce plutôt que de laisser croire à un gel de l'interface.
+  const isBuffering = usePlayerStore((s) => s.engineState === "buffering" || s.engineState === "loading");
+
+  // Pendant un glisser, la barre ET le temps écoulé suivent le curseur en direct (aperçu de
+  // scrub) ; le seek réel n'est envoyé qu'au relâchement.
+  const isScrubbing = isDragging && hoverProgress !== null;
+  const displayTime = isScrubbing ? hoverProgress : currentTime;
+  const progress = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
 
   const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!barRef.current || !duration) return;
@@ -173,7 +188,7 @@ function ProgressBar() {
   return (
     <div className="flex items-center gap-2 w-full">
       <span className="text-xs text-neutral-400 w-10 text-right tabular-nums select-none">
-        {currentTrack ? formatTime(currentTime) : "--:--"}
+        {currentTrack ? formatTime(displayTime) : "--:--"}
       </span>
 
       <div
@@ -186,7 +201,7 @@ function ProgressBar() {
         onMouseUp={() => setIsDragging(false)}
       >
         {/* Hover fill — only when hover is behind current progress */}
-        {hoverProgress !== null && hoverProgress < currentTime && (
+        {!isScrubbing && hoverProgress !== null && hoverProgress < currentTime && (
           <div
             className="absolute top-0 left-0 h-full bg-neutral-500 rounded-full"
             style={{
@@ -195,19 +210,24 @@ function ProgressBar() {
           />
         )}
 
-        {/* Progress fill */}
-        <div
-          className="absolute top-0 left-0 h-full bg-accent rounded-full"
-          style={{ width: `${progress}%` }}
-        />
+        {/* Remplissage et pastille déplacés par `transform` uniquement (jamais width/left) :
+            le tick de lecture (4×/s) ne déclenche alors ni layout ni repaint, seulement une
+            recomposition GPU — la barre reste fluide et quasi gratuite pendant toute l'écoute.
+            Le conteneur de la pastille fait toute la largeur de la barre : un translateX en %
+            de SA largeur équivaut donc à un % de la barre. */}
+        <div className="absolute inset-0 overflow-hidden rounded-full">
+          <div
+            className={`h-full w-full origin-left rounded-full bg-accent ${isScrubbing ? "" : SMOOTH_TICK} ${isBuffering && currentTrack ? "animate-pulse" : ""}`}
+            style={{ transform: `scaleX(${progress / 100})` }}
+          />
+        </div>
 
-        {/* Thumb */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-accent rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow"
-          style={{
-            left: `calc(${isDragging && hoverProgress !== null ? (hoverProgress / (duration || 1)) * 100 : progress}% - 6px)`,
-          }}
-        />
+          className={`pointer-events-none absolute inset-0 ${isScrubbing ? "" : SMOOTH_TICK}`}
+          style={{ transform: `translateX(${progress}%)` }}
+        >
+          <div className="absolute top-1/2 -left-1.5 h-3 w-3 -translate-y-1/2 rounded-full bg-accent opacity-0 shadow-play transition-opacity group-hover:opacity-100" />
+        </div>
       </div>
 
       <span
@@ -220,7 +240,7 @@ function ProgressBar() {
         {!currentTrack
           ? "--:--"
           : showTimeRemaining
-            ? `-${formatTime(Math.max(duration - currentTime, 0))}`
+            ? `-${formatTime(Math.max(duration - displayTime, 0))}`
             : formatTime(duration)}
       </span>
     </div>

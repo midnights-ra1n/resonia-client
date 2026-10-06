@@ -1,4 +1,5 @@
 import { X } from "./icons";
+import { CoverImage } from "./CoverImage";
 
 interface InfoModalProps {
   title: string;
@@ -10,14 +11,14 @@ interface InfoModalProps {
 export function InfoModal({ title, coverUrl, rows, onClose }: InfoModalProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in"
       onClick={(e) => {
         e.stopPropagation();
         onClose();
       }}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-neutral-900 p-6 shadow-xl"
+        className="w-full max-w-md rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -29,7 +30,7 @@ export function InfoModal({ title, coverUrl, rows, onClose }: InfoModalProps) {
 
         {coverUrl && (
           <div className="mx-auto mb-4 h-32 w-32 overflow-hidden rounded-lg bg-neutral-800">
-            <img src={coverUrl} alt="" className="h-full w-full object-cover" decoding="async" />
+            <CoverImage src={coverUrl} alt="" className="h-full w-full object-cover" decoding="async" />
           </div>
         )}
 

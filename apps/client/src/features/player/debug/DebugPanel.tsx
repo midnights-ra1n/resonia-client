@@ -217,7 +217,7 @@ function NetworkTab() {
         </div>
         <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${
+            className={`h-full rounded-full transition-[width] duration-300 ${
               cachePercent >= 95 ? "bg-red-500" : cachePercent >= 80 ? "bg-amber-500" : "bg-accent"
             }`}
             style={{ width: `${cachePercent}%` }}
@@ -323,7 +323,7 @@ export function DebugPanel() {
   if (!showDebugPanel) return null;
 
   return (
-    <div className="fixed bottom-24 right-4 z-40 flex w-80 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/95 shadow-2xl backdrop-blur-sm">
+    <div className="fixed bottom-[100px] right-6 z-40 flex w-80 flex-col overflow-hidden rounded-panel border border-white/5 bg-surface-2 shadow-e2">
       <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-3 py-2">
         <div className="flex items-center gap-1.5">
           <TabButton icon={<Radio size={12} />} label="Network" active={tab === "network"} onClick={() => setTab("network")} />

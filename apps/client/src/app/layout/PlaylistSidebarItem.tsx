@@ -14,6 +14,7 @@ import { usePlayerStore, type Track } from "../../stores/playerStore";
 import type { PlaylistItem } from "../../hooks/usePlaylists";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { RenamePlaylistModal } from "./RenamePlaylistModal";
+import { CoverImage } from "../../components/CoverImage";
 
 interface PlaylistSidebarItemProps {
   playlist: PlaylistItem;
@@ -26,7 +27,6 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
 
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
-  const playTrack = usePlayerStore((s) => s.playTrack);
   const playFromStart = usePlayerStore((s) => s.playFromStart);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -73,7 +73,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       }));
 
       if (queue.length > 0) {
-        await playTrack(queue[0], queue);
+        await playFromStart(queue);
       }
     } catch (err) {
       console.error("[playlists] Impossible de lancer la playlist", err);
@@ -91,7 +91,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       >
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
           {cachedCoverUrl ? (
-            <img src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+            <CoverImage src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-neutral-600 group-hover:hidden">
               <Playlist size={16} />

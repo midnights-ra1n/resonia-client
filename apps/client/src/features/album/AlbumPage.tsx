@@ -24,6 +24,8 @@ import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useDominantColor } from "../../hooks/useDominantColor";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { CoverImage } from "../../components/CoverImage";
+import { PageSkeleton } from "../../components/PageSkeleton";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -124,7 +126,7 @@ export function AlbumPage() {
   const dominantColor = useDominantColor(cachedHeaderCoverUrl);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !album || !client) {
@@ -211,7 +213,7 @@ export function AlbumPage() {
              à montrer en cas de souci de lecture, aussi bref soit-il — pas de bascule d'un
              élément à l'autre à surveiller, juste la vraie pochette en permanence. */}
           {coverUrl ? (
-            <img
+            <CoverImage
               src={coverUrl}
               alt={album.name}
               className="h-full w-full object-cover"
@@ -261,7 +263,7 @@ export function AlbumPage() {
       <div className="flex items-center gap-6 bg-neutral-900/40 px-8 py-6 mb-6">
         <button
           onClick={handlePlayAlbum}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover"
           title={t("album.play")}
         >
           {isThisAlbumPlaying ? (
@@ -329,8 +331,8 @@ export function AlbumPage() {
                   setActiveSongId(song.id);
                   rowMenu.handleContextMenu(e);
                 }}
-                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
-                  isSelected ? "bg-neutral-800/70" : ""
+                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
+                  isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""
                 }`}
               >
                 <div className="flex items-center justify-center text-accent" title={downloadedTrackIds.has(song.id) ? t("album.downloaded") : undefined}>

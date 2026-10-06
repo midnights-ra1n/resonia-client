@@ -5,6 +5,7 @@ import { useInViewport } from "../../hooks/useInViewport";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { useServersStore } from "../../stores/serversStore";
 import { useTranslation } from "../../lib/i18n";
+import { CoverImage } from "../../components/CoverImage";
 
 interface ArtistCardProps {
   artist: ArtistSummary;
@@ -31,9 +32,9 @@ export function ArtistCard({ artist }: ArtistCardProps) {
       to={`/artists/${artist.id}`}
       className="grid-card-cv flex w-40 shrink-0 flex-col items-center gap-3 rounded-lg p-3 text-center transition-colors hover:bg-neutral-800"
     >
-      <div ref={coverRef} className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-neutral-800">
+      <div ref={coverRef} className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-surface-2 shadow-e1">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={artist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          <CoverImage src={cachedCoverUrl} alt={artist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <span className="text-3xl text-neutral-600">♪</span>
         )}

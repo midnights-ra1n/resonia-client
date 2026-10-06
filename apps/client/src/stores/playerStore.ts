@@ -245,7 +245,7 @@ export interface PlayerState {
   toggleDebugPanel: () => void;
 }
 
-export const usePlayerStore = create<PlayerState>((set, get) => {
+export const usePlayerStore = create<PlayerState>((set, get, api) => {
   const engine = getGaplessEngine();
   const decodedCache = new DecodedBufferCache();
 
@@ -309,7 +309,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   let seekDebounceTimer: number | null = null;
   let pendingSeekTime: number | null = null;
 
+  // Après l'envoi effectif d'un seek au moteur, la position lue sur celui-ci peut encore
+  // brièvement refléter l'ANCIENNE position (élément <audio> natif qui n'a pas encore pris en
+  // compte le nouveau currentTime, source buffer pas encore redémarrée) : sans garde, la barre
+  // revenait en arrière une fraction de seconde puis rebondissait — perçu comme un gel. Tant que
+  // le moteur n'est pas arrivé à ±1 s de la cible (et au plus SEEK_SETTLE_MS), on garde la
+  // position visée affichée.
+  const SEEK_SETTLE_MS = 2500;
+  let seekSettleTarget: number | null = null;
+  let seekSettleUntil = 0;
+
   function clearPendingSeek() {
+    seekSettleTarget = null;
     if (seekDebounceTimer !== null) {
       window.clearTimeout(seekDebounceTimer);
       seekDebounceTimer = null;
@@ -631,21 +642,38 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   // servi plus fidèlement par l'OS. Le coût gardé (React/Zustand) est de toute façon
   // négligeable : le tick ne touche qu'un petit composant isolé (ProgressBar), invisible
   // qui plus est quand la fenêtre est masquée.
+  //
+  // Le timer ne tourne QUE pendant la lecture : en pause/à l'arrêt, plus aucun réveil
+  // périodique (laisse le CPU dormir, App Nap/économie d'énergie peuvent agir). Il est
+  // relancé par l'abonnement ci-dessous dès que la lecture reprend.
+  // Fenêtre masquée : le Now Playing système et le scrobble restent alimentés, mais on ne
+  // pousse plus currentTime dans le store (aucun re-render React pour une UI invisible) —
+  // resynchronisé d'un coup au retour au premier plan (visibilitychange).
   const TICK_INTERVAL_MS = 250;
+  let tickTimer: number | null = null;
 
   function scheduleTick() {
-    window.setTimeout(tickProgress, TICK_INTERVAL_MS);
+    tickTimer = window.setTimeout(tickProgress, TICK_INTERVAL_MS);
   }
 
   function tickProgress() {
+    tickTimer = null;
     const { currentTrack: track, isPlaying } = get();
+    if (!track || !isPlaying) return;
     // Un seek est débounced (voir setCurrentTime) : tant qu'il n'est pas encore parti sur
     // le moteur, ne pas resynchroniser currentTime depuis engine.currentTime (position
     // pré-seek) — ça écraserait la position optimiste affichée au clic.
-    if (track && isPlaying && pendingSeekTime === null) {
-      const time = engine.currentTime;
+    if (pendingSeekTime === null) {
+      let time = engine.currentTime;
       const duration = engine.duration;
-      set({ currentTime: time, duration });
+      if (seekSettleTarget !== null) {
+        if (Math.abs(time - seekSettleTarget) < 1 || performance.now() > seekSettleUntil) {
+          seekSettleTarget = null;
+        } else {
+          time = seekSettleTarget;
+        }
+      }
+      if (!document.hidden) set({ currentTime: time, duration });
       setNowPlayingPositionState(duration, time, false, engine.playbackRate);
 
       if (!scrobbledNowPlaying && time > 1) {
@@ -660,7 +688,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     }
     scheduleTick();
   }
-  scheduleTick();
+
+  api.subscribe((state) => {
+    if (tickTimer === null && state.isPlaying && state.currentTrack) scheduleTick();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || pendingSeekTime !== null || !get().currentTrack) return;
+    set({ currentTime: engine.currentTime, duration: engine.duration });
+  });
 
   initNowPlaying({
     onPlay: () => get().setPlaying(true),
@@ -812,7 +848,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         seekDebounceTimer = null;
         const target = pendingSeekTime;
         pendingSeekTime = null;
-        if (target !== null) engine.seek(target);
+        if (target !== null) {
+          engine.seek(target);
+          seekSettleTarget = target;
+          seekSettleUntil = performance.now() + SEEK_SETTLE_MS;
+        }
       }, SEEK_DEBOUNCE_MS);
     },
 

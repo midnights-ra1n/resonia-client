@@ -31,6 +31,8 @@ import { useCoverArt } from "../../hooks/useCoverArt";
 import { downloadStore } from "../../lib/downloads/downloadStore";
 import { useTracksDownloadStatus } from "../../lib/downloads/useTracksDownloadStatus";
 import { useDownloadedTrackIds } from "../../lib/downloads/useDownloadedTrackIds";
+import { CoverImage } from "../../components/CoverImage";
+import { PageSkeleton } from "../../components/PageSkeleton";
 
 const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
 
@@ -146,7 +148,7 @@ export function PlaylistPage() {
   const dominantColor = useDominantColor(cachedHeaderCoverUrl);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !playlist || !client) {
@@ -304,7 +306,7 @@ export function PlaylistPage() {
       >
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
           {coverUrl ? (
-            <img
+            <CoverImage
               src={coverUrl}
               alt={name}
               className="h-full w-full object-cover"
@@ -347,7 +349,7 @@ export function PlaylistPage() {
           <>
             <button
               onClick={handlePlayPlaylist}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover"
               title={t("playlist.play")}
             >
               {isThisPlaylistPlaying ? (
@@ -479,9 +481,9 @@ export function PlaylistPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[16px_32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[16px_32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
                       dragIndex === index ? "opacity-40" : ""
-                    } ${isSelected ? "bg-neutral-800/70" : ""}`}
+                    } ${isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""}`}
                   >
                     {canReorder &&
                       hoverIndex === index &&

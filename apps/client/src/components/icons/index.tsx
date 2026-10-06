@@ -31,6 +31,7 @@ import IconHardDrive from "@material-symbols/svg-400/rounded/hard_drive.svg?reac
 import IconHistory from "@material-symbols/svg-400/rounded/history.svg?react";
 import IconHome from "@material-symbols/svg-400/rounded/home.svg?react";
 import IconLanguage from "@material-symbols/svg-400/rounded/language.svg?react";
+import IconPalette from "@material-symbols/svg-400/rounded/palette.svg?react";
 import IconImage from "@material-symbols/svg-400/rounded/image.svg?react";
 import IconInfo from "@material-symbols/svg-400/rounded/info.svg?react";
 import IconKeyboardArrowDown from "@material-symbols/svg-400/rounded/keyboard_arrow_down.svg?react";
@@ -95,6 +96,7 @@ export const Download = wrap(IconDownload);
 export const Folder = wrap(IconFolder);
 export const GearSix = wrap(IconSettings);
 export const Globe = wrap(IconLanguage);
+export const Palette = wrap(IconPalette);
 export const HardDrive = wrap(IconHardDrive);
 export const Heart = wrap(IconFavoriteFill);
 export const House = wrap(IconHome);

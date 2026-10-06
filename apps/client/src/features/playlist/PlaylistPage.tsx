@@ -297,7 +297,7 @@ export function PlaylistPage() {
         style={
           dominantColor
             ? {
-                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #171717))`,
+                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #161412))`,
               }
             : undefined
         }
@@ -347,23 +347,23 @@ export function PlaylistPage() {
           <>
             <button
               onClick={handlePlayPlaylist}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover"
               title={t("playlist.play")}
             >
               {isThisPlaylistPlaying ? (
-                <Pause size={22} fill="black" className="text-neutral-900" />
+                <Pause size={22} fill="currentColor" className="text-on-accent" />
               ) : (
                 <Play
                   size={22}
-                  fill="black"
-                  className="ml-1 text-neutral-900"
+                  fill="currentColor"
+                  className="ml-1 text-on-accent"
                 />
               )}
             </button>
 
             <button
               onClick={toggleShuffle}
-              className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+              className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
               title={t("playlist.shuffle")}
             >
               <Shuffle size={24} />
@@ -374,7 +374,7 @@ export function PlaylistPage() {
               disabled={downloadStatus === "complete" || downloadStatus === "downloading"}
               className={`transition-colors ${
                 downloadStatus === "complete"
-                  ? "text-emerald-400"
+                  ? "text-accent"
                   : "text-neutral-400 hover:text-white disabled:cursor-default disabled:hover:text-neutral-400"
               }`}
               title={
@@ -486,10 +486,10 @@ export function PlaylistPage() {
                     {canReorder &&
                       hoverIndex === index &&
                       dropPosition === "before" && (
-                        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-accent" />
                       )}
 
-                    <div className="flex items-center justify-center text-emerald-400" title={downloadedTrackIds.has(song.id) ? t("playlist.downloaded") : undefined}>
+                    <div className="flex items-center justify-center text-accent" title={downloadedTrackIds.has(song.id) ? t("playlist.downloaded") : undefined}>
                       {downloadedTrackIds.has(song.id) && <Download size={12} />}
                     </div>
 
@@ -497,7 +497,7 @@ export function PlaylistPage() {
                       {isCurrent && isPlaying ? (
                         <Pause
                           size={14}
-                          className="text-emerald-400"
+                          className="text-accent"
                           fill="currentColor"
                         />
                       ) : canReorder ? (
@@ -528,7 +528,7 @@ export function PlaylistPage() {
                       <MarqueeText
                         text={song.title}
                         draggable={false}
-                        className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                        className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
                       />
                       <MarqueeText
                         text={song.artist}
@@ -575,7 +575,7 @@ export function PlaylistPage() {
                     {canReorder &&
                       hoverIndex === index &&
                       dropPosition === "after" && (
-                        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-accent" />
                       )}
                   </div>
                 );

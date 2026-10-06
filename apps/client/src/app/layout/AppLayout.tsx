@@ -147,7 +147,7 @@ export function AppLayout() {
                   autoComplete="off"
                   data-1p-ignore
                   data-lpignore="true"
-                  className="w-full rounded-full bg-neutral-900 border border-neutral-700 px-5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  className="w-full rounded-full bg-neutral-900 border border-neutral-700 px-5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                 />
               </div>
 

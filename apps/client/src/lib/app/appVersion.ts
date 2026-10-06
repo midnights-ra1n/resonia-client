@@ -21,7 +21,7 @@ export async function getAppVersion(): Promise<string> {
 }
 
 /** Une version "1.4.0-beta.2" est une préversion — même convention que le workflow de release
- *  (release-beta.yml exige "-beta" dans package.json, release-stable.yml l'interdit). */
+ *  (.github/workflows/release.yml : canal beta si "-beta", stable sinon). */
 export function isBetaVersion(version: string): boolean {
   return version.includes("-beta");
 }

@@ -69,7 +69,7 @@ function formatBytes(bytes: number, unitGb: string, unitMb: string): string {
 function fillBarColor(percent: number): string {
   if (percent >= 95) return "bg-red-500";
   if (percent >= 80) return "bg-amber-500";
-  return "bg-emerald-500";
+  return "bg-accent";
 }
 
 export function SettingsPage() {
@@ -325,7 +325,7 @@ export function SettingsPage() {
                     id="language-select"
                     value={locale}
                     onChange={(e) => setLocale(e.target.value as Locale)}
-                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   >
                     {supportedLocales.map((l) => (
                       <option key={l} value={l}>
@@ -365,7 +365,7 @@ export function SettingsPage() {
                     onChange={(e) => setLastfmInput(e.target.value)}
                     onBlur={() => setLastfmApiKey(lastfmInput.trim())}
                     placeholder={t("settings.apiKeyPlaceholder")}
-                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -398,7 +398,7 @@ export function SettingsPage() {
                         <CircleNotch className="h-4 w-4 animate-spin text-neutral-500" />
                       )}
                       {animatedArtworkHealth === "ok" && (
-                        <Check className="h-4 w-4 text-emerald-500" />
+                        <Check className="h-4 w-4 text-accent" />
                       )}
                       {animatedArtworkHealth === "error" && (
                         <X className="h-4 w-4 text-red-500" />
@@ -422,7 +422,7 @@ export function SettingsPage() {
                       "settings.animatedArtworkBaseUrlPlaceholder",
                     )}
                     aria-invalid={animatedArtworkUrlError}
-                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all aria-[invalid=true]:border-red-500"
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all aria-[invalid=true]:border-red-500"
                   />
                   {animatedArtworkUrlError && (
                     <p className="mt-1 text-xs text-red-400">
@@ -440,7 +440,7 @@ export function SettingsPage() {
                     type="button"
                     onClick={handleForceRefreshAnimatedCovers}
                     disabled={forcingAnimatedArtworkRefresh}
-                    className="mt-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition-all hover:border-emerald-500 hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition-all hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {forcingAnimatedArtworkRefresh
                       ? t("settings.animatedArtworkForceRefreshing")
@@ -503,7 +503,7 @@ export function SettingsPage() {
                     onChange={(e) =>
                       setCacheMaxBytes(Number(e.target.value) * GIGABYTE)
                     }
-                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    className="mt-2 w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   >
                     {CACHE_LIMIT_OPTIONS_GB.map((gb) => (
                       <option key={gb} value={gb}>
@@ -605,7 +605,7 @@ export function SettingsPage() {
                           updateStatus === "downloading" ||
                           updateStatus === "ready"
                         }
-                        className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-emerald-500 hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-md border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-all hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {updateStatus === "checking"
                           ? t("settings.updatesChecking")
@@ -616,7 +616,7 @@ export function SettingsPage() {
                         <button
                           type="button"
                           onClick={() => void installUpdate()}
-                          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition-all hover:bg-emerald-400"
+                          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent transition-all hover:bg-accent-hover"
                         >
                           {t("settings.updatesInstallButton")}
                         </button>
@@ -673,7 +673,7 @@ export function SettingsPage() {
                       <span
                         className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
                           checkUpdatesOnLaunch
-                            ? "bg-emerald-500"
+                            ? "bg-accent"
                             : "bg-neutral-700"
                         }`}
                       >
@@ -703,7 +703,7 @@ export function SettingsPage() {
                       <span
                         className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
                           betaUpdatesEnabled
-                            ? "bg-emerald-500"
+                            ? "bg-accent"
                             : "bg-neutral-700"
                         }`}
                       >
@@ -747,7 +747,7 @@ export function SettingsPage() {
                   </span>
                   <span
                     className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
-                      devModeEnabled ? "bg-emerald-500" : "bg-neutral-700"
+                      devModeEnabled ? "bg-accent" : "bg-neutral-700"
                     }`}
                   >
                     <span

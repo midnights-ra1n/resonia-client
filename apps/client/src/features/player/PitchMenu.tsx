@@ -14,7 +14,7 @@ function trackFillGradient(pitch: number, pitchRange: number): string {
   const percent = ((pitch - -pitchRange) / (pitchRange - -pitchRange)) * 100;
   const low = Math.min(50, percent);
   const high = Math.max(50, percent);
-  return `linear-gradient(to right, #52525b ${low}%, #4ade80 ${low}%, #4ade80 ${high}%, #52525b ${high}%)`;
+  return `linear-gradient(to right, var(--color-neutral-600) ${low}%, var(--color-accent) ${low}%, var(--color-accent) ${high}%, var(--color-neutral-600) ${high}%)`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -188,7 +188,7 @@ export function PitchMenu() {
               onClick={() => setPitchRange(range)}
               className={`rounded px-1 py-0.5 text-[11px] tabular-nums transition-colors ${
                 pitchRange === range
-                  ? "bg-green-400 text-neutral-900 font-semibold"
+                  ? "bg-accent text-on-accent font-semibold"
                   : "bg-neutral-700/50 text-neutral-300 hover:bg-neutral-700"
               }`}
               title={`Plage de pitch ±${range}%`}
@@ -208,7 +208,7 @@ export function PitchMenu() {
       >
         <span className="text-[11px] text-neutral-300">Master Tempo</span>
         <span
-          className={`relative inline-block shrink-0 w-8 h-4 rounded-full transition-colors ${masterTempo ? "bg-green-400" : "bg-neutral-600"
+          className={`relative inline-block shrink-0 w-8 h-4 rounded-full transition-colors ${masterTempo ? "bg-accent" : "bg-neutral-600"
             }`}
         >
           <span

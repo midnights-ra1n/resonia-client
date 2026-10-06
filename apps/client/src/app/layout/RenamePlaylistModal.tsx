@@ -57,7 +57,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
 
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -65,7 +65,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
           <button
             type="submit"
             disabled={submitting || !name.trim()}
-            className="w-full rounded-full bg-emerald-500 py-2.5 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+            className="w-full rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover disabled:opacity-50"
           >
             {submitting ? t("playlists.renaming") : t("common.save")}
           </button>

@@ -1,0 +1,389 @@
+name: Release
+
+# Une seule chaîne de release pour beta ET stable. Le canal vient de la version de package.json
+# (racine) : "1.4.0-beta.1" → préversion (canal beta), "1.4.0" → stable.
+#
+#   - push sur `beta`   : la version DOIT être une préversion, sinon échec immédiat.
+#   - push sur `stable` : la version NE DOIT PAS être une préversion.
+#   - Si le tag vX.Y.Z existe déjà (version non bumpée), rien n'est construit ni publié.
+#   - Lancement manuel (Actions → Release → Run workflow), depuis n'importe quelle branche :
+#     construit TOUTES les plateformes et garde les fichiers en artefacts du run, sans rien
+#     publier — sauf si "publish" est coché ET que la branche est beta/stable.
+#
+# Pourquoi cette architecture (build partout, publication unique à la fin) :
+# les anciens workflows laissaient chaque OS publier lui-même via `electron-builder --publish
+# always`. Résultat : uploads qui pendaient indéfiniment (ré-upload "overwrite published file"),
+# releases partielles, courses sur les manifestes d'auto-update. Ici chaque OS ne fait que
+# CONSTRUIRE (`--publish never`) et dépose ses fichiers en artefact ; un seul job final vérifie
+# que chaque manifeste d'auto-update (latest*.yml) référence des fichiers bien présents, puis crée
+# la release en draft, uploade tout (idempotent, `--clobber` + retries) et ne la rend publique
+# qu'à la toute fin. Une plateforme en échec = rien n'est publié.
+#
+# Artefacts :
+#   - macOS   : .dmg + .zip + .pkg, Apple Silicon ET Intel (x64 cross-packagé depuis le runner
+#               arm64 : aucun module natif, electron-builder n'a qu'à prendre le binaire Electron
+#               x64 — pas besoin des runners Intel, en pénurie).
+#   - Windows : un installeur NSIS unique x64 + arm64 (l'installeur choisit l'arch).
+#   - Linux   : .AppImage + .deb + .rpm, x86_64 et arm64 (runners natifs, Ubuntu 22.04 pour une
+#               glibc ancienne = compatibilité maximale avec les distributions).
+#   - Web     : image Docker multi-arch sur GHCR (:X.Y.Z puis :beta ou :latest) + archive .zip
+#               du site statique pour auto-hébergement sans Docker.
+# Rien n'est signé ni notarisé (pas de certificat Apple / Windows) : Gatekeeper et SmartScreen
+# avertiront à l'ouverture.
+#
+# Notes de version : section de CHANGELOG.md (scripts/extract-changelog.mjs), vérifiée DÈS le
+# début du run (avant 30 min de builds) — c'est aussi le texte affiché dans la pop-up de mise
+# à jour de l'app (lib/update/updateService.ts).
+on:
+  push:
+    branches: [beta, stable]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier la release (uniquement depuis beta ou stable)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Jamais deux releases de la même branche en parallèle, et jamais d'annulation en cours de route
+# (une release à moitié publiée est pire qu'une release en retard).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22
+  IMAGE: ghcr.io/${{ github.repository }}-web
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      channel: ${{ steps.resolve.outputs.channel }}
+      build: ${{ steps.resolve.outputs.build }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Résoudre version, canal et action à mener
+        id: resolve
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version invalide dans package.json : $VERSION"
+            exit 1
+          fi
+          # Même convention que isBetaVersion() côté app (lib/app/appVersion.ts) : seul "-beta"
+          # est une préversion reconnue.
+          if [[ "$VERSION" == *-beta* ]]; then
+            CHANNEL=beta
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "::error::Seules les préversions -beta.N sont gérées (actuel : $VERSION)."
+            exit 1
+          else
+            CHANNEL=stable
+          fi
+
+          if [[ "$EVENT" == "push" && "$BRANCH" != "$CHANNEL" ]]; then
+            echo "::error::La branche '$BRANCH' attend une version $BRANCH, package.json contient $VERSION (canal $CHANNEL). Lance 'pnpm bump'."
+            exit 1
+          fi
+
+          PUBLISH=false
+          if [[ "$EVENT" == "push" ]]; then
+            PUBLISH=true
+          elif [[ "$INPUT_PUBLISH" == "true" ]]; then
+            if [[ "$BRANCH" != "beta" && "$BRANCH" != "stable" ]]; then
+              echo "::error::Publication manuelle autorisée uniquement depuis beta ou stable (branche : $BRANCH)."
+              exit 1
+            fi
+            PUBLISH=true
+          fi
+
+          BUILD=true
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            if [[ "$EVENT" == "push" ]]; then
+              echo "::notice::${TAG} est déjà publié : rien à faire (bump la version pour une nouvelle release)."
+              BUILD=false
+            elif [[ "$PUBLISH" == "true" ]]; then
+              echo "::error::${TAG} est déjà publié : bump la version avant de republier."
+              exit 1
+            fi
+            PUBLISH=false
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "channel=$CHANNEL"
+            echo "build=$BUILD"
+            echo "publish=$PUBLISH"
+          } >> "$GITHUB_OUTPUT"
+          echo "### ${TAG} — canal ${CHANNEL} — build=${BUILD} publish=${PUBLISH}" >> "$GITHUB_STEP_SUMMARY"
+
+      # Échoue en 10 secondes plutôt qu'après tous les builds si les notes manquent.
+      - name: Vérifier les notes de version (CHANGELOG.md)
+        if: steps.resolve.outputs.publish == 'true'
+        run: node scripts/extract-changelog.mjs "${{ steps.resolve.outputs.version }}" > /dev/null
+
+  # Lint + tests + build web (et archive du site statique), en parallèle des builds desktop.
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - name: Archive du site web statique
+        run: |
+          mkdir -p release
+          (cd apps/client/dist && zip -qr9 "$GITHUB_WORKSPACE/release/Resonia-web-${{ needs.prepare.outputs.version }}.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: release/*.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  desktop:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    name: desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runner: macos-latest
+            args: --mac --arm64 --x64
+            cache: ~/Library/Caches/electron-builder
+          - name: windows
+            runner: windows-latest
+            args: --win --x64 --arm64
+            cache: ~/AppData/Local/electron-builder/Cache
+          - name: linux-x64
+            runner: ubuntu-22.04
+            args: --linux --x64
+            cache: ~/.cache/electron-builder
+          - name: linux-arm64
+            runner: ubuntu-22.04-arm
+            args: --linux --arm64
+            cache: ~/.cache/electron-builder
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # Electron + toolsets (NSIS, AppImage, fpm…) : plusieurs centaines de Mo sinon
+      # re-téléchargés à chaque run. Invalidé quand le lockfile change (version d'Electron).
+      - uses: actions/cache@v4
+        with:
+          path: ${{ matrix.cache }}
+          key: electron-builder-${{ matrix.name }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-builder-${{ matrix.name }}-
+
+      # rpmbuild n'est pas garanti sur toutes les images (notamment les runners arm).
+      - name: Outils de packaging Linux
+        if: runner.os == 'Linux'
+        run: |
+          if ! command -v rpmbuild >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq rpm
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
+      - run: pnpm --filter @resonia/client run electron:build
+
+      - name: Empaquetage (${{ matrix.args }})
+        working-directory: apps/client
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --publish never ${{ matrix.args }}
+
+      - name: Rassembler les fichiers à publier
+        working-directory: apps/client/dist-electron-build
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p "$GITHUB_WORKSPACE/release"
+          files=(*.dmg *.zip *.pkg *.exe *.AppImage *.deb *.rpm *.blockmap latest*.yml)
+          if (( ${#files[@]} == 0 )); then echo "::error::Aucun fichier produit."; exit 1; fi
+          # Provider GitHub : electron-builder n'écrit que latest*.yml, même pour une beta — le
+          # canal beta d'electron-updater s'appuie sur le flag "prerelease" de la release GitHub.
+          manifests=(latest*.yml)
+          if (( ${#manifests[@]} == 0 )); then
+            echo "::error::Aucun manifeste d'auto-update (latest*.yml) généré."; exit 1
+          fi
+          cp "${files[@]}" "$GITHUB_WORKSPACE/release/"
+          ls -lh "$GITHUB_WORKSPACE/release"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  # Image web : construite à chaque run (valide le Dockerfile), poussée uniquement sous son tag
+  # de version immuable. Le tag flottant (:beta / :latest) n'est déplacé qu'une fois la release
+  # réellement publiée (job release).
+  web-image:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - if: needs.prepare.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/client/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.prepare.outputs.publish == 'true' }}
+          tags: ${{ env.IMAGE }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: [prepare, checks, desktop, web-image]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      # Chaque fichier référencé par un manifeste d'auto-update doit être présent : sinon les
+      # clients téléchargeraient une URL 404 à la prochaine mise à jour.
+      - name: Vérifier les manifestes d'auto-update
+        working-directory: release
+        run: |
+          set -euo pipefail
+          status=0
+          for manifest in latest*.yml; do
+            while read -r ref; do
+              if [[ ! -f "$ref" ]]; then
+                echo "::error::$manifest référence $ref, absent des fichiers construits."
+                status=1
+              fi
+            done < <(sed -nE 's/^[[:space:]-]*(url|path):[[:space:]]*//p' "$manifest" | tr -d "'\"" | sort -u)
+          done
+          ls -lh
+          exit $status
+
+      - name: Notes de version
+        run: node scripts/extract-changelog.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
+
+      # Un draft laissé par un run précédent échoué (même tag) est supprimé : on repart propre.
+      - name: Nettoyer un éventuel draft précédent
+        run: |
+          gh api "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" |
+          while read -r id; do
+            echo "Suppression du draft $id"
+            gh api -X DELETE "repos/$GH_REPO/releases/$id"
+          done
+
+      - name: Créer la release (draft) et uploader les fichiers
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "$CHANNEL" == "beta" ]]; then
+            flags+=(--prerelease --title "Resonia $TAG (beta)")
+          else
+            flags+=(--title "Resonia $TAG")
+          fi
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
+          for attempt in 1 2 3 4 5; do
+            if timeout 20m gh release upload "$TAG" release/* --clobber; then
+              exit 0
+            fi
+            echo "::warning::Upload interrompu (tentative $attempt/5), reprise dans $((attempt * 15))s…"
+            sleep $((attempt * 15))
+          done
+          echo "::error::Upload impossible après 5 tentatives."
+          exit 1
+
+      - name: Publier la release
+        run: |
+          if [[ "$CHANNEL" == "beta" ]]; then
+            gh release edit "$TAG" --draft=false --latest=false
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
+          echo "Release publiée : ${{ github.server_url }}/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promouvoir l'image web (tag flottant :beta ou :latest)
+        run: |
+          FLOATING=$([[ "$CHANNEL" == "beta" ]] && echo beta || echo latest)
+          docker buildx imagetools create -t "$IMAGE:$FLOATING" "$IMAGE:$VERSION"

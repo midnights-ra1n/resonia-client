@@ -97,9 +97,9 @@ export function FavoritesPage() {
 
   return (
     <div>
-      <div className="flex items-end gap-6 bg-gradient-to-b from-purple-800 to-neutral-900 px-8 pb-6 pt-16">
-        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded bg-gradient-to-br from-indigo-500 to-purple-700 shadow-2xl">
-          <Heart size={80} className="text-white" fill="currentColor" />
+      <div className="flex items-end gap-6 bg-gradient-to-b from-accent-soft to-neutral-900 px-8 pb-6 pt-16">
+        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded-xl bg-surface-2 shadow-2xl">
+          <Heart size={80} className="text-accent" fill="currentColor" />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -121,19 +121,19 @@ export function FavoritesPage() {
           <>
             <button
               onClick={handlePlayAll}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover"
               title={t("favorites.play")}
             >
               {isThisListPlaying ? (
-                <Pause size={22} fill="black" className="text-neutral-900" />
+                <Pause size={22} fill="currentColor" className="text-on-accent" />
               ) : (
-                <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+                <Play size={22} fill="currentColor" className="ml-1 text-on-accent" />
               )}
             </button>
 
             <button
               onClick={toggleShuffle}
-              className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+              className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
               title={t("favorites.shuffle")}
             >
               <Shuffle size={24} />
@@ -189,7 +189,7 @@ export function FavoritesPage() {
                   >
                     <div className="flex items-center justify-center text-sm text-neutral-400">
                       {isCurrent && isPlaying ? (
-                        <Pause size={14} className="text-emerald-400" fill="currentColor" />
+                        <Pause size={14} className="text-accent" fill="currentColor" />
                       ) : (
                         <>
                           <span className="group-hover:hidden">{index + 1}</span>
@@ -206,7 +206,7 @@ export function FavoritesPage() {
                       <MarqueeText
                         text={song.title}
                         draggable={false}
-                        className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                        className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
                       />
                       <MarqueeText
                         text={song.artist}
@@ -247,7 +247,7 @@ export function FavoritesPage() {
                         unlike(song.id);
                       }}
                       title={t("favorites.unlike")}
-                      className="flex items-center justify-center text-emerald-400 opacity-0 transition hover:scale-110 group-hover:opacity-100"
+                      className="flex items-center justify-center text-accent opacity-0 transition hover:scale-110 group-hover:opacity-100"
                     >
                       <Heart size={16} fill="currentColor" />
                     </button>

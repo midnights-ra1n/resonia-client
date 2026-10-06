@@ -106,19 +106,19 @@ export function ArtistPage() {
         <button
           onClick={handlePlay}
           disabled={popularSongs.length === 0}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400 disabled:opacity-50"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover disabled:opacity-50"
           title={t("artist.play")}
         >
           {isThisArtistPlaying ? (
-            <Pause size={22} fill="black" className="text-neutral-900" />
+            <Pause size={22} fill="currentColor" className="text-on-accent" />
           ) : (
-            <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+            <Play size={22} fill="currentColor" className="ml-1 text-on-accent" />
           )}
         </button>
 
         <button
           onClick={toggleShuffle}
-          className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+          className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
           title={t("artist.shuffle")}
         >
           <Shuffle size={24} />

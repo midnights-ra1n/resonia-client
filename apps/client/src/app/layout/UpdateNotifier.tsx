@@ -124,7 +124,7 @@ export function UpdateNotifier() {
           <button
             type="button"
             onClick={() => void relaunch()}
-            className="flex-1 rounded-full bg-emerald-600 py-2.5 font-semibold text-white transition hover:bg-emerald-500"
+            className="flex-1 rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover active:bg-accent-pressed"
           >
             {t("update.install")}
           </button>

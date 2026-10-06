@@ -17,7 +17,7 @@ import type { FileHandle } from "node:fs/promises";
 // (productName "Resonia", identifiant com.resonia.client dans tauri.conf.json).
 app.setName("Resonia");
 
-// Resonia n'a pas de thème clair (voir index.css — fond #0A0A0A codé en dur partout) : sans
+// Resonia n'a pas de thème clair (voir index.css — fond #0C0B0A, palette Carotte partout) : sans
 // ça, un système en mode clair rend le chrome natif (fond des boutons de fenêtre macOS, menus
 // contextuels natifs, dialogues systèmes) clair alors que tout le contenu web est sombre —
 // contraste visuel cassé exactement à la frontière entre les deux. Même intention que
@@ -151,7 +151,7 @@ async function createWindow() {
     height: state.height,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: "#0A0A0A",
+    backgroundColor: "#0C0B0A",
     // Affiché seulement sur "ready-to-show" : évite le flash blanc / la peinture
     // supplémentaire d'une fenêtre visible avant que le renderer ait quoi que ce soit à montrer.
     show: false,

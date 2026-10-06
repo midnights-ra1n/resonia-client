@@ -67,7 +67,7 @@ export function ConnectMenu() {
                 >
                   <SpeakerHigh size={14} className="shrink-0 text-neutral-400" />
                   <span className="truncate flex-1">{device.label}</span>
-                  {isSelected && <Check size={14} className="shrink-0 text-green-400" />}
+                  {isSelected && <Check size={14} className="shrink-0 text-accent" />}
                 </button>
               </li>
             );
@@ -91,7 +91,7 @@ export function ConnectMenu() {
 
           {airplayConnectedId && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-neutral-700/70 text-[12px] text-white">
-              <Cast size={14} className="shrink-0 text-green-400" />
+              <Cast size={14} className="shrink-0 text-accent" />
               <span className="truncate flex-1">
                 {airplayDevices.find((d) => d.id === airplayConnectedId)?.name ?? "Connecté"}
               </span>

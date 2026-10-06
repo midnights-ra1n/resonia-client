@@ -158,7 +158,7 @@ function QueueItem({
   return (
     <li className="relative">
       {showIndicatorBefore && (
-        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-accent" />
       )}
 
       <div
@@ -206,7 +206,7 @@ function QueueItem({
       </div>
 
       {showIndicatorAfter && (
-        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-accent" />
       )}
     </li>
   );

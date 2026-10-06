@@ -109,7 +109,7 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
           text={song.title}
           to={song.albumId ? `/albums/${song.albumId}` : undefined}
           onClick={(e) => e.stopPropagation()}
-          className={`text-sm font-medium hover:underline ${isCurrent && isPlaying ? "text-emerald-400" : "text-white"}`}
+          className={`text-sm font-medium hover:underline ${isCurrent && isPlaying ? "text-accent" : "text-white"}`}
         />
         <MarqueeText
           text={song.artist}

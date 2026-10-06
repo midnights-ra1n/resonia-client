@@ -200,7 +200,7 @@ export function AlbumPage() {
         style={
           dominantColor
             ? {
-                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #171717))`,
+                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #161412))`,
               }
             : undefined
         }
@@ -261,19 +261,19 @@ export function AlbumPage() {
       <div className="flex items-center gap-6 bg-neutral-900/40 px-8 py-6 mb-6">
         <button
           onClick={handlePlayAlbum}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-lg transition hover:scale-105 hover:bg-accent-hover"
           title={t("album.play")}
         >
           {isThisAlbumPlaying ? (
-            <Pause size={22} fill="black" className="text-neutral-900" />
+            <Pause size={22} fill="currentColor" className="text-on-accent" />
           ) : (
-            <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+            <Play size={22} fill="currentColor" className="ml-1 text-on-accent" />
           )}
         </button>
 
         <button
           onClick={handleShuffleToggle}
-          className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+          className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
           title={t("album.shuffle")}
         >
           <Shuffle size={24} />
@@ -284,7 +284,7 @@ export function AlbumPage() {
           disabled={downloadStatus === "complete" || downloadStatus === "downloading"}
           className={`transition-colors ${
             downloadStatus === "complete"
-              ? "text-emerald-400"
+              ? "text-accent"
               : "text-neutral-400 hover:text-white disabled:cursor-default disabled:hover:text-neutral-400"
           }`}
           title={downloadStatus === "complete" ? t("album.downloaded") : downloadStatus === "downloading" ? t("album.downloading") : t("album.download")}
@@ -333,7 +333,7 @@ export function AlbumPage() {
                   isSelected ? "bg-neutral-800/70" : ""
                 }`}
               >
-                <div className="flex items-center justify-center text-emerald-400" title={downloadedTrackIds.has(song.id) ? t("album.downloaded") : undefined}>
+                <div className="flex items-center justify-center text-accent" title={downloadedTrackIds.has(song.id) ? t("album.downloaded") : undefined}>
                   {downloadedTrackIds.has(song.id) && <Download size={12} />}
                 </div>
 
@@ -341,7 +341,7 @@ export function AlbumPage() {
                   {isCurrent && isPlaying ? (
                     <Pause
                       size={14}
-                      className="text-emerald-400"
+                      className="text-accent"
                       fill="currentColor"
                     />
                   ) : (
@@ -359,7 +359,7 @@ export function AlbumPage() {
                 <div className="min-w-0">
                   <MarqueeText
                     text={song.title}
-                    className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                    className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
                   />
                   {song.artist !== album.artist && (
                     <MarqueeText

@@ -7,7 +7,7 @@ import { getCachedLyrics, loadLyrics, type LyricsLine, type ParsedLyrics } from 
 import { DEFAULT_COVER_URL, usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 
-const FALLBACK_BG = "rgb(23, 23, 23)";
+const FALLBACK_BG = "#161412";
 
 /** Luminance perçue max tolérée avant d'assombrir la couleur dominante : au-delà, du texte
  *  blanc par-dessus n'aurait plus assez de contraste (pochettes très claires : blanc, pastel...). */

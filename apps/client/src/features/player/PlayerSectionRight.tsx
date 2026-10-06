@@ -100,7 +100,7 @@ export function PlayerSectionRight() {
         <button
           onClick={togglePitchMenu}
           className={`text-[11px] font-semibold tabular-nums min-w-9 h-9 px-2 rounded-full flex items-center justify-center transition-colors ${pitch !== 0 || showPitchMenu
-            ? "text-green-400"
+            ? "text-accent"
             : "text-neutral-400 hover:text-white"
             }`}
           title="Pitch / Master Tempo"
@@ -114,7 +114,7 @@ export function PlayerSectionRight() {
       <button
         onClick={toggleQueue}
         className={`transition-colors ${showQueue
-          ? "text-green-400"
+          ? "text-accent"
           : "text-neutral-400 hover:text-white"
           }`}
         title="Queue"
@@ -126,7 +126,7 @@ export function PlayerSectionRight() {
       <button
         onClick={toggleLyrics}
         className={`transition-colors ${showLyrics
-          ? "text-green-400"
+          ? "text-accent"
           : "text-neutral-400 hover:text-white"
           }`}
         title="Lyrics"
@@ -139,7 +139,7 @@ export function PlayerSectionRight() {
         <button
           onClick={toggleConnect}
           className={`transition-colors ${showConnect || airplayConnectedId
-            ? "text-green-400"
+            ? "text-accent"
             : "text-neutral-400 hover:text-white"
             }`}
           title={airplayConnectedId ? "Connect (AirPlay actif)" : "Connect"}
@@ -154,7 +154,7 @@ export function PlayerSectionRight() {
         <button
           onClick={toggleDebugPanel}
           className={`transition-colors ${showDebugPanel
-            ? "text-green-400"
+            ? "text-accent"
             : "text-neutral-400 hover:text-white"
             }`}
           title="Network & decode debugger"

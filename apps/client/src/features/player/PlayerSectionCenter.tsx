@@ -34,7 +34,7 @@ export function PlayerSectionCenter() {
         <button
           onClick={toggleShuffle}
           className={`transition-colors ${isShuffle
-            ? "text-green-400"
+            ? "text-accent"
             : "text-neutral-400 hover:text-white"
             }`}
           title="Shuffle"
@@ -52,13 +52,13 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={togglePlay}
-          className="w-9 h-9 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform"
+          className="w-9 h-9 rounded-full bg-accent flex items-center justify-center hover:scale-105 hover:bg-accent-hover active:bg-accent-pressed transition-[transform,background-color]"
           title={isPlaying ? "Pause" : "Play"}
         >
           {isPlaying ? (
-            <Pause size={18} fill="black" className="text-neutral-900" />
+            <Pause size={18} fill="currentColor" className="text-on-accent" />
           ) : (
-            <Play size={18} fill="black" className="text-neutral-900 ml-0.5" />
+            <Play size={18} fill="currentColor" className="text-on-accent ml-0.5" />
           )}
         </button>
 
@@ -73,7 +73,7 @@ export function PlayerSectionCenter() {
         <button
           onClick={toggleRepeat}
           className={`transition-colors ${isRepeat
-            ? "text-green-400"
+            ? "text-accent"
             : "text-neutral-400 hover:text-white"
             }`}
           title="Repeat"
@@ -197,13 +197,13 @@ function ProgressBar() {
 
         {/* Progress fill */}
         <div
-          className="absolute top-0 left-0 h-full bg-white rounded-full group-hover:bg-emerald-500 transition-colors"
+          className="absolute top-0 left-0 h-full bg-accent rounded-full"
           style={{ width: `${progress}%` }}
         />
 
         {/* Thumb */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow"
+          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-accent rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow"
           style={{
             left: `calc(${isDragging && hoverProgress !== null ? (hoverProgress / (duration || 1)) * 100 : progress}% - 6px)`,
           }}

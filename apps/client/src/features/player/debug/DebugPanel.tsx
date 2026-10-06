@@ -143,7 +143,7 @@ function LiveChunkStrip({ events, trackId }: { events: DebugLogEntry[]; trackId:
               <div
                 key={e.id}
                 title={`${formatBytes(bytes)} @ offset ${e.data.rangeStart}`}
-                className={`w-1.5 shrink-0 rounded-sm transition-colors ${isLast ? "animate-pulse bg-emerald-400" : "bg-emerald-600/60"}`}
+                className={`w-1.5 shrink-0 rounded-sm transition-colors ${isLast ? "animate-pulse bg-accent-hover" : "bg-accent-pressed/60"}`}
                 style={{ height: `${Math.max(15, (bytes / maxBytes) * 100)}%` }}
               />
             );
@@ -218,7 +218,7 @@ function NetworkTab() {
         <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
           <div
             className={`h-full rounded-full transition-all duration-300 ${
-              cachePercent >= 95 ? "bg-red-500" : cachePercent >= 80 ? "bg-amber-500" : "bg-emerald-500"
+              cachePercent >= 95 ? "bg-red-500" : cachePercent >= 80 ? "bg-amber-500" : "bg-accent"
             }`}
             style={{ width: `${cachePercent}%` }}
           />
@@ -240,7 +240,7 @@ function NetworkTab() {
                 </div>
                 <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-neutral-800">
                   <div
-                    className={`h-full rounded-full ${t.error ? "bg-red-500" : t.protected ? "bg-emerald-500" : "bg-neutral-500"}`}
+                    className={`h-full rounded-full ${t.error ? "bg-red-500" : t.protected ? "bg-accent" : "bg-neutral-500"}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -304,7 +304,7 @@ function Stat({ label, value, tone, live }: { label: string; value: string; tone
   return (
     <div className="rounded-md bg-neutral-800/60 px-2 py-1.5">
       <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-neutral-500">
-        {live && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />}
+        {live && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-hover" />}
         {label}
       </div>
       <div className={`text-sm font-semibold tabular-nums ${tone === "warn" ? "text-amber-400" : "text-white"}`}>

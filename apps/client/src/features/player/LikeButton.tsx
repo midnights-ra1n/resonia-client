@@ -42,7 +42,7 @@ export function LikeButton({ track }: LikeButtonProps) {
         title={isLiked ? t("favorites.unlike") : t("favorites.addToLiked")}
         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
           isLiked
-            ? "border-emerald-500 bg-emerald-500 text-black hover:scale-105"
+            ? "border-accent bg-accent text-on-accent hover:scale-105"
             : "border-neutral-500 text-neutral-400 hover:border-white hover:text-white"
         }`}
       >

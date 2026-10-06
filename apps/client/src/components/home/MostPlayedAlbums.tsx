@@ -103,13 +103,13 @@ function AlbumCard({ album, onPlay, onOpen }: AlbumCardProps) {
             absolute bottom-2 right-2
             flex items-center justify-center
             h-11 w-11 rounded-full
-            bg-emerald-500 text-black shadow-xl
+            bg-accent text-on-accent shadow-xl
             opacity-0 translate-y-2
             group-hover:opacity-100 group-hover:translate-y-0
             focus-visible:opacity-100 focus-visible:translate-y-0
             transition-[opacity,transform,background-color] duration-200 ease-out
-            hover:scale-105 hover:bg-emerald-400
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300
+            hover:scale-105 hover:bg-accent-hover
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-hover
           "
         >
           <PlayIcon />

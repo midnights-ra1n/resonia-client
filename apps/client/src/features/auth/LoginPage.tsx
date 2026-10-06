@@ -61,7 +61,7 @@ export function LoginPage() {
             placeholder={t("auth.login.serverUrlPlaceholder")}
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -72,7 +72,7 @@ export function LoginPage() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -83,7 +83,7 @@ export function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -92,7 +92,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-full bg-emerald-500 py-2.5 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+          className="w-full rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover disabled:opacity-50"
         >
           {loading ? t("auth.login.submitting") : t("auth.login.submit")}
         </button>
@@ -104,7 +104,7 @@ export function LoginPage() {
               key={l}
               type="button"
               onClick={() => setLocale(l)}
-              className={l === locale ? "font-semibold text-emerald-400" : "hover:text-neutral-300"}
+              className={l === locale ? "font-semibold text-accent" : "hover:text-neutral-300"}
             >
               {l.toUpperCase()}
             </button>

@@ -132,7 +132,7 @@ export function DownloadsPage() {
                 >
                   <div className="flex items-center justify-center text-sm text-neutral-400">
                     {isCurrent && isPlaying ? (
-                      <Pause size={14} className="text-emerald-400" fill="currentColor" />
+                      <Pause size={14} className="text-accent" fill="currentColor" />
                     ) : (
                       <>
                         <span className="group-hover:hidden">{index + 1}</span>
@@ -141,7 +141,7 @@ export function DownloadsPage() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <MarqueeText text={meta.track.title} className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`} />
+                    <MarqueeText text={meta.track.title} className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`} />
                     <MarqueeText text={meta.track.artist} className="text-xs text-neutral-400" />
                   </div>
                   <div className="min-w-0 truncate text-xs text-neutral-400">{meta.track.album}</div>

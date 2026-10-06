@@ -59,6 +59,13 @@ export function createElectronFsBlobStore(rootDir: string, baseDir: DesktopBaseD
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     },
 
+    async readAsBlob(key, type) {
+      // Pas de fichier adossé au disque côté renderer (lecture via IPC) : copie en mémoire,
+      // que l'appelant DOIT libérer (URL.revokeObjectURL) dès que la piste n'est plus lue.
+      const bytes = await bridge().blobStore.readFile(baseDir, pathFor(key));
+      return bytes && bytes.byteLength > 0 ? new Blob([bytes as Uint8Array<ArrayBuffer>], { type }) : null;
+    },
+
     async deleteFile(key) {
       await bridge().blobStore.remove(baseDir, pathFor(key));
     },

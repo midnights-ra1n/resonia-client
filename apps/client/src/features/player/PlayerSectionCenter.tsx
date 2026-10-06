@@ -87,12 +87,6 @@ export function PlayerSectionCenter() {
   );
 }
 
-// La position n'est rafraîchie que toutes les 250 ms (voir tickProgress) : une transition
-// linéaire de même durée sur le `transform` interpole le mouvement entre deux ticks — barre
-// parfaitement continue, sans à-coups, pour un coût nul (composition GPU uniquement).
-// Désactivée pendant un glisser, où la barre doit coller au curseur.
-const SMOOTH_TICK = "transition-transform duration-[250ms] ease-linear";
-
 // Seul ce composant re-rend au rythme de tickProgress (currentTime) : isolé du reste des
 // contrôles pour que le tick de lecture n'entraîne pas un re-render des boutons ci-dessus.
 function ProgressBar() {
@@ -217,13 +211,13 @@ function ProgressBar() {
             de SA largeur équivaut donc à un % de la barre. */}
         <div className="absolute inset-0 overflow-hidden rounded-full">
           <div
-            className={`h-full w-full origin-left rounded-full bg-accent ${isScrubbing ? "" : SMOOTH_TICK} ${isBuffering && currentTrack ? "animate-pulse" : ""}`}
+            className={`h-full w-full origin-left rounded-full bg-accent ${isBuffering && currentTrack ? "animate-pulse" : ""}`}
             style={{ transform: `scaleX(${progress / 100})` }}
           />
         </div>
 
         <div
-          className={`pointer-events-none absolute inset-0 ${isScrubbing ? "" : SMOOTH_TICK}`}
+          className={`pointer-events-none absolute inset-0`}
           style={{ transform: `translateX(${progress}%)` }}
         >
           <div className="absolute top-1/2 -left-1.5 h-3 w-3 -translate-y-1/2 rounded-full bg-accent opacity-0 shadow-play transition-opacity group-hover:opacity-100" />

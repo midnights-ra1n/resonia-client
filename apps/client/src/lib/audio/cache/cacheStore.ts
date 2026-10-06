@@ -224,10 +224,11 @@ class CacheStore {
    *  incomplet. */
   async resolvePlaybackUrl(trackId: string, qualityId: string, format: "aac" | "opus" | "mp3"): Promise<string | null> {
     if (!(await this.isFullyCached(trackId, qualityId))) return null;
-    const cachedFull = await this.readCachedFull(trackId, qualityId);
-    if (!cachedFull || cachedFull.byteLength === 0) return null;
+    // Blob adossé au disque (OPFS) plutôt qu'une copie en RAM du fichier entier — voir
+    // BlobStore.readAsBlob. L'URL renvoyée doit être révoquée par l'appelant (playerStore).
     const mime = { aac: "audio/aac", opus: "audio/ogg", mp3: "audio/mpeg" }[format];
-    return URL.createObjectURL(new Blob([cachedFull], { type: mime }));
+    const blob = await audioCacheBlobStore.readAsBlob(cacheKeyFor(trackId, qualityId), mime);
+    return blob ? URL.createObjectURL(blob) : null;
   }
 
   /** Éviction LRU : ne touche jamais aux clés protégées (piste active + fenêtre de préchargement). */

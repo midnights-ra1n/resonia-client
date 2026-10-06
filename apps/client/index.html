@@ -24,7 +24,7 @@
        production, voir la recherche du code applicatif). `style-src 'unsafe-inline'` : Tailwind/Vite
        injectent du CSS via des balises `<style>` en dev (HMR) — coût de sécurité minime comparé à
        `script-src`, jamais assez pour exécuter du code arbitraire à lui seul. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; media-src 'self' blob: http: https:; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; media-src 'self' blob: http: https:; connect-src 'self' blob: http: https: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none';" />
   <title>Resonia</title>
 </head>
 

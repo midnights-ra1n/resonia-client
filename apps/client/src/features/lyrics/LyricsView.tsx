@@ -230,7 +230,11 @@ export function LyricsView() {
                   // chaque frame de la transition (largeur des caractères qui change), ce qui
                   // provoquait le glitch visuel signalé — un vrai changement de layout mélangé à
                   // une transformation, jamais fluide.
-                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,color,opacity] duration-[260ms] ease-out will-change-transform ${
+                  // `will-change` uniquement autour de la ligne active (celles qui s'animent au
+                  // prochain changement) : sur TOUTES les lignes, il réservait une couche GPU
+                  // pleine largeur par ligne pendant toute la vue — des dizaines de Mo de
+                  // mémoire graphique pour un texte statique.
+                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,color,opacity] duration-[260ms] ease-out ${Math.abs(i - activeIndex) <= 1 ? "will-change-transform" : ""} ${
                     isActive ? "scale-[1.1] text-white opacity-100" : "scale-100 text-white/35 opacity-90 hover:text-white/60"
                   }`}
                 >

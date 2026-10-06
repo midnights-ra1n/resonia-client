@@ -53,6 +53,15 @@ export function createOpfsBlobStore(rootDir: string): BlobStore {
       return file.arrayBuffer();
     },
 
+    async readAsBlob(key, type) {
+      const handle = await getFileHandle(key);
+      if (!handle) return null;
+      const file = await handle.getFile();
+      if (file.size === 0) return null;
+      // Même fichier disque, type MIME explicite (requis par certains moteurs pour une URL blob:).
+      return file.type === type ? file : file.slice(0, file.size, type);
+    },
+
     async deleteFile(key) {
       const dir = await getRootDir();
       try {

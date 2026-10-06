@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router-dom";
 
 const PAUSE_MS = 3000;
@@ -22,6 +22,33 @@ interface MarqueeTextProps {
   draggable?: boolean;
 }
 
+// Un SEUL IntersectionObserver partagé par tous les MarqueeText (une grande playlist en monte
+// des centaines) plutôt qu'un par instance. Racine = viewport : un ancêtre qui défile découpe
+// l'intersection, ce qui est exactement voulu ici (seul le texte RÉELLEMENT visible anime).
+const visibilityCallbacks = new Map<Element, (visible: boolean) => void>();
+let sharedObserver: IntersectionObserver | null = null;
+
+function observeVisibility(el: Element, cb: (visible: boolean) => void): () => void {
+  if (typeof IntersectionObserver === "undefined") {
+    cb(true);
+    return () => {};
+  }
+  sharedObserver ??= new IntersectionObserver((entries) => {
+    for (const entry of entries) visibilityCallbacks.get(entry.target)?.(entry.isIntersecting);
+  });
+  visibilityCallbacks.set(el, cb);
+  sharedObserver.observe(el);
+  return () => {
+    visibilityCallbacks.delete(el);
+    sharedObserver?.unobserve(el);
+  };
+}
+
+function subscribeDocumentVisibility(cb: () => void) {
+  document.addEventListener("visibilitychange", cb);
+  return () => document.removeEventListener("visibilitychange", cb);
+}
+
 /** Texte tronqué par défaut ; si (et seulement si) il déborde réellement de son conteneur,
  *  défile automatiquement en boucle : pause de 3s, glissement lent vers la gauche jusqu'à
  *  révéler la fin du texte, pause de 3s, puis retour vers la droite jusqu'au début — et ainsi
@@ -33,6 +60,18 @@ export function MarqueeText({ text, to, className = "", onClick, draggable }: Ma
   const [overflowDistance, setOverflowDistance] = useState(0);
   const [scrolledLeft, setScrolledLeft] = useState(false);
   const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Le cycle de défilement ne tourne que si le texte est à l'écran ET la fenêtre au premier
+  // plan : sinon, des centaines de lignes de playlist (hors écran) ou la barre de lecture
+  // (fenêtre masquée pendant une longue écoute) relançaient timers, re-renders et transitions
+  // indéfiniment, pour rien.
+  const [onScreen, setOnScreen] = useState(false);
+  const pageVisible = useSyncExternalStore(subscribeDocumentVisibility, () => !document.hidden, () => true);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    return observeVisibility(el, setOnScreen);
+  }, []);
 
   // Mesure le débordement réel (largeur du texte non tronqué - largeur du conteneur).
   useEffect(() => {
@@ -50,6 +89,7 @@ export function MarqueeText({ text, to, className = "", onClick, draggable }: Ma
   }, [text]);
 
   const overflowing = overflowDistance > 0;
+  const shouldAnimate = overflowing && onScreen && pageVisible;
   const scrollDurationS = Math.min(
     MAX_SCROLL_DURATION_S,
     Math.max(MIN_SCROLL_DURATION_S, overflowDistance / PIXELS_PER_SECOND),
@@ -60,15 +100,16 @@ export function MarqueeText({ text, to, className = "", onClick, draggable }: Ma
   useEffect(() => {
     setScrolledLeft(false);
     clearTimeout(cycleTimerRef.current);
-    if (!overflowing) return;
+    if (!shouldAnimate) return;
 
     cycleTimerRef.current = setTimeout(() => setScrolledLeft(true), PAUSE_MS);
     return () => clearTimeout(cycleTimerRef.current);
-  }, [overflowing, text]);
+  }, [shouldAnimate, text]);
 
   function handleTransitionEnd(e: React.TransitionEvent) {
     if (e.propertyName !== "transform") return;
     clearTimeout(cycleTimerRef.current);
+    if (!shouldAnimate) return;
     cycleTimerRef.current = setTimeout(() => setScrolledLeft((prev) => !prev), PAUSE_MS);
   }
 

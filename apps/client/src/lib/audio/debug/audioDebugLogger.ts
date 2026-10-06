@@ -39,7 +39,9 @@ function currentBucket(): BandwidthSample {
   const last = history[history.length - 1];
   if (last && last.second === second) return last;
 
-  const start = last ? last.second + 1 : second;
+  // Après une longue inactivité, ne combler que la fenêtre utile (60 s), pas chaque seconde
+  // écoulée depuis le dernier événement (des milliers d'objets créés puis jetés aussitôt).
+  const start = last ? Math.max(last.second + 1, second - HISTORY_SECONDS) : second;
   for (let s = start; s < second; s++) {
     history.push({ second: s, networkBytes: 0, decodeBytes: 0 });
   }
@@ -49,12 +51,20 @@ function currentBucket(): BandwidthSample {
   return bucket;
 }
 
+// Lu une seule fois puis tenu à jour par setAudioDebugEnabled : `record()` est appelé à chaque
+// chunk réseau, une lecture localStorage (synchrone, sérialisée) à chaque fois était du pur gâchis.
+let consoleEnabled: boolean | null = null;
+
 function isConsoleEnabled(): boolean {
-  return typeof localStorage !== "undefined" && localStorage.getItem(DEBUG_ENABLED_KEY) === "1";
+  if (consoleEnabled === null) {
+    consoleEnabled = typeof localStorage !== "undefined" && localStorage.getItem(DEBUG_ENABLED_KEY) === "1";
+  }
+  return consoleEnabled;
 }
 
 export function setAudioDebugEnabled(enabled: boolean) {
   localStorage.setItem(DEBUG_ENABLED_KEY, enabled ? "1" : "0");
+  consoleEnabled = enabled;
 }
 
 function record(category: DebugCategory, event: string, data: Record<string, unknown>) {

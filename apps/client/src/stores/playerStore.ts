@@ -484,6 +484,9 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     scheduledNextKey = key;
 
     const commitSwap = () => {
+      // Passage gapless : la nouvelle piste joue depuis son AudioBuffer décodé, l'élément natif
+      // ne lit plus l'URL locale de la précédente — on la libère.
+      releaseActiveLocalUrl(null);
       scrobbledNowPlaying = false;
       scrobbledSubmission = false;
       scheduledNextKey = null;
@@ -652,7 +655,12 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   const TICK_INTERVAL_MS = 250;
   let tickTimer: number | null = null;
 
+  // Garde ESSENTIELLE : le `set()` fait pendant un tick notifie l'abonnement ci-dessous, qui
+  // planifierait un 2e timer en plus de celui que le tick replanifie lui-même — sans cette
+  // garde, chaque tick ajoutait un timer, les mises à jour du store s'emballaient (CPU à 100 %,
+  // des centaines de Mo alloués par seconde). Il ne doit exister qu'UN seul timer à la fois.
   function scheduleTick() {
+    if (tickTimer !== null) return;
     tickTimer = window.setTimeout(tickProgress, TICK_INTERVAL_MS);
   }
 
@@ -709,6 +717,17 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     // de 10s" à la place de précédent/suivant. On veut précédent/suivant partout.
   }).catch((err) => console.error("[player] Échec d'initialisation du Now Playing système", err));
 
+  // URL `blob:` locale (cache / téléchargement) de la piste en cours de lecture native. Chaque
+  // URL garde son Blob vivant tant qu'elle n'est pas révoquée : sans cette libération, CHAQUE
+  // piste écoutée depuis le cache restait en mémoire jusqu'à la fermeture de l'onglet — des Go
+  // au bout de quelques heures d'écoute. On n'en garde donc qu'une : celle de la piste courante.
+  let activeLocalUrl: string | null = null;
+
+  function releaseActiveLocalUrl(next: string | null) {
+    if (activeLocalUrl && activeLocalUrl !== next) URL.revokeObjectURL(activeLocalUrl);
+    activeLocalUrl = next;
+  }
+
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
     const myGeneration = ++loadGeneration;
 
@@ -730,8 +749,11 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         (await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format));
 
     // Un appel plus récent a déjà pris le dessus pendant cette attente : ne rien committer,
-    // engine et Now Playing reflètent déjà la piste voulue.
-    if (myGeneration !== loadGeneration) return;
+    // engine et Now Playing reflètent déjà la piste voulue — et libérer l'URL devenue inutile.
+    if (myGeneration !== loadGeneration) {
+      if (localUrl) URL.revokeObjectURL(localUrl);
+      return;
+    }
 
     const instantUrl = localUrl ?? resolved.streamUrl;
     // Un blob local (téléchargement ou cache) n'a ni Range HTTP ni CORS à satisfaire : le
@@ -739,6 +761,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     const mimeType = localUrl ? undefined : MSE_MIME_TYPE[resolved.format];
 
     engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
+    // Le moteur a remplacé la source : l'URL locale de la piste précédente n'est plus lue.
+    releaseActiveLocalUrl(localUrl);
 
     // En mode buffer (piste déjà décodée), `engine.duration` est connue immédiatement ; en
     // streaming natif, elle vaut encore 0 tant que les métadonnées n'ont pas chargé —
@@ -923,6 +947,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
       if (queue.length === 0 || playOrder.length === 0) {
         engine.stop();
+        releaseActiveLocalUrl(null);
         prefetchScheduler.stop();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
         clearNowPlaying();
@@ -938,6 +963,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       const nextPos = playOrderPosition + 1;
       if (nextPos >= playOrder.length) {
         engine.stop();
+        releaseActiveLocalUrl(null);
         prefetchScheduler.stop();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
         clearNowPlaying();

@@ -120,22 +120,23 @@ class PrefetchScheduler {
   }) {
     return new Promise<void>((resolve) => {
       let settled = false;
+      // Point de sortie UNIQUE : désabonnement + arrêt du polling dans tous les cas. Avant,
+      // une fin normale (progress.complete) ne coupait jamais l'intervalle — chaque piste
+      // préchargée laissait un timer de 150 ms tourner (et retenir son téléchargeur) jusqu'à
+      // la fermeture de l'app : des centaines de réveils CPU par seconde après des heures
+      // d'écoute.
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        window.clearInterval(poll);
+        resolve();
+      };
       const unsubscribe = task.onProgress((progress) => {
-        if (progress.complete && !settled) {
-          settled = true;
-          unsubscribe();
-          resolve();
-        }
+        if (progress.complete) settle();
       });
       const poll = window.setInterval(() => {
-        if (task.isBudgetExhausted || settled || this.paused) {
-          if (!settled) {
-            settled = true;
-            unsubscribe();
-            window.clearInterval(poll);
-            resolve();
-          }
-        }
+        if (task.isBudgetExhausted || this.paused) settle();
       }, 150);
     });
   }

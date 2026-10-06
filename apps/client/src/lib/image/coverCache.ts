@@ -103,55 +103,97 @@ async function fetchForCache(url: string): Promise<Response> {
   });
 }
 
-async function readMeta(): Promise<CacheEntryMeta[]> {
-  return (await storage.get<CacheEntryMeta[]>(META_KEY)) ?? [];
+// Métadonnées tenues EN MÉMOIRE (Map, accès O(1)), chargées une seule fois puis persistées
+// par lots. Avant : chaque affichage de pochette relisait et re-parsait la liste complète
+// (des milliers d'entrées, des centaines de Ko de JSON) depuis le stockage, deux fois, puis la
+// re-sérialisait et la réécrivait entièrement — des Mo de JSON brassés par carrousel affiché,
+// CPU et ramasse-miettes sollicités en continu pendant le défilement. Les écritures
+// concurrentes (lecture-modification-écriture en parallèle) pouvaient aussi perdre des entrées.
+const PERSIST_DELAY_MS = 1500;
+let metaPromise: Promise<Map<string, CacheEntryMeta>> | null = null;
+let totalBytes = 0;
+let persistTimer: number | null = null;
+
+function loadMeta(): Promise<Map<string, CacheEntryMeta>> {
+  metaPromise ??= storage.get<CacheEntryMeta[]>(META_KEY).then((list) => {
+    const map = new Map<string, CacheEntryMeta>();
+    totalBytes = 0;
+    for (const entry of list ?? []) {
+      map.set(entry.key, entry);
+      totalBytes += entry.size;
+    }
+    return map;
+  });
+  return metaPromise;
 }
 
-async function writeMeta(entries: CacheEntryMeta[]): Promise<void> {
-  await storage.set(META_KEY, entries);
+/** Persistance regroupée : une seule écriture du stockage par fenêtre de 1,5 s, quel que soit
+ *  le nombre de pochettes affichées entre-temps. */
+function schedulePersist() {
   scheduleSizeNotify();
+  if (persistTimer !== null) return;
+  persistTimer = window.setTimeout(async () => {
+    persistTimer = null;
+    const meta = await loadMeta();
+    await storage.set(META_KEY, Array.from(meta.values()));
+  }, PERSIST_DELAY_MS);
+}
+
+// Fermeture de l'onglet/fenêtre avec une persistance encore en attente : on écrit tout de suite
+// (au mieux) plutôt que de perdre les entrées des dernières pochettes mises en cache — leurs
+// fichiers resteraient sinon sur le disque sans être comptés dans la taille du cache.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    if (persistTimer === null || !metaPromise) return;
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+    void metaPromise.then((meta) => storage.set(META_KEY, Array.from(meta.values())));
+  });
 }
 
 async function touchEntry(key: string, size?: number, contentType?: string): Promise<void> {
-  const meta = await readMeta();
-  const existing = meta.find((e) => e.key === key);
+  const meta = await loadMeta();
+  const existing = meta.get(key);
   if (existing) {
     existing.lastAccessedAt = Date.now();
-    if (size !== undefined) existing.size = size;
+    if (size !== undefined) {
+      totalBytes += size - existing.size;
+      existing.size = size;
+    }
     if (contentType !== undefined) existing.contentType = contentType;
   } else {
-    meta.push({ key, size: size ?? 0, contentType: contentType ?? "application/octet-stream", lastAccessedAt: Date.now() });
+    meta.set(key, {
+      key,
+      size: size ?? 0,
+      contentType: contentType ?? "application/octet-stream",
+      lastAccessedAt: Date.now(),
+    });
+    totalBytes += size ?? 0;
   }
-  await writeMeta(meta);
+  schedulePersist();
 }
 
 async function enforceLimit(): Promise<void> {
-  const meta = await readMeta();
-  const total = meta.reduce((sum, e) => sum + e.size, 0);
-  if (total <= maxBytes) return;
+  const meta = await loadMeta();
+  if (totalBytes <= maxBytes) return;
 
-  const sorted = [...meta].sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
-  let currentTotal = total;
-  const remaining: CacheEntryMeta[] = [...meta];
-
-  for (const entry of sorted) {
-    if (currentTotal <= maxBytes) break;
+  const oldestFirst = Array.from(meta.values()).sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+  for (const entry of oldestFirst) {
+    if (totalBytes <= maxBytes) break;
+    meta.delete(entry.key);
+    totalBytes -= entry.size;
     await store.deleteFile(entry.key);
-    currentTotal -= entry.size;
-    const idx = remaining.findIndex((e) => e.key === entry.key);
-    if (idx !== -1) remaining.splice(idx, 1);
   }
-
-  await writeMeta(remaining);
+  schedulePersist();
 }
 
 async function readCachedCover(key: string): Promise<{ blob: Blob; contentType: string } | null> {
-  const meta = await readMeta();
-  const entry = meta.find((e) => e.key === key);
+  const entry = (await loadMeta()).get(key);
   if (!entry) return null;
-  const bytes = await store.readAll(key);
-  if (!bytes) return null;
-  return { blob: new Blob([bytes], { type: entry.contentType }), contentType: entry.contentType };
+  // Blob adossé au disque (OPFS) : aucune copie de l'image en mémoire JS par carte affichée.
+  const blob = await store.readAsBlob(key, entry.contentType);
+  if (!blob) return null;
+  return { blob, contentType: entry.contentType };
 }
 
 /** Object URL locale si la pochette est déjà en cache, sinon null (pas d'appel réseau ici). */
@@ -216,14 +258,16 @@ export async function loadAndCacheCover(
 }
 
 export async function currentCoverCacheSize(): Promise<number> {
-  const meta = await readMeta();
-  return meta.reduce((sum, e) => sum + e.size, 0);
+  await loadMeta();
+  return totalBytes;
 }
 
 export async function clearCoverCache(): Promise<void> {
-  const meta = await readMeta();
-  for (const entry of meta) {
-    await store.deleteFile(entry.key);
-  }
-  await writeMeta([]);
+  const meta = await loadMeta();
+  const keys = Array.from(meta.keys());
+  meta.clear();
+  totalBytes = 0;
+  for (const key of keys) await store.deleteFile(key);
+  await storage.set(META_KEY, []);
+  scheduleSizeNotify();
 }

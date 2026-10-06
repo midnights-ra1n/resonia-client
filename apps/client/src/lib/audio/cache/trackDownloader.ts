@@ -1,13 +1,29 @@
-import { EndOfStreamError, fetchRange } from "./rangeFetcher";
+import { EndOfStreamError, TruncatedStreamError, isTransientStreamError, streamRange } from "./rangeFetcher";
 import type { DownloadPriority, ProgressListener } from "./types";
 import type { BlobStore, BlobWriter } from "../../storage/blobStore";
+import type { BlobDownloadResult } from "../../storage/blobStore/types";
 import { networkDebugLog } from "../debug/audioDebugLogger";
 
-export interface ChunkEvent {
-  data: ArrayBuffer;
-  rangeStart: number;
+const MAX_RETRIES = 3;
+const BASE_RETRY_DELAY_MS = 500;
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
 }
-export type ChunkListener = (chunk: ChunkEvent) => void;
 
 /** Télécharge un fichier par chunks vers OPFS, reprenable, pausable, à budget optionnel.
  *  Un seul `TrackDownloader` doit exister par clé de cache à la fois (garanti par
@@ -18,7 +34,6 @@ export class TrackDownloader {
   private store: BlobStore;
   private controller = new AbortController();
   private listeners = new Set<ProgressListener>();
-  private chunkListeners = new Set<ChunkListener>();
   private bytesCached = 0;
   private totalBytes = -1;
   private complete = false;
@@ -55,6 +70,16 @@ export class TrackDownloader {
     return this.lastError;
   }
 
+  get isRunning(): boolean {
+    return this.running;
+  }
+
+  /** Se résout dès que ce téléchargement ne tourne plus, quelle qu'en soit la raison (fini,
+   *  budget atteint, pause, erreur) — immédiatement s'il ne tourne pas. */
+  whenIdle(): Promise<void> {
+    return this.closing ?? Promise.resolve();
+  }
+
   get isBudgetExhausted(): boolean {
     return this.budgetBytes !== null && this.bytesCached >= this.budgetBytes;
   }
@@ -62,11 +87,6 @@ export class TrackDownloader {
   onProgress(cb: ProgressListener): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
-  }
-
-  onChunk(cb: ChunkListener): () => void {
-    this.chunkListeners.add(cb);
-    return () => this.chunkListeners.delete(cb);
   }
 
   private emit() {
@@ -91,7 +111,6 @@ export class TrackDownloader {
   cancel() {
     this.pause();
     this.listeners.clear();
-    this.chunkListeners.clear();
   }
 
   async run(): Promise<void> {
@@ -103,6 +122,10 @@ export class TrackDownloader {
 
     this.running = true;
     this.lastError = null;
+    // Capturé MAINTENANT : un pause() pendant l'une des attentes ci-dessous remplace
+    // `this.controller` par un neuf — relire `this.controller.signal` après coup donnait un signal
+    // jamais annulé, et le téléchargement continuait en fantôme malgré la pause.
+    const runSignal = this.controller.signal;
 
     let resolveClosing: () => void = () => {};
     this.closing = new Promise((resolve) => {
@@ -116,44 +139,75 @@ export class TrackDownloader {
     let writer: BlobWriter | null = null;
     try {
       this.bytesCached = await this.store.fileSize(this.key);
+      if (runSignal.aborted) return;
+      if (this.store.download) {
+        await this.runDelegated(this.store.download.bind(this.store), runSignal);
+        return;
+      }
       writer = await this.store.createWriter(this.key);
       // .seek() une fois puis des write(data) séquentiels : support plus large/fiable
       // (notamment WebKit) que la forme composite { type: "write", position, data }
       // pour un flux qui n'a de toute façon jamais besoin d'écritures aléatoires.
       await writer.seek(this.bytesCached);
+      if (runSignal.aborted) return;
+      const activeWriter = writer;
 
-      while (this.running) {
+      // Une seule requête par tentative (voir streamRange) ; une coupure en cours de route reprend
+      // à `bytesCached`, avec un backoff exponentiel. Le compteur d'essais est remis à zéro dès
+      // qu'un octet arrive : seuls des échecs CONSÉCUTIFS épuisent les tentatives.
+      let attempt = 0;
+      while (this.running && !this.complete) {
         if (this.isBudgetExhausted) {
           networkDebugLog("download:budget-exhausted", { key: this.key, bytesCached: this.bytesCached, budgetBytes: this.budgetBytes });
           break;
         }
-
-        const chunk = await fetchRange(this.streamUrl, this.bytesCached, this.controller.signal);
-        if (this.totalBytes === -1) this.totalBytes = chunk.totalBytes;
-
-        const rangeStart = this.bytesCached;
-        await writer.write(chunk.data);
-        this.bytesCached += chunk.data.byteLength;
-
-        networkDebugLog("chunk:read", { key: this.key, bytes: chunk.data.byteLength, rangeStart, bytesCached: this.bytesCached });
-        this.chunkListeners.forEach((cb) => cb({ data: chunk.data, rangeStart }));
-
-        if (this.totalBytes > 0 && this.bytesCached >= this.totalBytes) {
+        const signal = runSignal;
+        networkDebugLog("download:start", { key: this.key, from: this.bytesCached, attempt });
+        try {
+          const finished = await streamRange(this.streamUrl, this.bytesCached, signal, {
+            onTotal: (total) => {
+              if (this.totalBytes === -1 && total > 0) this.totalBytes = total;
+            },
+            onData: async (data) => {
+              const rangeStart = this.bytesCached;
+              await activeWriter.write(data);
+              this.bytesCached += data.byteLength;
+              attempt = 0;
+              networkDebugLog("chunk:read", { key: this.key, bytes: data.byteLength, rangeStart, bytesCached: this.bytesCached });
+              if (this.totalBytes > 0 && this.bytesCached >= this.totalBytes) {
+                this.complete = true;
+                networkDebugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
+              }
+              this.emit();
+              return this.running && !this.complete && !this.isBudgetExhausted;
+            },
+          });
+          if (!finished || this.complete) continue;
+          // Flux lu jusqu'au bout : si le serveur annonçait une taille, elle doit être atteinte —
+          // sinon c'est une coupure propre en cours de route, à reprendre.
+          if (this.totalBytes > 0 && this.bytesCached < this.totalBytes) throw new TruncatedStreamError();
+          this.totalBytes = this.bytesCached;
           this.complete = true;
           networkDebugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
+          this.emit();
+        } catch (err) {
+          if (err instanceof EndOfStreamError) {
+            // Le transcodage à la volée peut sous/sur-estimer la taille réelle du flux :
+            // un 416 signifie simplement qu'il n'y a plus rien à lire, fin normale.
+            this.totalBytes = this.bytesCached;
+            this.complete = true;
+            this.emit();
+            break;
+          }
+          if (signal.aborted) break; // pause()/cancel() volontaire
+          if (!isTransientStreamError(err) || attempt >= MAX_RETRIES) throw err;
+          attempt++;
+          networkDebugLog("chunk:retry", { key: this.key, attempt, error: String((err as Error)?.message ?? err) });
+          await sleep(BASE_RETRY_DELAY_MS * 2 ** (attempt - 1), signal);
         }
-
-        this.emit();
-        if (this.complete) break;
       }
     } catch (err) {
-      if (err instanceof EndOfStreamError) {
-        // Le transcodage à la volée peut sous/sur-estimer la taille réelle du flux :
-        // un 416 signifie simplement qu'il n'y a plus rien à lire, fin normale.
-        this.totalBytes = this.bytesCached;
-        this.complete = true;
-        this.emit();
-      } else if ((err as Error).name !== "AbortError") {
+      if ((err as Error).name !== "AbortError") {
         this.lastError = err as Error;
         networkDebugLog("download:error", { key: this.key, error: (err as Error).message, bytesCached: this.bytesCached });
         console.warn(
@@ -167,5 +221,35 @@ export class TrackDownloader {
       this.closing = null;
       resolveClosing();
     }
+  }
+
+  /** Bureau : le téléchargement (plusieurs plages en parallèle, écriture directe sur disque,
+   *  reprises) est fait par le process principal — voir `BlobStore.download`. Ici, on ne fait que
+   *  refléter sa progression. */
+  private async runDelegated(
+    download: (key: string, url: string, from: number, signal: AbortSignal, handlers: { onProgress(bytes: number, total: number, received: number): void }) => Promise<BlobDownloadResult>,
+    signal: AbortSignal,
+  ) {
+    networkDebugLog("download:start", { key: this.key, from: this.bytesCached, via: "process principal" });
+    const result = await download(this.key, this.streamUrl, this.bytesCached, signal, {
+      onProgress: (bytes, total, received) => {
+        if (total > 0) this.totalBytes = total;
+        if (received > 0) {
+          networkDebugLog("chunk:read", { key: this.key, bytes: received, rangeStart: this.bytesCached, bytesCached: bytes });
+        }
+        this.bytesCached = bytes;
+        this.emit();
+      },
+    });
+    this.bytesCached = result.bytes;
+    if (result.total > 0) this.totalBytes = result.total;
+    if (result.complete) {
+      this.totalBytes = this.bytesCached;
+      this.complete = true;
+      networkDebugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
+      this.emit();
+      return;
+    }
+    if (result.error && !signal.aborted) throw new Error(result.error);
   }
 }

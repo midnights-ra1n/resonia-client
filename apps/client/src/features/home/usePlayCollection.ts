@@ -30,6 +30,8 @@ export function usePlayCollection() {
         album: s.album,
         albumId: s.albumId ?? album.id,
         duration: s.duration,
+        suffix: s.suffix,
+        bitRate: s.bitRate,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : fallbackCover,
         coverArtId: s.coverArt ?? album.coverArt,
       }));
@@ -57,6 +59,8 @@ export function usePlayCollection() {
         album: s.album,
         albumId: s.albumId,
         duration: s.duration,
+        suffix: s.suffix,
+        bitRate: s.bitRate,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : fallbackCover,
         coverArtId: s.coverArt ?? playlist.coverArt,
       }));

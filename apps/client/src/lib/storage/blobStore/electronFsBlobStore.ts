@@ -1,6 +1,8 @@
 import { DesktopBaseDir } from "./baseDirectory";
 import type { BlobStore, BlobWriter } from "./types";
 
+let nextDownloadId = 1;
+
 // Même contrainte que côté OPFS : caractères réservés sur certains systèmes de fichiers.
 function safeName(key: string): string {
   return key.replace(/[:/\\]/g, "_");
@@ -68,6 +70,22 @@ export function createElectronFsBlobStore(rootDir: string, baseDir: DesktopBaseD
 
     async deleteFile(key) {
       await bridge().blobStore.remove(baseDir, pathFor(key));
+    },
+
+    async download(key, url, from, signal, handlers) {
+      const api = bridge();
+      const id = nextDownloadId++;
+      const unsubscribe = api.downloads.onProgress((eventId, bytes, total, received) => {
+        if (eventId === id) handlers.onProgress(bytes, total, received);
+      });
+      const onAbort = () => api.downloads.abort(id);
+      signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        return await api.downloads.run(id, { baseDir, path: pathFor(key), url, from });
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+        unsubscribe();
+      }
     },
   };
 }

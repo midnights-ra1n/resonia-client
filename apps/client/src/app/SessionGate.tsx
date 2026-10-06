@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { SubsonicApiError } from "@resonia/api-client";
 import { LoginPage } from "../features/auth/LoginPage";
 import { useTranslation } from "../lib/i18n";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
@@ -6,6 +7,10 @@ import { useServersStore } from "../stores/serversStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
 type SessionStatus = "checking" | "valid" | "invalid";
+
+// Codes Subsonic d'échec d'authentification (identifiants refusés, méthode d'auth non supportée,
+// accès refusé) — les seuls qui justifient de renvoyer à l'écran de connexion.
+const AUTH_ERROR_CODES = new Set([40, 41, 42, 43, 44, 50]);
 
 export function SessionGate({ children }: { children: ReactNode }) {
   const hydrated = useServersStore((s) => s.hydrated);
@@ -41,15 +46,22 @@ export function SessionGate({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
-    setStatus("checking");
+    // Optimiste : un serveur déjà enregistré affiche l'app tout de suite, le ping ne fait que
+    // vérifier en arrière-plan. Avant, toute l'interface attendait sa réponse derrière un écran
+    // de chargement — c'est la première requête de la session (poignée de main TLS comprise),
+    // plus d'une seconde sur un serveur distant, à chaque ouverture de l'app.
+    setStatus("valid");
 
     getClientForServer(activeServer)
       .ping()
-      .then(() => {
-        if (!cancelled) setStatus("valid");
-      })
-      .catch(async () => {
-        // Invalid token/expired or unreachable server: remove this server.
+      .catch(async (err: unknown) => {
+        // Seuls des identifiants refusés déconnectent. Une erreur réseau (serveur injoignable,
+        // Wi-Fi coupé, délai) supprimait auparavant le serveur enregistré — l'utilisateur devait
+        // tout ressaisir au moindre démarrage hors ligne.
+        if (!(err instanceof SubsonicApiError) || !AUTH_ERROR_CODES.has(err.code)) {
+          console.warn("[session] Vérification du serveur impossible, session conservée", err);
+          return;
+        }
         await removeServer(activeServer.id);
         if (!cancelled) setStatus("invalid");
       });

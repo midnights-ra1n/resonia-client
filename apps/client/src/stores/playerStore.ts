@@ -82,6 +82,10 @@ export interface Track {
   /** Identifiant Subsonic de la pochette (distinct de `coverUrl`, déjà résolue en URL) :
    *  nécessaire pour clé de cache indépendante de l'URL (jeton d'auth, host…). */
   coverArtId?: string;
+  /** Format et débit (kbps) du fichier source sur le serveur — permettent de lire l'original
+   *  plutôt qu'un transcodage inutile, voir `resolveStreamFormat`. */
+  suffix?: string;
+  bitRate?: number;
 }
 
 // `import.meta.env.BASE_URL`, jamais un chemin racine en dur — voir le même commentaire dans
@@ -100,6 +104,39 @@ function getActiveClient() {
   return server ? getClientForServer(server) : null;
 }
 
+// Formats source lisibles tels quels, par famille de qualité demandée. `m4a` peut aussi contenir de
+// l'ALAC sans perte : le plafond de débit ci-dessous l'écarte naturellement (~1000 kbps et plus).
+const ORIGINAL_SUFFIXES: Record<"aac" | "opus" | "mp3", string[]> = {
+  aac: ["m4a", "aac", "mp4", "mp3"],
+  mp3: ["mp3"],
+  opus: ["opus", "ogg", "m4a", "aac", "mp3"],
+};
+// Tolérance sur le débit de l'original par rapport à la qualité choisie : un AAC à 262 kbps pour
+// une qualité « AAC 256 » est lu tel quel, un FLAC ou un MP3 320 pour « AAC 128 » reste transcodé.
+const ORIGINAL_BITRATE_TOLERANCE = 1.15;
+
+const ogg = typeof Audio !== "undefined" ? new Audio().canPlayType('audio/ogg; codecs="opus"') !== "" : false;
+
+/** `true` si le fichier source peut être lu directement au lieu d'être transcodé par le serveur.
+ *
+ *  Transcoder un fichier déjà dans un format lisible, à un débit équivalent, ne réduit pas sa
+ *  taille mais coûte cher : le serveur ne sert un flux transcodé qu'au fil de l'eau, sans requêtes
+ *  par plage — impossible de se positionner au-delà de ce qui est déjà téléchargé (le serveur
+ *  renvoyait le fichier depuis le début : la lecture repartait de zéro au moindre clic dans la
+ *  barre), impossible de le télécharger en plusieurs morceaux parallèles, et chaque démarrage
+ *  attend le lancement d'ffmpeg. L'original, lui, a une taille exacte et accepte les plages. */
+function canPlayOriginal(track: Track, format: "aac" | "opus" | "mp3", maxBitRate: number): boolean {
+  const suffix = track.suffix?.toLowerCase();
+  if (!suffix || !track.bitRate || !ORIGINAL_SUFFIXES[format].includes(suffix)) return false;
+  if ((suffix === "ogg" || suffix === "opus") && !ogg) return false;
+  return maxBitRate <= 0 || track.bitRate <= maxBitRate * ORIGINAL_BITRATE_TOLERANCE;
+}
+
+/** URL de LECTURE immédiate : toujours le flux au format de la qualité choisie. L'original n'y
+ *  est pas utilisé même quand il est compatible : la plupart des M4A placent leur index (`moov`)
+ *  en fin de fichier — parfois plusieurs Mo avec une pochette intégrée — et le lecteur doit le
+ *  télécharger en entier avant de jouer la première seconde (~48 s mesurées sur un serveur à
+ *  ~50 Ko/s par connexion), là où un flux transcodé démarre en une à deux secondes. */
 function resolveStreamUrl(track: Track): string | null {
   const client = getActiveClient();
   if (!client) return null;
@@ -107,10 +144,26 @@ function resolveStreamUrl(track: Track): string | null {
   return client.getStreamUrl(track.id, { format: quality?.format, maxBitRate: quality?.maxBitRate });
 }
 
+/** URL de MISE EN CACHE (piste active et préchargement) : l'original quand il est compatible
+ *  (voir canPlayOriginal) — taille exacte et plages acceptées, donc téléchargeable en plusieurs
+ *  morceaux parallèles par le process principal sur desktop, et décodable d'un bloc une fois
+ *  complet (l'index en fin de fichier n'y gêne plus). Sinon, le même flux que la lecture. */
+function resolveCacheUrl(track: Track): string | null {
+  const client = getActiveClient();
+  if (!client) return null;
+  const quality = getQualityById(getActiveQualityId());
+  if (quality && quality.format !== "raw" && canPlayOriginal(track, quality.format, quality.maxBitRate)) {
+    return client.getStreamUrl(track.id, { format: "raw" });
+  }
+  return resolveStreamUrl(track);
+}
+
 interface PlayableTrack {
   streamUrl: string;
   qualityId: string;
   format: "aac" | "opus" | "mp3";
+  /** URL utilisée pour la mise en cache (voir resolveCacheUrl). */
+  cacheUrl: string;
 }
 
 /** Type MIME candidat pour un démarrage en streaming progressif (MediaSource) quand le
@@ -128,7 +181,7 @@ function resolvePlayableTrack(track: Track): PlayableTrack | null {
   const streamUrl = resolveStreamUrl(track);
   const quality = getQualityById(getActiveQualityId());
   if (!streamUrl || !quality || quality.format === "raw") return null;
-  return { streamUrl, qualityId: quality.id, format: quality.format };
+  return { streamUrl, qualityId: quality.id, format: quality.format, cacheUrl: resolveCacheUrl(track) ?? streamUrl };
 }
 
 function decodedCacheKey(trackId: string, qualityId: string): string {
@@ -300,6 +353,21 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   // dépassé entre-temps par un appel plus récent.
   let loadGeneration = 0;
 
+  // Annule les attentes de cache liées à la piste en cours (décodage de la piste active, voir
+  // ensureActiveDecoded) à chaque changement de piste : sans ça, chaque piste quittée laissait une
+  // attente pendante qui pouvait se réveiller bien plus tard sur une piste qui n'est plus jouée.
+  let playbackAbort = new AbortController();
+  // Idem pour la préparation de la piste suivante (scheduleGaplessNext), annulée dès que la cible
+  // change (file réordonnée, aléatoire/répétition basculés, changement de piste).
+  let nextAbort: AbortController | null = null;
+
+  function abortPlaybackWaits() {
+    playbackAbort.abort();
+    playbackAbort = new AbortController();
+    nextAbort?.abort();
+    nextAbort = null;
+  }
+
   // Débounce des seeks (barre de progression) : un clic isolé applique le seek quasi
   // immédiatement, mais une rafale de clics très rapprochés (l'utilisateur "glisse" en
   // cliquant plusieurs fois) ne doit faire atterrir qu'UN seul seek — celui du dernier
@@ -333,6 +401,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
   function resetPlaybackFlags() {
     scheduledNextKey = null;
+    nextAbort?.abort();
+    nextAbort = null;
     scrobbledNowPlaying = false;
     scrobbledSubmission = false;
     clearPendingSeek();
@@ -355,7 +425,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       const queueIndex = playOrder[pos];
       if (queueIndex === undefined) break;
       const track = queue[queueIndex];
-      const streamUrl = resolveStreamUrl(track);
+      const streamUrl = resolveCacheUrl(track);
       if (streamUrl) upcoming.push({ trackId: track.id, streamUrl });
       prefetchTrackCover(track);
       prefetchLyrics(track);
@@ -397,7 +467,9 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   /** Démarre la mise en cache en tâche de fond de la piste en cours. Volontairement
    *  déclenché une fois la lecture réellement démarrée — jamais au moment du clic : une
    *  deuxième connexion réseau vers la même piste concurrencerait le flux de lecture et
-   *  retarderait le démarrage audible. */
+   *  retarderait le démarrage audible. Le téléchargement lui-même est confié au planificateur
+   *  de préchargement (une connexion à la fois, piste active d'abord) — plus jamais lancé en
+   *  parallèle de celui-ci, ce qui doublait les transcodages demandés au serveur. */
   async function activateCurrentTrackCaching() {
     const { currentTrack } = get();
     if (!currentTrack) return;
@@ -405,33 +477,25 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     if (!resolved) return;
 
     prefetchScheduler.setQuality(resolved.qualityId);
-    prefetchScheduler.setActive({ trackId: currentTrack.id, streamUrl: resolved.streamUrl });
     prefetchTrackCover(currentTrack);
     prefetchLyrics(currentTrack);
 
     // Piste déjà téléchargée : inutile de retélécharger les mêmes octets dans le cache LRU.
-    if (await downloadStore.isDownloaded(currentTrack.id, resolved.qualityId)) return;
-    cacheStore.request(currentTrack.id, resolved.qualityId, resolved.streamUrl, "active");
+    const downloaded = await downloadStore.isDownloaded(currentTrack.id, resolved.qualityId);
+    if (get().currentTrack?.id !== currentTrack.id) return;
+    prefetchScheduler.setActive(downloaded ? null : { trackId: currentTrack.id, streamUrl: resolved.cacheUrl });
   }
 
-  /** Attend que la piste (déjà demandée en cache "active") soit intégralement
-   *  téléchargée, puis en lit les octets — le fichier téléchargé (permanent) est préféré
-   *  au cache LRU quand il existe déjà, exactement comme pour l'URL de lecture instantanée. */
-  async function waitForActiveCached(trackId: string, qualityId: string): Promise<ArrayBuffer | null> {
+  /** Octets complets d'une piste : fichier téléchargé (permanent) s'il existe, sinon le cache
+   *  LRU une fois que le planificateur l'y a intégralement téléchargée. `null` si `signal` est
+   *  annulé avant (changement de piste/de cible). */
+  async function waitForTrackBytes(trackId: string, qualityId: string, signal: AbortSignal): Promise<ArrayBuffer | null> {
     if (await downloadStore.isDownloaded(trackId, qualityId)) {
       const downloaded = await downloadStore.readDownloadedFull(trackId, qualityId);
       if (downloaded && downloaded.byteLength > 0) return downloaded;
     }
-    const already = await cacheStore.isFullyCached(trackId, qualityId);
-    if (already) return cacheStore.readCachedFull(trackId, qualityId);
-    return new Promise((resolve) => {
-      const unsubscribe = cacheStore.onProgress(trackId, qualityId, (progress) => {
-        if (!progress.complete) return;
-        unsubscribe?.();
-        cacheStore.readCachedFull(trackId, qualityId).then(resolve);
-      });
-      if (!unsubscribe) resolve(null);
-    });
+    if (!(await cacheStore.waitForComplete(trackId, qualityId, signal))) return null;
+    return cacheStore.readCachedFull(trackId, qualityId);
   }
 
   /** Décode (une fois en cache complet) la piste active en tâche de fond, puis fait
@@ -445,7 +509,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       return;
     }
 
-    const bytes = await waitForActiveCached(track.id, resolved.qualityId);
+    const bytes = await waitForTrackBytes(track.id, resolved.qualityId, playbackAbort.signal);
     if (!bytes || bytes.byteLength === 0) return;
     if (get().currentTrack?.id !== track.id) return; // la piste active a changé entre-temps
 
@@ -485,8 +549,16 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     const key = decodedCacheKey(nextTrackData.id, resolved.qualityId);
     if (scheduledNextKey === key) return;
     scheduledNextKey = key;
+    nextAbort?.abort();
+    const abort = new AbortController();
+    nextAbort = abort;
+    const generation = loadGeneration;
 
     const commitSwap = () => {
+      // Swap planifié pour une file que l'utilisateur vient de remplacer (clic sur un autre album
+      // pendant que le chargement de la nouvelle piste est encore en vol) : loadAndPlay reprend la
+      // main, ne pas écraser la nouvelle file avec la piste suivante de l'ancienne.
+      if (generation !== loadGeneration) return;
       // Passage gapless : la nouvelle piste joue depuis son AudioBuffer décodé, l'élément natif
       // ne lit plus l'URL locale de la précédente — on la libère.
       releaseActiveLocalUrl(null);
@@ -512,28 +584,13 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     try {
       let decoded = decodedCache.get(key);
       if (!decoded) {
-        const downloadedBytes = (await downloadStore.isDownloaded(nextTrackData.id, resolved.qualityId))
-          ? await downloadStore.readDownloadedFull(nextTrackData.id, resolved.qualityId)
-          : null;
-        // isFullyCached d'abord : un préchargement encore partiel (budget de prefetch non
-        // atteint, ou interrompu par une piste active concurrente sur le réseau) laisse des
-        // octets dans OPFS qui ne représentent pas la piste entière — les utiliser tels
-        // quels ferait échouer decodeAndTrim (troncature) sans jamais retomber sur le réseau.
-        const cachedBytes =
-          downloadedBytes && downloadedBytes.byteLength > 0
-            ? downloadedBytes
-            : (await cacheStore.isFullyCached(nextTrackData.id, resolved.qualityId))
-              ? await cacheStore.readCachedFull(nextTrackData.id, resolved.qualityId)
-              : null;
-        const arrayBuffer =
-          cachedBytes && cachedBytes.byteLength > 0
-            ? cachedBytes
-            : await fetch(resolved.streamUrl).then((res) => {
-                if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
-                return res.arrayBuffer();
-              });
-
-        if (scheduledNextKey !== key) return; // une nouvelle cible a pris le dessus entre-temps
+        // Les octets viennent du cache, alimenté par le planificateur de préchargement — jamais
+        // d'un fetch complet dédié : celui-ci doublait le téléchargement (et le transcodage côté
+        // serveur) de la piste que le planificateur récupérait déjà, en parallèle du flux en
+        // cours de lecture, au point de faire caler ce dernier sur un serveur lent.
+        const arrayBuffer = await waitForTrackBytes(nextTrackData.id, resolved.qualityId, abort.signal);
+        if (!arrayBuffer || abort.signal.aborted || scheduledNextKey !== key) return;
+        if (arrayBuffer.byteLength === 0) throw new Error("Fichier en cache vide");
         decoded = await engine.decodeAndTrim(arrayBuffer);
         if (scheduledNextKey !== key) return;
         decodedCache.set(key, decoded);
@@ -596,7 +653,29 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
   engine.onNativePlaying = onPlaybackStarted;
   engine.onNetworkPressure = (active) => (active ? prefetchScheduler.pause() : prefetchScheduler.resume());
-  engine.onStateChange((state) => set({ engineState: state }));
+  engine.resolveNativeSeekUrl = (offset) => {
+    const track = get().currentTrack;
+    const client = getActiveClient();
+    const quality = getQualityById(getActiveQualityId());
+    if (!track || !client || !quality || quality.format === "raw") return null;
+    const applied = Math.floor(offset);
+    return {
+      url: client.getStreamUrl(track.id, { format: quality.format, maxBitRate: quality.maxBitRate, timeOffset: applied }),
+      offset: applied,
+    };
+  };
+  // Bureau : empêche la mise en veille de l'app (App Nap sur macOS) tant que la lecture est en
+  // cours ou en train de démarrer — sans quoi l'OS bride timers et callbacks réseau du renderer
+  // dès que la fenêtre passe en arrière-plan, et la lecture attend ou cale. Un navigateur gère ça
+  // lui-même ; une app Electron non. Relâché en pause/à l'arrêt pour laisser l'OS économiser.
+  let powerSaveHeld = false;
+  engine.onStateChange((state) => {
+    set({ engineState: state });
+    const shouldHold = state === "playing" || state === "loading" || state === "buffering" || state === "ready";
+    if (shouldHold === powerSaveHeld || !window.resonia) return;
+    powerSaveHeld = shouldHold;
+    void (shouldHold ? window.resonia.powerSave.start() : window.resonia.powerSave.stop()).catch(() => {});
+  });
 
   /** Repli quand le streaming natif est structurellement injouable (voir
    *  GaplessEngine.onNativePlaybackUnsupported) : télécharge la piste en entier puis la
@@ -612,11 +691,14 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       const key = decodedCacheKey(track.id, resolved.qualityId);
       let decoded = decodedCache.get(key);
       if (!decoded) {
-        const arrayBuffer = await fetch(resolved.streamUrl).then((res) => {
-          if (!res.ok) throw new Error(`Échec du téléchargement (${res.status})`);
-          return res.arrayBuffer();
-        });
-        if (get().currentTrack?.id !== track.id) return;
+        // Même canal que le préchargement (une seule connexion, reprise possible) plutôt qu'un
+        // fetch dédié : le flux natif n'a jamais démarré, rien d'autre n'utilise le réseau.
+        const signal = playbackAbort.signal;
+        prefetchScheduler.resume();
+        await activateCurrentTrackCaching();
+        const arrayBuffer = await waitForTrackBytes(track.id, resolved.qualityId, signal);
+        if (!arrayBuffer || get().currentTrack?.id !== track.id) return;
+        if (arrayBuffer.byteLength === 0) throw new Error("Fichier en cache vide");
         decoded = await engine.decodeAndTrim(arrayBuffer);
         if (get().currentTrack?.id !== track.id) return;
         decodedCache.set(key, decoded);
@@ -741,6 +823,12 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     }
 
     resetPlaybackFlags();
+    abortPlaybackWaits();
+    // Toute la bande passante pour le démarrage de la nouvelle piste : les téléchargements de
+    // l'ancienne file (piste quittée, préchargements) s'arrêtent ici, quel que soit le chemin
+    // d'appel (clic sur une piste/un album, suivant, précédent). Ils reprennent pour la nouvelle
+    // file une fois la lecture réellement démarrée (onPlaybackStarted).
+    prefetchScheduler.stop();
 
     const key = decodedCacheKey(track.id, resolved.qualityId);
     const decoded = decodedCache.get(key);
@@ -763,7 +851,9 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     // repli MediaSource ne s'applique qu'au vrai flux réseau.
     const mimeType = localUrl ? undefined : MSE_MIME_TYPE[resolved.format];
 
-    engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType);
+    engine.trackDurationHint = track.duration;
+    // Un fichier local accepte les positionnements libres ; un flux transcodé, non (voir seek).
+    engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType, Boolean(localUrl));
     // Le moteur a remplacé la source : l'URL locale de la piste précédente n'est plus lue.
     releaseActiveLocalUrl(localUrl);
 
@@ -815,11 +905,23 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
     isPlaying: false,
     togglePlay: () => {
-      const { currentTrack, isPlaying, queue } = get();
+      const { currentTrack, isPlaying, queue, isShuffle, playOrder, playOrderPosition } = get();
       if (!currentTrack) {
-        // Rien n'est chargé (pas juste en pause) : démarre la piste suivante de la file
-        // d'attente, s'il y en a une.
-        if (queue.length > 0) get().nextTrack();
+        // Rien n'est chargé (pas juste en pause) : file jamais démarrée (ajout à la file) ou
+        // arrivée à son terme. Passer par nextTrack() ne relançait rien dans ce second cas — la
+        // position était déjà sur la dernière piste, le bouton Lecture restait sans effet — et
+        // démarrait toujours sur la première piste ajoutée, aléatoire activé ou non. On repart
+        // donc du début de la file, avec un nouvel ordre aléatoire si le mode est actif.
+        if (queue.length === 0) return;
+        const finished = playOrderPosition >= playOrder.length - 1;
+        if (isShuffle && (finished || playOrderPosition < 0)) {
+          void get().playFromStart(queue);
+        } else {
+          const startPosition = finished || playOrderPosition < 0 ? 0 : playOrderPosition + 1;
+          const order = playOrder.length === queue.length ? playOrder : linearOrder(queue.length);
+          set({ playOrder: order, playOrderPosition: startPosition, queueIndex: order[startPosition] });
+          void loadAndPlay(queue[order[startPosition]], queue, 0);
+        }
         return;
       }
       if (isPlaying) {
@@ -941,7 +1043,6 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
       const prevQueueIndex = playOrder[prevPos];
       set({ playOrderPosition: prevPos, queueIndex: prevQueueIndex });
-      prefetchScheduler.stop();
       loadAndPlay(queue[prevQueueIndex], queue, 0);
     },
 
@@ -952,6 +1053,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         engine.stop();
         releaseActiveLocalUrl(null);
         prefetchScheduler.stop();
+        abortPlaybackWaits();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
         clearNowPlaying();
         resetPlaybackFlags();
@@ -968,6 +1070,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         engine.stop();
         releaseActiveLocalUrl(null);
         prefetchScheduler.stop();
+        abortPlaybackWaits();
         set({ currentTrack: null, isPlaying: false, currentTime: 0 });
         clearNowPlaying();
         resetPlaybackFlags();
@@ -976,7 +1079,6 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
       const nextQueueIndex = playOrder[nextPos];
       set({ playOrderPosition: nextPos, queueIndex: nextQueueIndex });
-      prefetchScheduler.stop();
       loadAndPlay(queue[nextQueueIndex], queue, 0);
     },
 
@@ -986,6 +1088,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       engine.stop();
       releaseActiveLocalUrl(null);
       prefetchScheduler.stop();
+      abortPlaybackWaits();
       decodedCache.clear();
       set({
         currentTrack: null,

@@ -38,6 +38,8 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
     album: song.album,
     albumId: song.albumId,
     duration: song.duration,
+    suffix: song.suffix,
+    bitRate: song.bitRate,
     coverUrl,
     coverArtId: song.coverArt,
   };

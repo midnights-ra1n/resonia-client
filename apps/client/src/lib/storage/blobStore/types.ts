@@ -21,4 +21,21 @@ export interface BlobStore {
    *  l'URL vit). */
   readAsBlob(key: string, type: string): Promise<Blob | null>;
   deleteFile(key: string): Promise<void>;
+  /** Bureau uniquement : télécharge `url` directement dans le fichier de `key` à partir de l'octet
+   *  `from`, depuis le process principal (voir `downloads` dans electron/main/index.ts). Absent sur
+   *  le web, où `TrackDownloader` lit lui-même le flux et écrit via `createWriter`. */
+  download?(key: string, url: string, from: number, signal: AbortSignal, handlers: BlobDownloadHandlers): Promise<BlobDownloadResult>;
+}
+
+export interface BlobDownloadHandlers {
+  /** `bytes` : préfixe contigu déjà écrit depuis le début du fichier (point de reprise) ;
+   *  `received` : octets reçus depuis le dernier appel, toutes connexions confondues (débit). */
+  onProgress(bytes: number, total: number, received: number): void;
+}
+
+export interface BlobDownloadResult {
+  complete: boolean;
+  bytes: number;
+  total: number;
+  error: string | null;
 }

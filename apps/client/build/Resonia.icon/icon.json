@@ -6,6 +6,7 @@
     {
       "layers" : [
         {
+          "glass" : true,
           "image-name" : "favicon.svg",
           "name" : "favicon",
           "position" : {

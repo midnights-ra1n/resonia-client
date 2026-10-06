@@ -69,6 +69,8 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
         artist: s.artist,
         album: s.album,
         duration: s.duration,
+        suffix: s.suffix,
+        bitRate: s.bitRate,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : undefined,
         coverArtId: s.coverArt,
       }));

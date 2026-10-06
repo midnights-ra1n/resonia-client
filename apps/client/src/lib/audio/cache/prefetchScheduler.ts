@@ -4,6 +4,14 @@ import { networkDebugLog } from "../debug/audioDebugLogger";
 
 const PREFETCH_COUNT = 3;
 
+// Téléchargements simultanés : la piste active ET la suivante démarrent ensemble. Les serveurs
+// derrière un proxy plafonnent souvent le débit PAR connexion (mesuré : ~50 Ko/s chacune, qui
+// s'additionnent) — en strict séquentiel, la piste suivante n'était prête qu'après la fin de la
+// piste courante, et l'enchaînement retombait sur un rechargement réseau (coupure + attente). La
+// piste en cours reste prioritaire : la pression réseau du moteur (hystérésis sur l'avance du
+// tampon de lecture) suspend tout dès que cette avance baisse.
+const MAX_CONCURRENT = 2;
+
 export interface UpcomingTrack {
   trackId: string;
   streamUrl: string;
@@ -18,16 +26,21 @@ interface QueueSlot {
 /** File de priorité unifiée : la piste active passe toujours en premier, suivie des 3
  *  pistes suivantes — toutes téléchargées intégralement (pas de budget partiel) pour que
  *  le passage à la piste suivante tape directement dans le cache disque plutôt que de
- *  retomber sur un nouveau fetch réseau. Le téléchargement reste séquentiel par priorité
- *  (jamais plusieurs connexions en parallèle) : la bande passante ne doit jamais être
- *  partagée entre la piste écoutée et le préchargement tant qu'elle n'est pas
- *  entièrement en cache. */
+ *  retomber sur un nouveau fetch réseau. Au plus MAX_CONCURRENT connexions à la fois, dans
+ *  l'ordre de priorité, et aucune tant que le flux de lecture en cours n'a pas assez d'avance
+ *  (pause()/resume(), pilotés par la pression réseau du moteur). */
 class PrefetchScheduler {
   private qualityId = "aac-256";
   private slots: QueueSlot[] = [];
   private cursor = 0;
-  private running = false;
   private paused = false;
+  // Chaque (re)démarrage de la file incrémente ce numéro : un worker encore en attente d'un
+  // téléchargement abandonne dès son réveil s'il a été remplacé entre-temps. Sans ce jeton, une
+  // boucle bloquée sur une tâche mise en pause (changement de piste) ne se terminait jamais et
+  // empêchait toute nouvelle boucle de démarrer — plus aucun préchargement, donc plus de gapless.
+  private generation = 0;
+  // Pistes en cours de téléchargement par les workers : les seules autorisées à utiliser le réseau.
+  private inFlight = new Set<string>();
 
   setQuality(qualityId: string) {
     this.qualityId = qualityId;
@@ -37,20 +50,13 @@ class PrefetchScheduler {
     cacheStore.setProtectedKeys(this.slots.map((s) => cacheKeyFor(s.trackId, this.qualityId)));
   }
 
-  /** Remplace la piste active. Si une autre piste était active, on interrompt son
-   *  téléchargement (inutile de continuer à mettre en cache une piste déjà quittée). */
+  /** Remplace la piste active (`null` : aucune à télécharger, ex. piste déjà téléchargée). Le
+   *  téléchargement d'une piste quittée est interrompu — inutile de continuer à la mettre en cache. */
   setActive(track: UpcomingTrack | null) {
-    const previous = this.slots[0];
-    if (previous && previous.priority === "active" && previous.trackId !== track?.trackId) {
-      cacheStore.pause(previous.trackId, this.qualityId);
-    }
-
     const upcoming = this.slots.slice(this.activeSlot ? 1 : 0);
-    this.slots = track ? [{ trackId: track.trackId, streamUrl: track.streamUrl, priority: "active" }, ...upcoming] : upcoming;
-    this.cursor = 0;
-    this.paused = false;
-    this.syncProtectedKeys();
-    this.runNext();
+    this.replaceSlots(
+      track ? [{ trackId: track.trackId, streamUrl: track.streamUrl, priority: "active" }, ...upcoming] : upcoming,
+    );
   }
 
   setUpcoming(tracks: UpcomingTrack[]) {
@@ -60,92 +66,91 @@ class PrefetchScheduler {
       streamUrl: t.streamUrl,
       priority: "prefetch",
     }));
-    this.slots = active ? [active, ...upcoming] : upcoming;
-    this.cursor = 0;
-    this.paused = false;
-    this.syncProtectedKeys();
-    this.runNext();
+    this.replaceSlots(active ? [active, ...upcoming] : upcoming);
   }
 
   private get activeSlot(): QueueSlot | undefined {
     return this.slots[0]?.priority === "active" ? this.slots[0] : undefined;
   }
 
-  /** Suspend le téléchargement en cours (actif ou préchargement) sans perdre la
+  private replaceSlots(slots: QueueSlot[]) {
+    this.slots = slots;
+    this.syncProtectedKeys();
+    this.restart();
+  }
+
+  private pauseInFlight(keep: Set<string> = new Set()) {
+    for (const trackId of this.inFlight) {
+      if (!keep.has(trackId)) cacheStore.pause(trackId, this.qualityId);
+    }
+    this.inFlight = new Set([...this.inFlight].filter((id) => keep.has(id)));
+  }
+
+  /** Suspend les téléchargements en cours (actif ou préchargement) sans perdre la
    *  progression ni la liste. Utilisé quand la lecture réelle stalle ou qu'on seek vers
    *  une zone non chargée : on libère toute la bande passante pour le rattrapage de lecture. */
   pause() {
     if (this.paused) return;
     this.paused = true;
-    const current = this.slots[this.cursor];
-    if (current) cacheStore.pause(current.trackId, this.qualityId);
-    this.running = false;
+    this.generation++;
+    networkDebugLog("prefetch:paused", { reason: "lecture prioritaire", inFlight: [...this.inFlight] });
+    this.pauseInFlight();
   }
 
   /** Reprend le téléchargement là où il s'était arrêté, sur la même file. */
   resume() {
     if (!this.paused) return;
     this.paused = false;
-    this.runNext();
+    networkDebugLog("prefetch:resumed", { slots: this.slots.map((s) => s.trackId) });
+    this.restart();
   }
 
-  private async runNext() {
-    if (this.running || this.paused) return;
-    this.running = true;
+  private restart() {
+    this.generation++;
+    this.cursor = 0;
+    if (this.paused) return;
+    // Seules les MAX_CONCURRENT premières pistes de la nouvelle fenêtre gardent leur connexion ;
+    // une piste sortie de la fenêtre (quittée, file réordonnée) ou reléguée plus loin cède la
+    // place — ses octets restent en cache pour une reprise.
+    this.pauseInFlight(new Set(this.slots.slice(0, MAX_CONCURRENT).map((s) => s.trackId)));
+    for (let i = 0; i < MAX_CONCURRENT; i++) void this.runWorker(this.generation);
+  }
 
-    while (this.cursor < this.slots.length) {
-      if (this.paused) break; // interrompu par un pause() pendant l'itération
-
-      const slot = this.slots[this.cursor];
+  private async runWorker(generation: number) {
+    while (generation === this.generation && this.cursor < this.slots.length) {
+      const slot = this.slots[this.cursor++];
 
       const alreadyCached = await cacheStore.isFullyCached(slot.trackId, this.qualityId);
-      if (alreadyCached) {
-        this.cursor++;
-        continue;
-      }
+      if (generation !== this.generation) return;
+      if (alreadyCached) continue;
 
-      networkDebugLog("prefetch:request", { trackId: slot.trackId, position: this.cursor, priority: slot.priority });
+      this.inFlight.add(slot.trackId);
+      networkDebugLog("prefetch:request", { trackId: slot.trackId, priority: slot.priority });
       const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority);
-
-      await this.waitForTaskSettled(task);
-      if (!this.paused) this.cursor++; // ne pas avancer le curseur si interrompu en cours de route
-    }
-
-    this.running = false;
-  }
-
-  private waitForTaskSettled(task: {
-    onProgress: (cb: (p: { complete: boolean }) => void) => () => void;
-    isBudgetExhausted: boolean;
-  }) {
-    return new Promise<void>((resolve) => {
-      let settled = false;
-      // Point de sortie UNIQUE : désabonnement + arrêt du polling dans tous les cas. Avant,
-      // une fin normale (progress.complete) ne coupait jamais l'intervalle — chaque piste
-      // préchargée laissait un timer de 150 ms tourner (et retenir son téléchargeur) jusqu'à
-      // la fermeture de l'app : des centaines de réveils CPU par seconde après des heures
-      // d'écoute.
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        unsubscribe();
-        window.clearInterval(poll);
-        resolve();
-      };
-      const unsubscribe = task.onProgress((progress) => {
-        if (progress.complete) settle();
+      // Re-vérifie après chaque réveil : une reprise peut attendre la fermeture du run précédent
+      // (voir TrackDownloader.closing) avant de redémarrer.
+      do {
+        await task.whenIdle();
+      } while (task.isRunning && generation === this.generation);
+      if (generation !== this.generation) return;
+      networkDebugLog("prefetch:settled", {
+        trackId: slot.trackId,
+        complete: task.isComplete,
+        error: task.error?.message ?? null,
       });
-      const poll = window.setInterval(() => {
-        if (task.isBudgetExhausted || this.paused) settle();
-      }, 150);
-    });
+      // Fini, budget atteint ou échec (déjà journalisé par le téléchargeur) : on passe à la
+      // suivante plutôt que de retenter la même en boucle — elle sera redemandée au prochain
+      // changement de piste.
+      this.inFlight.delete(slot.trackId);
+    }
   }
 
   stop() {
+    this.generation++;
     this.slots.forEach((s) => cacheStore.pause(s.trackId, this.qualityId));
+    this.pauseInFlight();
     this.slots = [];
     this.cursor = 0;
-    this.running = false;
     this.paused = false;
     cacheStore.setProtectedKeys([]);
   }

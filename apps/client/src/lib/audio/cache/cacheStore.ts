@@ -1,5 +1,5 @@
 import { storage } from "../../storage";
-import { TrackDownloader, type ChunkListener } from "./trackDownloader";
+import { TrackDownloader } from "./trackDownloader";
 import { cacheKeyFor, type CacheEntryMeta, type DownloadPriority, type ProgressListener } from "./types";
 import { audioCacheBlobStore, opfsDelete, opfsReadAll } from "./opfsStore";
 
@@ -41,6 +41,8 @@ class CacheStore {
   // celles-ci sont réécrites, jamais l'intégralité du cache.
   private dirtyKeys = new Set<string>();
   private indexDirty = false;
+  // Attentes de complétion par clé (voir waitForComplete), résolues par `touch`.
+  private completionWaiters = new Map<string, Set<() => void>>();
 
   setMaxBytes(bytes: number) {
     this.maxBytes = bytes;
@@ -149,6 +151,41 @@ class CacheStore {
     );
     this.dirtyKeys.add(key);
     this.persistMeta();
+    if (patch.complete) {
+      const waiters = this.completionWaiters.get(key);
+      this.completionWaiters.delete(key);
+      waiters?.forEach((resolve) => resolve());
+    }
+  }
+
+  /** Se résout à `true` dès que la piste est intégralement en cache (immédiatement si elle l'est
+   *  déjà), ou à `false` si `signal` est annulé avant. Indépendant de l'existence d'un
+   *  téléchargement au moment de l'appel : c'est le planificateur de préchargement qui le lance,
+   *  à son tour, une connexion à la fois. */
+  async waitForComplete(trackId: string, qualityId: string, signal: AbortSignal): Promise<boolean> {
+    const key = cacheKeyFor(trackId, qualityId);
+    if (signal.aborted) return false;
+    if ((await this.loadMeta()).get(key)?.complete) return true;
+    if (signal.aborted) return false;
+    return new Promise((resolve) => {
+      let waiters = this.completionWaiters.get(key);
+      if (!waiters) {
+        waiters = new Set();
+        this.completionWaiters.set(key, waiters);
+      }
+      const onComplete = () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(true);
+      };
+      const onAbort = () => {
+        const current = this.completionWaiters.get(key);
+        current?.delete(onComplete);
+        if (current?.size === 0) this.completionWaiters.delete(key);
+        resolve(false);
+      };
+      waiters.add(onComplete);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   /** Récupère (ou crée) le downloader pour une clé donnée. Un seul writer OPFS par fichier. */
@@ -183,11 +220,6 @@ class CacheStore {
     task.setPriority(priority, budgetBytes);
     task.run(); // no-op si déjà en cours ou déjà complet
     return task;
-  }
-
-  onChunk(trackId: string, qualityId: string, cb: ChunkListener): (() => void) | null {
-    const task = this.tasks.get(cacheKeyFor(trackId, qualityId));
-    return task ? task.onChunk(cb) : null;
   }
 
   onProgress(trackId: string, qualityId: string, cb: ProgressListener): (() => void) | null {

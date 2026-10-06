@@ -29,6 +29,16 @@ export interface ResoniaBridge {
     start(): Promise<void>;
     stop(): Promise<void>;
   };
+  /** Téléchargements du cache audio, faits par le process principal (voir `downloads` dans
+   *  electron/main/index.ts) : session réseau dédiée, plages parallèles, écriture directe. */
+  downloads: {
+    run(
+      id: number,
+      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number },
+    ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }>;
+    abort(id: number): void;
+    onProgress(cb: (id: number, bytes: number, total: number, received: number) => void): () => void;
+  };
   /** Preuve de concept AirPlay — voir lib/audio/airplay côté renderer et la section AirPlay de
    *  electron/main/index.ts. Web uniquement pas dispo : pas d'accès socket UDP/multicast brut
    *  hors d'un process Node, donc `window.resonia` uniquement (isElectron() le garde déjà). */

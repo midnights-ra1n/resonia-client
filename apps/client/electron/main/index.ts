@@ -26,10 +26,13 @@ app.setName("Resonia");
 // natifs par défaut, indépendante de ce réglage).
 nativeTheme.themeSource = "dark";
 
-// Icônes réutilisées telles quelles depuis l'ancien build Tauri (src-tauri/icons/), copiées
-// dans build/ pour rester indépendantes de src-tauri (supprimé en fin de migration) — voir
-// aussi electron-builder.yml (Phase 4) qui les reprendra pour l'empaquetage.
-const APP_ICON_PNG = join(app.getAppPath(), "build", "icon.png");
+// Icône de fenêtre/barre des tâches Windows/Linux uniquement. Sur macOS, AUCUNE icône n'est imposée
+// à l'exécution : celle du Dock, de Cmd+Tab et du panneau « À propos » vient du bundle, compilée
+// depuis build/Resonia.icon (Assets.car, voir electron-builder.yml) — la seule source qui porte
+// les effets Liquid Glass (reflets, variantes claire/sombre/teintée). Une image PNG passée à
+// `dock.setIcon`/`iconPath` la remplaçait par une version plate.
+const isMac = process.platform === "darwin";
+const APP_ICON_PNG = isMac ? undefined : join(app.getAppPath(), "build", "icons", "128x128@2x.png");
 
 // Panneau "À propos de Resonia" natif (menu Resonia > À propos, voir `installApplicationMenu` —
 // `role: "appMenu"` le câble automatiquement à cet item). `app.getVersion()` lit la version
@@ -40,7 +43,7 @@ app.setAboutPanelOptions({
   applicationName: "Resonia",
   applicationVersion: app.getVersion(),
   version: app.getVersion(),
-  iconPath: APP_ICON_PNG,
+  ...(APP_ICON_PNG ? { iconPath: APP_ICON_PNG } : {}),
   copyright: "Copyright © Resonia",
 });
 
@@ -52,6 +55,17 @@ app.setAboutPanelOptions({
 if (process.platform === "linux" && !process.env["PULSE_LATENCY_MSEC"]) {
   process.env["PULSE_LATENCY_MSEC"] = "60";
 }
+
+// Une connexion HTTP/1.1 par requête au lieu d'un seul tuyau HTTP/2 (ou QUIC/HTTP/3, annoncé par
+// beaucoup de reverse proxies via `alt-svc`) partagé par TOUTES les requêtes vers le serveur. Mesuré
+// sur une instance Navidrome derrière un proxy qui plafonne le débit PAR CONNEXION (~55 Ko/s) :
+// en HTTP/2, flux audio, pochettes, API et préchargement se partageaient ces 55 Ko/s — l'AAC 256
+// (32 Ko/s) calait dès qu'une grille de pochettes se chargeait, et chaque pochette attendait son
+// tour. En HTTP/1.1, Chromium ouvre jusqu'à 6 connexions par hôte, chacune avec son propre débit :
+// le flux de lecture garde la sienne. Coût : une poignée de main TLS par connexion ouverte, amortie
+// par le keep-alive. Doit être posé avant `app.whenReady()` (lu au démarrage du service réseau).
+app.commandLine.appendSwitch("disable-http2");
+app.commandLine.appendSwitch("disable-quic");
 
 const isDev = !app.isPackaged;
 
@@ -141,10 +155,8 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow({
     title: "Resonia",
-    // Sans effet sur macOS empaqueté (l'icône du Dock vient du bundle .app, voir
-    // electron-builder.yml en Phase 4) mais utile en dev et sur Windows/Linux, où l'icône de
-    // fenêtre/barre des tâches est bien celle-ci — mêmes fichiers que l'ancien build Tauri.
-    icon: APP_ICON_PNG,
+    // Windows/Linux : icône de fenêtre/barre des tâches. macOS : non définie, voir APP_ICON_PNG.
+    ...(APP_ICON_PNG ? { icon: APP_ICON_PNG } : {}),
     x: state.x,
     y: state.y,
     width: state.width,
@@ -164,6 +176,12 @@ async function createWindow() {
       // et consomme CPU/RAM en continu — inutile pour une UI qui n'a pas de champ de texte
       // libre significatif (recherche, noms de playlist).
       spellcheck: false,
+      // Lecteur de musique : la fenêtre est souvent masquée (fermer = masquer sur macOS) ou
+      // derrière d'autres pendant l'écoute. Le bridage d'arrière-plan de Chromium y retardait
+      // timers et callbacks (reprise du contexte audio, préchargement, enchaînement de piste)
+      // jusqu'à faire attendre ou caler la lecture. Sans coût au repos : le renderer n'a plus
+      // aucun timer périodique hors lecture.
+      backgroundThrottling: false,
       devTools: isDev,
     },
   });
@@ -260,12 +278,6 @@ function installApplicationMenu() {
 
 void app.whenReady().then(() => {
   installApplicationMenu();
-  // En dev/preview (app non empaquetée), le Dock affiche par défaut l'icône générique
-  // d'Electron — pas celle de `build/icon.png`. L'imposer explicitement ici évite de confondre
-  // Resonia avec n'importe quelle autre app Electron ouverte en parallèle pendant les tests.
-  // Uniquement en dev : un .app packagé (electron-builder, `mac.icon`) a déjà la bonne icône de
-  // Dock via son propre bundle — appeler ceci en prod n'apporterait rien.
-  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(APP_ICON_PNG);
 
   // Checklist sécurité Electron ("Verify permission requests"/"Enable Sandboxing") : l'app n'a
   // besoin d'aucune permission navigateur (caméra, micro, géoloc, notifications...) — refuser
@@ -429,6 +441,246 @@ function registerIpcHandlers() {
       };
     },
   );
+
+  // ---- Téléchargements du cache audio (voir BlobStore.download côté renderer). Faits ici plutôt que
+  // dans le renderer pour trois raisons, toutes mesurées sur un serveur Navidrome derrière un proxy
+  // qui plafonne le débit PAR CONNEXION (~50 Ko/s) :
+  //   - session réseau dédiée → son propre groupe de connexions : Chromium n'en ouvre que 6 par hôte
+  //     et par session, celles du renderer restent libres pour la lecture et les pochettes ;
+  //   - plusieurs plages téléchargées en parallèle (quand le serveur répond 206 avec une taille
+  //     exacte, typiquement le fichier original) : les débits par connexion s'additionnent ;
+  //   - écriture directe à la bonne position du fichier : aucun octet ne traverse l'IPC. ----
+  const DOWNLOAD_SEGMENTS = 3;
+  const MIN_SEGMENT_BYTES = 1024 * 1024;
+  const DOWNLOAD_STALL_TIMEOUT_MS = 20_000;
+  const DOWNLOAD_MAX_RETRIES = 3;
+  const DOWNLOAD_PROGRESS_INTERVAL_MS = 250;
+
+  let downloadSession: Electron.Session | null = null;
+  const getDownloadSession = () => (downloadSession ??= session.fromPartition("resonia-downloads"));
+  const activeDownloads = new Map<number, AbortController>();
+
+  class DownloadHttpError extends Error {
+    readonly status: number;
+    constructor(status: number) {
+      super(`Requête de flux échouée (${status})`);
+      this.status = status;
+    }
+  }
+
+  interface DownloadSegment {
+    start: number;
+    end: number; // exclusif ; Infinity tant que la taille est inconnue
+    done: number;
+  }
+
+  function isRetryable(err: unknown): boolean {
+    if (err instanceof DownloadHttpError) return err.status >= 500 || err.status === 408 || err.status === 429;
+    return true;
+  }
+
+  function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) return reject(new Error("aborted"));
+      const timer = setTimeout(resolve, ms);
+      signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("aborted"));
+      }, { once: true });
+    });
+  }
+
+  async function runDownload(
+    id: number,
+    opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number },
+    sendProgress: (bytes: number, total: number, received: number) => void,
+  ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }> {
+    // Même garde que `net:fetch` : ce process est privilégié, jamais de schéma autre que http(s).
+    if (!/^https?:\/\//i.test(opts.url)) throw new Error("download:run refuse un schéma non http(s)");
+    if (opts.baseDir !== "appCache" && opts.baseDir !== "appData") throw new Error("download:run : dossier inconnu");
+
+    const userAbort = new AbortController();
+    activeDownloads.set(id, userAbort);
+    // Annule aussi les autres plages dès qu'une échoue définitivement.
+    const internal = new AbortController();
+    userAbort.signal.addEventListener("abort", () => internal.abort(), { once: true });
+
+    const filePath = resolvePath(opts.baseDir, opts.path);
+    await mkdir(dirname(filePath), { recursive: true });
+    const fh = await openForWrite(filePath);
+
+    let total = -1;
+    let segments: DownloadSegment[] = [{ start: opts.from, end: Infinity, done: 0 }];
+    let received = 0;
+    let lastProgressAt = 0;
+
+    // Point de reprise : octets contigus écrits depuis le début du fichier.
+    const contiguous = () => {
+      let pos = opts.from;
+      for (const seg of segments) {
+        if (seg.start > pos) break;
+        pos = Math.max(pos, seg.start + seg.done);
+        if (seg.start + seg.done < seg.end) break;
+      }
+      return pos;
+    };
+    const report = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastProgressAt < DOWNLOAD_PROGRESS_INTERVAL_MS) return;
+      lastProgressAt = now;
+      sendProgress(contiguous(), total, received);
+      received = 0;
+    };
+
+    /** Une requête, avec délai d'inactivité réarmé à chaque morceau reçu. */
+    async function request(range: string) {
+      const ctrl = new AbortController();
+      const onAbort = () => ctrl.abort();
+      internal.signal.addEventListener("abort", onAbort, { once: true });
+      if (internal.signal.aborted) ctrl.abort();
+      let stalled = false;
+      let timer: NodeJS.Timeout | null = null;
+      const arm = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          stalled = true;
+          ctrl.abort();
+        }, DOWNLOAD_STALL_TIMEOUT_MS);
+      };
+      const dispose = () => {
+        if (timer) clearTimeout(timer);
+        internal.signal.removeEventListener("abort", onAbort);
+      };
+      arm();
+      try {
+        const res = await getDownloadSession().fetch(opts.url, { headers: { Range: range }, signal: ctrl.signal });
+        return { res, arm, dispose, stalled: () => stalled };
+      } catch (err) {
+        dispose();
+        throw stalled ? new Error("Délai réseau dépassé") : err;
+      }
+    }
+
+    /** Lit le corps et l'écrit à la position de la plage, jusqu'à sa fin (ou celle du flux).
+     *  `skip` : octets à ignorer en tête (serveur qui a ignoré la plage demandée et répond 200). */
+    async function pump(req: Awaited<ReturnType<typeof request>>, seg: DownloadSegment, skip: number): Promise<"eof" | "limit"> {
+      if (!req.res.body) throw new Error("Réponse sans corps");
+      const reader = req.res.body.getReader();
+      try {
+        for (;;) {
+          let result: Awaited<ReturnType<typeof reader.read>>;
+          try {
+            result = await reader.read();
+          } catch (err) {
+            throw req.stalled() ? new Error("Délai réseau dépassé") : err;
+          }
+          req.arm();
+          if (result.done) return "eof";
+          let chunk = result.value;
+          if (skip > 0) {
+            const dropped = Math.min(skip, chunk.byteLength);
+            skip -= dropped;
+            chunk = chunk.subarray(dropped);
+          }
+          const remaining = seg.end - (seg.start + seg.done);
+          if (chunk.byteLength > remaining) chunk = chunk.subarray(0, remaining);
+          if (chunk.byteLength > 0) {
+            await fh.write(chunk, 0, chunk.byteLength, seg.start + seg.done);
+            seg.done += chunk.byteLength;
+            received += chunk.byteLength;
+            report();
+          }
+          if (seg.start + seg.done >= seg.end) {
+            void reader.cancel().catch(() => {});
+            return "limit";
+          }
+        }
+      } finally {
+        req.dispose();
+      }
+    }
+
+    async function runSegment(seg: DownloadSegment, initial?: Awaited<ReturnType<typeof request>>) {
+      let attempt = 0;
+      let pending = initial;
+      while (seg.start + seg.done < seg.end) {
+        const doneBefore = seg.done;
+        try {
+          const from = seg.start + seg.done;
+          const req = pending ?? (await request(seg.end === Infinity ? `bytes=${from}-` : `bytes=${from}-${seg.end - 1}`));
+          pending = undefined;
+          const { status } = req.res;
+          if (status === 416) {
+            req.dispose();
+            if (seg.end !== Infinity) throw new DownloadHttpError(416);
+            seg.end = from; // plus rien à lire : fin normale
+            break;
+          }
+          if (status !== 200 && status !== 206) {
+            req.dispose();
+            throw new DownloadHttpError(status);
+          }
+          const outcome = await pump(req, seg, status === 200 ? from : 0);
+          if (outcome === "eof") {
+            if (seg.end === Infinity) seg.end = seg.start + seg.done; // taille révélée par la fin du flux
+            else if (seg.start + seg.done < seg.end) throw new Error("Flux interrompu avant la fin de la plage");
+          }
+        } catch (err) {
+          if (internal.signal.aborted) throw err;
+          if (seg.done > doneBefore) attempt = 0; // seuls des échecs consécutifs comptent
+          if (!isRetryable(err) || attempt >= DOWNLOAD_MAX_RETRIES) throw err;
+          attempt++;
+          await sleepUnlessAborted(500 * 2 ** (attempt - 1), internal.signal);
+        }
+      }
+    }
+
+    try {
+      const first = await request(`bytes=${opts.from}-`);
+      const contentRange = first.res.headers.get("content-range");
+      const announced = first.res.status === 206 && contentRange ? Number(contentRange.split("/")[1]) : NaN;
+      if (Number.isFinite(announced) && announced > opts.from) {
+        // Taille exacte et plages acceptées : découpage en plages parallèles.
+        total = announced;
+        const remaining = total - opts.from;
+        const count = Math.max(1, Math.min(DOWNLOAD_SEGMENTS, Math.floor(remaining / MIN_SEGMENT_BYTES)));
+        const size = Math.ceil(remaining / count);
+        segments = Array.from({ length: count }, (_, i) => ({
+          start: opts.from + i * size,
+          end: Math.min(total, opts.from + (i + 1) * size),
+          done: 0,
+        }));
+        await Promise.all(segments.map((seg, i) => runSegment(seg, i === 0 ? first : undefined)));
+      } else {
+        // 200 (fichier transcodé à la volée, plages ignorées), 416 ou taille inconnue : séquentiel.
+        await runSegment(segments[0], first);
+      }
+      const bytes = contiguous();
+      if (total < 0) total = bytes;
+      report(true);
+      return { complete: bytes >= total, bytes, total, error: null };
+    } catch (err) {
+      internal.abort();
+      return {
+        complete: false,
+        bytes: contiguous(),
+        total,
+        error: userAbort.signal.aborted ? null : (err as Error).message ?? String(err),
+      };
+    } finally {
+      activeDownloads.delete(id);
+      await fh.close().catch(() => {});
+    }
+  }
+
+  ipcMain.handle(
+    "download:run",
+    (event, id: number, opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number }) =>
+      runDownload(id, opts, (bytes, total, received) => {
+        if (!event.sender.isDestroyed()) event.sender.send("download:progress", id, bytes, total, received);
+      }),
+  );
+  ipcMain.on("download:abort", (_e, id: number) => activeDownloads.get(id)?.abort());
 
   // ---- powerSaveBlocker : n'empêche que la mise en veille de L'APP (pas l'écran), tenu
   // uniquement pendant une lecture active — jamais en idle. Démarré/arrêté par le renderer

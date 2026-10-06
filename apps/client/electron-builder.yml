@@ -45,10 +45,14 @@ files:
   - package.json
   # `build/Resonia.icon`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
   # directement depuis `buildResources` (ci-dessus) pour l'icône du BUNDLE lui-même, jamais à
-  # l'exécution. `build/icon.png`, lui, EST lu à l'exécution par electron/main/index.ts
-  # (icône de fenêtre/barre des tâches Windows/Linux) — sans cette ligne il manquait purement
-  # et simplement de l'asar packagé, provoquant un rejet de promesse non catché au démarrage.
-  - build/icon.png
+  # l'exécution. `build/icons/128x128@2x.png`, lui, EST lu à l'exécution par
+  # electron/main/index.ts (icône de fenêtre/barre des tâches Windows/Linux uniquement — macOS
+  # n'impose rien et garde l'icône Liquid Glass du bundle).
+  - build/icons/128x128@2x.png
+  # electron-builder ajoute d'office les `dependencies` de package.json (node_modules) quels que
+  # soient les motifs ci-dessus — ~100 Mo d'outils de build (tailwind, lightningcss…) jamais lus
+  # à l'exécution. Exclusion explicite pour respecter l'intention décrite plus haut.
+  - "!node_modules/**"
 
 mac:
   target:
@@ -124,6 +128,8 @@ dmg:
 
 # Voir build/afterPack.cjs : installe l'icône .icns complète des macOS antérieurs à Tahoe.
 afterPack: build/afterPack.cjs
+# Voir build/beforePack.cjs : recompile dist-electron/ s'il est plus ancien que les sources.
+beforePack: build/beforePack.cjs
 
 nsis:
   # Sans espace : le nom par défaut ("Resonia Setup X.exe") est renommé en "Resonia.Setup.X.exe"

@@ -42,6 +42,21 @@ contextBridge.exposeInMainWorld("resonia", {
     stop: (): Promise<void> => ipcRenderer.invoke("powersave:stop"),
   },
 
+  downloads: {
+    run: (
+      id: number,
+      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number },
+    ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }> =>
+      ipcRenderer.invoke("download:run", id, opts),
+    abort: (id: number): void => ipcRenderer.send("download:abort", id),
+    onProgress: (cb: (id: number, bytes: number, total: number, received: number) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, id: number, bytes: number, total: number, received: number) =>
+        cb(id, bytes, total, received);
+      ipcRenderer.on("download:progress", listener);
+      return () => ipcRenderer.removeListener("download:progress", listener);
+    },
+  },
+
   airplay: {
     discover: (): Promise<{ id: string; name: string; host: string; port: number }[]> =>
       ipcRenderer.invoke("airplay:discover"),

@@ -64,7 +64,10 @@ function cacheKeyFor(serverId: string, coverArtId: string, size: number): string
  *  résultat final (tout finit par se télécharger et se mettre en cache), juste son ordre
  *  d'arrivée — largement suffisant ici puisqu'aucune pochette individuelle n'est urgente au
  *  point de justifier une vraie priorisation par distance au viewport. */
-const MAX_CONCURRENT_COVER_FETCHES = 6;
+// 3 et non 6 : Chromium n'ouvre que 6 connexions HTTP/1.1 par hôte (voir `disable-http2` dans
+// electron/main/index.ts), partagées avec le flux de lecture et le préchargement audio — une grille
+// de pochettes ne doit jamais toutes les occuper au moment où l'utilisateur lance une piste.
+const MAX_CONCURRENT_COVER_FETCHES = 3;
 let activeCoverFetches = 0;
 const coverFetchQueue: Array<() => void> = [];
 
@@ -91,15 +94,19 @@ function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
   });
 }
 
-/** Certains hôtes distants (ex. music.apple.com pour le scraping HTML) ne renvoient pas
- *  d'en-tête CORS pour notre origine ; côté bureau, on passe donc par `electronFetch` (process
- *  principal, non soumis à la politique CORS du renderer) pour fiabiliser le
- *  téléchargement quel que soit l'hôte (les CDN d'artwork type mzstatic envoient bien un
- *  en-tête CORS ouvert, mais ne pas en dépendre reste plus robuste). */
+/** `fetch` direct d'abord, en priorité basse (le flux de lecture passe avant) : Navidrome et les CDN
+ *  d'artwork renvoient un en-tête CORS ouvert. Sur bureau, passer systématiquement par
+ *  `electronFetch` faisait télécharger chaque pochette en entier par le process principal puis la
+ *  recopier par IPC — un aller-retour et une copie de plus par image, tous sérialisés dans un seul
+ *  process. Il ne sert plus que de repli pour un hôte qui refuse le CORS (échec réseau `TypeError`). */
 async function fetchForCache(url: string): Promise<Response> {
   return withCoverFetchLimit(async () => {
-    if (isElectron()) return electronFetch(url);
-    return fetch(url);
+    try {
+      return await fetch(url, { priority: "low" });
+    } catch (err) {
+      if (isElectron() && err instanceof TypeError) return electronFetch(url);
+      throw err;
+    }
   });
 }
 

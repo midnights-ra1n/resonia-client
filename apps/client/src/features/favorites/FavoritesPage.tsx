@@ -65,6 +65,8 @@ export function FavoritesPage() {
       album: song.album,
       albumId: song.albumId,
       duration: song.duration,
+      suffix: song.suffix,
+      bitRate: song.bitRate,
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : undefined,

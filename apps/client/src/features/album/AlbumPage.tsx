@@ -150,6 +150,8 @@ export function AlbumPage() {
       album: song.album,
       albumId: album!.id,
       duration: song.duration,
+      suffix: song.suffix,
+      bitRate: song.bitRate,
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : coverUrl,

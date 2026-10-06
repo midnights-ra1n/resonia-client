@@ -2,11 +2,10 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import type { AlbumSummary } from "@resonia/api-client";
-import { InfoModal } from "../InfoModal";
+import { AlbumInfoModal } from "../AlbumInfoModal";
 import { ContextMenu } from "./ContextMenu";
 import { buildAlbumMenuItems } from "./buildAlbumMenuItems";
 import { useContextMenu } from "./useContextMenu";
-import { formatAlbumDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore } from "../../stores/playerStore";
@@ -44,19 +43,7 @@ export function useAlbumContextMenu(album: AlbumSummary | undefined, coverUrl?: 
 
       {infoOpen &&
         createPortal(
-          <InfoModal
-            title={album.name}
-            coverUrl={coverUrl}
-            onClose={() => setInfoOpen(false)}
-            rows={[
-              { label: t("search.artistLabel"), value: album.artist },
-              ...(album.year ? [{ label: t("album.yearLabel"), value: String(album.year) }] : []),
-              {
-                label: t("album.trackCount", { count: album.songCount }),
-                value: formatAlbumDuration(album.duration, t),
-              },
-            ]}
-          />,
+          <AlbumInfoModal album={album} coverUrl={coverUrl} onClose={() => setInfoOpen(false)} />,
           document.body,
         )}
     </>

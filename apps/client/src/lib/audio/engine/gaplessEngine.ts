@@ -236,9 +236,8 @@ export class GaplessEngine {
   private nativeTimeBase = 0;
 
   /** Durée de la piste selon ses métadonnées, fournie par l'appelant avant `loadAndPlay`. En
-   *  streaming natif d'un flux transcodé, l'élément <audio> ne connaît qu'une durée déduite d'une
-   *  taille ESTIMÉE (`estimateContentLength`) — fausse de plusieurs dizaines de secondes parfois —,
-   *  voire aucune (`Infinity`). */
+   *  streaming natif d'un flux transcodé (sans Content-Length), l'élément <audio> ne connaît pas
+   *  de durée exploitable (`Infinity`). */
   trackDurationHint = 0;
 
   /** Fournie par l'appelant : URL du flux de la piste en cours repartant à `offset` secondes, et la

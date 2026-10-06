@@ -13,6 +13,9 @@ export const electronStoreAdapter: StorageAdapter = {
   async get<T>(key: string): Promise<T | null> {
     return (await bridge().store.get(key)) as T | null;
   },
+  getSync<T>(key: string): T | null {
+    return (bridge().store.getSync(key) ?? null) as T | null;
+  },
   async set<T>(key: string, value: T): Promise<void> {
     await bridge().store.set(key, value);
   },

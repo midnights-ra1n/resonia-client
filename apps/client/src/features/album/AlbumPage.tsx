@@ -17,7 +17,7 @@ import { useAnimatedAlbumCover } from "./useAnimatedAlbumCover";
 import { AnimatedAlbumCoverVideo } from "./AnimatedAlbumCoverVideo";
 import { useEffect, useState } from "react";
 import { getNativeClientForServer } from "../../lib/subsonic/getNativeClientForServer";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
@@ -449,22 +449,11 @@ export function AlbumPage() {
           const activeSong = album.song.find((s) => s.id === activeSongId);
           if (!activeSong) return null;
           return (
-            <InfoModal
-              title={activeSong.title}
-              coverUrl={
-                activeSong.coverArt
-                  ? client!.getCoverArtUrl(activeSong.coverArt, 300)
-                  : coverUrl
-              }
+            <TrackInfoModal
+              songId={activeSong.id}
+              fallback={activeSong}
+              coverUrl={activeSong.coverArt ? client!.getCoverArtUrl(activeSong.coverArt, 300) : coverUrl}
               onClose={() => setRowInfoOpen(false)}
-              rows={[
-                { label: t("search.artistLabel"), value: activeSong.artist },
-                { label: t("album.labelAlbum"), value: activeSong.album },
-                {
-                  label: t("album.columnDuration"),
-                  value: formatTrackDuration(activeSong.duration),
-                },
-              ]}
             />
           );
         })()}

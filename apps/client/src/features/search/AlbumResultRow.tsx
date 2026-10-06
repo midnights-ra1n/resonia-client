@@ -2,7 +2,7 @@ import { Play } from "../../components/icons";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AlbumSummary } from "@resonia/api-client";
-import { InfoModal } from "../../components/InfoModal";
+import { AlbumInfoModal } from "../../components/AlbumInfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildAlbumMenuItems } from "../../components/menu/buildAlbumMenuItems";
@@ -129,16 +129,7 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={album.name}
-          coverUrl={cachedCoverUrl ?? undefined}
-          onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: album.artist },
-            ...(album.year ? [{ label: t("album.yearLabel"), value: String(album.year) }] : []),
-            { label: t("album.trackCount", { count: album.songCount }), value: formatAlbumDuration(album.duration, t) },
-          ]}
-        />
+        <AlbumInfoModal album={album} coverUrl={cachedCoverUrl ?? undefined} onClose={() => setInfoOpen(false)} />
       )}
     </div>
   );

@@ -194,12 +194,41 @@ async function enforceLimit(): Promise<void> {
   schedulePersist();
 }
 
+/** Corps texte (XML/JSON/HTML) : réponse d'erreur, jamais une image. Pas de liste blanche
+ *  `image/*` : certains proxys servent les pochettes en `application/octet-stream`. */
+function isErrorContentType(contentType: string): boolean {
+  return /^text\/|json/i.test(contentType) || (/xml/i.test(contentType) && !/svg/i.test(contentType));
+}
+
+/** Retire une entrée dont le fichier est absent ou incohérent, pour qu'elle soit retéléchargée. */
+async function dropEntry(key: string): Promise<void> {
+  const meta = await loadMeta();
+  const entry = meta.get(key);
+  if (entry) {
+    meta.delete(key);
+    totalBytes -= entry.size;
+    schedulePersist();
+  }
+  await store.deleteFile(key).catch(() => {});
+}
+
 async function readCachedCover(key: string): Promise<{ blob: Blob; contentType: string } | null> {
   const entry = (await loadMeta()).get(key);
   if (!entry) return null;
-  // Blob adossé au disque (OPFS) : aucune copie de l'image en mémoire JS par carte affichée.
-  const blob = await store.readAsBlob(key, entry.contentType);
-  if (!blob) return null;
+  let blob = await store.readAsBlob(key, entry.contentType);
+  // Taille différente de celle enregistrée à l'écriture : fichier tronqué (écriture interrompue)
+  // ou suivi de restes d'une image précédente — une pochette cassée à l'affichage, et pour
+  // toujours puisque servie depuis le cache. On la jette pour la retélécharger.
+  // Type non image : réponse d'erreur du serveur mise en cache par une version précédente.
+  if (!blob || (entry.size > 0 && blob.size !== entry.size) || isErrorContentType(entry.contentType)) {
+    await dropEntry(key);
+    return null;
+  }
+  // Sur OPFS, le Blob est le fichier disque lui-même : toute réécriture ou éviction ultérieure
+  // de ce fichier rend illisible l'URL `blob:` encore affichée ailleurs (image cassée). Une
+  // pochette ne pèse que quelques dizaines de Ko : on la copie en mémoire, comme le fait déjà
+  // le backend bureau (lecture via IPC).
+  if (!isElectron()) blob = new Blob([await blob.arrayBuffer()], { type: entry.contentType });
   return { blob, contentType: entry.contentType };
 }
 
@@ -240,16 +269,50 @@ export async function loadAndCacheCover(
     console.warn(`[coverCache] Lecture du cache impossible pour ${key}`, err);
   }
 
-  const response = await fetchForCache(fetchUrl);
-  if (!response.ok || !response.body) {
-    throw new Error(`Échec du téléchargement de la pochette (${response.status})`);
+  return URL.createObjectURL(await downloadCover(key, fetchUrl));
+}
+
+/** Téléchargements en vol, par clé — jusqu'à la fin de leur écriture sur disque : plusieurs
+ *  composants (ou le préchargement du lecteur, voir playerStore) demandant la même pochette en
+ *  même temps partagent une seule requête et une seule écriture. Deux écritures concurrentes du même fichier pouvaient sinon s'entremêler et
+ *  laisser une image corrompue en cache. */
+const inFlightDownloads = new Map<string, Promise<Blob>>();
+
+function downloadCover(key: string, fetchUrl: string): Promise<Blob> {
+  let pending = inFlightDownloads.get(key);
+  if (!pending) {
+    pending = fetchAndStoreCover(key, fetchUrl, () => inFlightDownloads.delete(key));
+    inFlightDownloads.set(key, pending);
+  }
+  return pending;
+}
+
+async function fetchAndStoreCover(key: string, fetchUrl: string, done: () => void): Promise<Blob> {
+  let blob: Blob;
+  let contentType: string;
+  try {
+    const response = await fetchForCache(fetchUrl);
+    if (!response.ok || !response.body) {
+      throw new Error(`Échec du téléchargement de la pochette (${response.status})`);
+    }
+    blob = await response.blob();
+    contentType = blob.type || response.headers.get("content-type") || "application/octet-stream";
+    // L'API Subsonic renvoie ses erreurs (pochette introuvable, jeton expiré...) en HTTP 200 avec
+    // un corps XML/JSON : à ne jamais mettre en cache comme image.
+    if (isErrorContentType(contentType) || blob.size === 0) {
+      throw new Error(`Réponse de pochette invalide (${contentType}, ${blob.size} octets)`);
+    }
+  } catch (err) {
+    done();
+    throw err;
   }
 
-  const blob = await response.blob();
-  const contentType = blob.type || response.headers.get("content-type") || "application/octet-stream";
-
-  (async () => {
+  void (async () => {
     try {
+      // Fichier repris de zéro : les deux backends ouvrent un fichier existant SANS le tronquer
+      // (reprise de téléchargement audio). Une image plus petite qu'un ancien fichier resté sur
+      // le disque (métadonnées perdues avant leur persistance) en gardait sinon la fin.
+      await store.deleteFile(key);
       const writer = await store.createWriter(key);
       await writer.seek(0);
       await writer.write(await blob.arrayBuffer());
@@ -258,10 +321,12 @@ export async function loadAndCacheCover(
       await enforceLimit();
     } catch (err) {
       console.warn(`[coverCache] Écriture du cache impossible pour ${key}`, err);
+    } finally {
+      done();
     }
   })();
 
-  return URL.createObjectURL(blob);
+  return blob;
 }
 
 export async function currentCoverCacheSize(): Promise<number> {

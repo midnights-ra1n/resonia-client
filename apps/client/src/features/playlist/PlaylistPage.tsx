@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
-import { InfoModal } from "../../components/InfoModal";
+import { PlaylistInfoModal } from "../../components/PlaylistInfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu, type MenuItem } from "../../components/menu/ContextMenu";
 import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuItems";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
@@ -638,48 +639,15 @@ export function PlaylistPage() {
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={name}
-          coverUrl={coverUrl}
-          onClose={() => setInfoOpen(false)}
-          rows={[
-            ...(playlist.owner
-              ? [{ label: t("playlist.owner"), value: playlist.owner }]
-              : []),
-            {
-              label: t("playlist.trackCount", { count: playlist.songCount }),
-              value: formatAlbumDuration(playlist.duration, t),
-            },
-            ...(playlist.comment
-              ? [
-                  {
-                    label: t("playlists.descriptionLabel"),
-                    value: playlist.comment,
-                  },
-                ]
-              : []),
-          ]}
-        />
+        <PlaylistInfoModal playlist={{ ...playlist, name }} coverUrl={coverUrl} onClose={() => setInfoOpen(false)} />
       )}
 
       {rowInfoOpen && activeRowSong && (
-        <InfoModal
-          title={activeRowSong.title}
-          coverUrl={
-            activeRowSong.coverArt
-              ? client.getCoverArtUrl(activeRowSong.coverArt, 300)
-              : coverUrl
-          }
+        <TrackInfoModal
+          songId={activeRowSong.id}
+          fallback={activeRowSong}
+          coverUrl={activeRowSong.coverArt ? client.getCoverArtUrl(activeRowSong.coverArt, 300) : coverUrl}
           onClose={() => setRowInfoOpen(false)}
-          rows={[
-            { label: t("playlist.columnTitle"), value: activeRowSong.title },
-            { label: t("search.artistLabel"), value: activeRowSong.artist },
-            { label: t("album.labelAlbum"), value: activeRowSong.album },
-            {
-              label: t("playlist.columnDuration"),
-              value: formatTrackDuration(activeRowSong.duration),
-            },
-          ]}
         />
       )}
 

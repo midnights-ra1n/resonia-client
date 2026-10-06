@@ -17,6 +17,7 @@ import { useFavoritesStore } from "../../stores/favoritesStore";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { PageTransition } from "./PageTransition";
+import { useScrollEdges } from "../../hooks/useScrollEdges";
 import { Sidebar } from "./Sidebar";
 
 const MIN_QUERY_LENGTH = 2;
@@ -67,6 +68,7 @@ export function AppLayout() {
   // ScrollRootContext). Ref callback STABLE (useCallback) : appelée au montage/démontage
   // seulement, jamais à chaque rendu.
   const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null);
+  useScrollEdges(scrollRoot, "y");
   const setMainRef = useCallback((el: HTMLElement | null) => {
     mainRef.current = el;
     setScrollRoot(el);
@@ -147,7 +149,7 @@ export function AppLayout() {
         <Sidebar />
       </div>
       <div className="relative flex flex-1 min-w-0 min-h-0">
-        <div className="isolate flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden rounded-panel border border-white/5 bg-neutral-900 shadow-e2">
+        <div className="relative isolate flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden rounded-panel border border-white/5 bg-neutral-900 shadow-e2">
           <header className="z-10 shrink-0">
             {!isOnline && (
               <div className="flex items-center justify-center gap-2 bg-amber-500/10 px-4 py-1.5 text-xs font-medium text-amber-400">
@@ -212,18 +214,37 @@ export function AppLayout() {
               <LyricsView />
             </div>
           ) : (
-            <main ref={setMainRef} className="flex-1 min-h-0 overflow-y-auto pb-[104px]">
-              <ScrollRootContext.Provider value={scrollRoot}>
-                <PageTransition scrollRoot={scrollRoot} />
-              </ScrollRootContext.Provider>
-            </main>
+            <div className="relative flex flex-1 min-h-0 flex-col">
+              {/* Dégradé du haut : le contenu qui défile s'estompe sous l'en-tête au lieu d'y être
+                  coupé net. Visible seulement une fois la page défilée (voir useScrollEdges). */}
+              <div
+                aria-hidden
+                className="edge-fade-start inset-x-0 top-0 h-10 bg-gradient-to-b from-neutral-900 via-neutral-900/60 to-transparent"
+              />
+              <main ref={setMainRef} className="flex-1 min-h-0 overflow-y-auto pb-[104px]">
+                <ScrollRootContext.Provider value={scrollRoot}>
+                  <PageTransition scrollRoot={scrollRoot} />
+                </ScrollRootContext.Provider>
+              </main>
+            </div>
           )}
+
+          {/* Léger dégradé sombre sous le lecteur flottant : le contenu qui défile dessous s'y
+              estompe au lieu d'être coupé net. Calque statique (aucune animation ni filtre),
+              découpé par le rayon du panneau ; sous le lecteur (z-30), au-dessus du contenu. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-36 bg-gradient-to-t from-black/60 via-black/25 to-transparent"
+          />
         </div>
 
         {/* Lecteur flottant : `pointer-events-none` sur le calque pleine largeur pour que les
             clics passent au contenu sur les côtés, réactivés sur la barre elle-même. */}
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex justify-center">
-          <div className="pointer-events-auto w-full max-w-[1200px]">
+          {/* Largeur proportionnelle à la colonne de contenu (96 %) plutôt que plafonnée à une
+              valeur fixe : le lecteur suit la taille de l'écran tout en gardant toujours une marge
+              visible sur les côtés, pour l'effet flottant. Plafond large pour les très grands écrans. */}
+          <div className="pointer-events-auto w-[min(96%,1760px)]">
             <PlayerBar />
           </div>
         </div>

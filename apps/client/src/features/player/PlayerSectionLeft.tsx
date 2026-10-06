@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
@@ -8,7 +8,6 @@ import { useContextMenu } from "../../components/menu/useContextMenu";
 import { usePlayerStore, DEFAULT_COVER_URL } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useCoverArt } from "../../hooks/useCoverArt";
-import { formatTrackDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { LikeButton } from "./LikeButton";
@@ -147,15 +146,11 @@ export function PlayerSectionLeft() {
       )}
 
       {infoOpen && currentTrack && (
-        <InfoModal
-          title={currentTrack.title}
+        <TrackInfoModal
+          songId={currentTrack.id}
+          fallback={currentTrack}
           coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: currentTrack.artist },
-            { label: t("album.labelAlbum"), value: currentTrack.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(currentTrack.duration) },
-          ]}
         />
       )}
     </div>

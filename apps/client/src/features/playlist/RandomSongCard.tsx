@@ -2,14 +2,13 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Play } from "../../components/icons";
 import type { SongDTO, SubsonicClient } from "@resonia/api-client";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
-import { formatTrackDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { CoverImage } from "../../components/CoverImage";
 
@@ -99,15 +98,11 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={song.title}
+        <TrackInfoModal
+          songId={song.id}
+          fallback={song}
           coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: song.artist },
-            { label: t("album.labelAlbum"), value: song.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(song.duration) },
-          ]}
         />
       )}
     </div>

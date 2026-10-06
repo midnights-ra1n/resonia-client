@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { I18nContext } from "./context";
 import { storage } from "../storage";
 import { resolveTranslation } from "./resolvePath";
@@ -13,16 +13,12 @@ function detectBrowserLocale(): Locale {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const stored = await storage.get<Locale>(STORAGE_KEY);
-      setLocaleState(stored && isSupportedLocale(stored) ? stored : detectBrowserLocale());
-      setReady(true);
-    })();
-  }, []);
+  // Lecture synchrone : la bonne langue dès le premier rendu, sans passer par l'anglais par défaut.
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    const stored = storage.getSync<Locale>(STORAGE_KEY);
+    return stored && isSupportedLocale(stored) ? stored : detectBrowserLocale();
+  });
+  const ready = true;
 
   const setLocale = (next: Locale) => {
     setLocaleState(next);

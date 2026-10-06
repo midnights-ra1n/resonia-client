@@ -1,10 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SubsonicApiError } from "@resonia/api-client";
 import { LoginPage } from "../features/auth/LoginPage";
-import { useTranslation } from "../lib/i18n";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { useServersStore } from "../stores/serversStore";
-import { useSettingsStore } from "../stores/settingsStore";
 
 type SessionStatus = "checking" | "valid" | "invalid";
 
@@ -13,20 +11,17 @@ type SessionStatus = "checking" | "valid" | "invalid";
 const AUTH_ERROR_CODES = new Set([40, 41, 42, 43, 44, 50]);
 
 export function SessionGate({ children }: { children: ReactNode }) {
+  // Stores hydratés de façon synchrone avant le premier rendu (voir main.tsx).
   const hydrated = useServersStore((s) => s.hydrated);
-  const hydrate = useServersStore((s) => s.hydrate);
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const removeServer = useServersStore((s) => s.removeServer);
-  const hydrateSettings = useSettingsStore((s) => s.hydrate);
-  const { t } = useTranslation();
 
-  const [status, setStatus] = useState<SessionStatus>("checking");
-
-  useEffect(() => {
-    hydrate();
-    hydrateSettings();
-  }, [hydrate, hydrateSettings]);
+  // Dérivé dès le premier rendu : un serveur enregistré affiche l'app immédiatement (le ping ne
+  // fait que vérifier en arrière-plan, voir plus bas) — aucune frame « Chargement... » au lancement.
+  const [status, setStatus] = useState<SessionStatus>(() =>
+    !hydrated ? "checking" : servers.some((s) => s.id === activeServerId) ? "valid" : "invalid",
+  );
 
   // Revalide la session uniquement quand la connexion du serveur actif change (bascule,
   // identifiants modifiés) — pas pour un simple renommage ou l'ajout d'un autre serveur, qui
@@ -71,12 +66,9 @@ export function SessionGate({ children }: { children: ReactNode }) {
     };
   }, [hydrated, sessionKey, activeServerId, removeServer]);
 
+  // Ne devrait plus jamais s'afficher (hydratation synchrone) : simple fond, sans texte.
   if (!hydrated || status === "checking") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-400">
-        {t("common.loading")}
-      </div>
-    );
+    return <div className="min-h-screen bg-neutral-950" />;
   }
 
   if (status === "invalid") {

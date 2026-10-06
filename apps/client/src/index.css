@@ -198,6 +198,24 @@ img {
   contain-intrinsic-size: 160px 216px;
 }
 
+/* Dégradés de bord sur un contenu défilant coupé (haut de page sous l'en-tête, côtés des
+ * carrousels) — même esprit que le dégradé sous le lecteur flottant (voir AppLayout). Calques
+ * statiques, seule leur opacité change (composition GPU) : masqués du côté où rien n'est coupé,
+ * selon `data-at-start` / `data-at-end` posés par useScrollEdges sur le parent commun. */
+.edge-fade-start,
+.edge-fade-end {
+  pointer-events: none;
+  position: absolute;
+  /* Au-dessus des éléments positionnés du contenu (en-têtes collants, badges), sous le lecteur. */
+  z-index: 5;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+[data-at-start] > .edge-fade-start,
+[data-at-end] > .edge-fade-end {
+  opacity: 0;
+}
+
 /* Scrollbar customisation */
 ::-webkit-scrollbar {
   width: 6px;

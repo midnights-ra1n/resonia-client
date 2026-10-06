@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Pause, Play, Playlist } from "../../components/icons";
 import { MarqueeText } from "../../components/MarqueeText";
-import { InfoModal } from "../../components/InfoModal";
+import { PlaylistInfoModal } from "../../components/PlaylistInfoModal";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuItems";
@@ -139,12 +139,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={playlist.name}
-          coverUrl={cachedCoverUrl ?? undefined}
-          onClose={() => setInfoOpen(false)}
-          rows={[{ label: t("playlist.songCountLabel"), value: String(playlist.songCount) }]}
-        />
+        <PlaylistInfoModal playlist={playlist} coverUrl={cachedCoverUrl ?? undefined} onClose={() => setInfoOpen(false)} />
       )}
 
       {renameOpen && client && (

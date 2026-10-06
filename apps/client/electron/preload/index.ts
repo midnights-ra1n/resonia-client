@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld("resonia", {
 
   store: {
     get: (key: string): Promise<unknown> => ipcRenderer.invoke("store:get", key),
+    // Synchrone (IPC bloquant, quelques dizaines de µs) : uniquement pour les quelques clés lues
+    // au démarrage, avant le premier rendu — voir `StorageAdapter.getSync`.
+    getSync: (key: string): unknown => ipcRenderer.sendSync("store:getSync", key),
     set: (key: string, value: unknown): Promise<void> => ipcRenderer.invoke("store:set", key, value),
     remove: (key: string): Promise<void> => ipcRenderer.invoke("store:remove", key),
   },

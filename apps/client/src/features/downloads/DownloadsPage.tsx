@@ -1,7 +1,7 @@
 import { Pause, Play, Trash } from "../../components/icons";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu, type MenuItem } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
@@ -156,15 +156,11 @@ export function DownloadsPage() {
       {rowMenu.open && activeMeta && <ContextMenu x={rowMenu.x} y={rowMenu.y} onClose={rowMenu.close} items={buildRowMenuItems(activeMeta)} />}
 
       {rowInfoOpen && activeMeta && (
-        <InfoModal
-          title={activeMeta.track.title}
+        <TrackInfoModal
+          songId={activeMeta.track.id}
+          fallback={activeMeta.track}
           coverUrl={activeMeta.track.coverUrl}
           onClose={() => setRowInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: activeMeta.track.artist },
-            { label: t("album.labelAlbum"), value: activeMeta.track.album },
-            { label: t("downloads.columnDuration"), value: formatTrackDuration(activeMeta.track.duration) },
-          ]}
         />
       )}
     </div>

@@ -97,6 +97,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   dismissedUpdateVersion: null,
   hydrated: false,
 
+  // Lecture SYNCHRONE, appelée dans main.tsx avant le premier rendu (voir serversStore.hydrate).
   hydrate: async () => {
     const [
       stored,
@@ -109,18 +110,18 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       checkUpdatesOnLaunch,
       betaUpdatesEnabled,
       dismissedUpdateVersion,
-    ] = await Promise.all([
-      storage.get<string>(STORAGE_KEY),
-      storage.get<string>(LASTFM_API_KEY_STORAGE_KEY),
-      storage.get<string>(ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY),
-      storage.get<number>(CACHE_MAX_BYTES_STORAGE_KEY),
-      storage.get<PlaylistSortBy>(PLAYLIST_SORT_BY_STORAGE_KEY),
-      storage.get<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
-      storage.get<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
-      storage.get<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
-      storage.get<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
-      storage.get<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
-    ]);
+    ] = [
+      storage.getSync<string>(STORAGE_KEY),
+      storage.getSync<string>(LASTFM_API_KEY_STORAGE_KEY),
+      storage.getSync<string>(ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY),
+      storage.getSync<number>(CACHE_MAX_BYTES_STORAGE_KEY),
+      storage.getSync<PlaylistSortBy>(PLAYLIST_SORT_BY_STORAGE_KEY),
+      storage.getSync<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
+      storage.getSync<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
+      storage.getSync<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
+      storage.getSync<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
+      storage.getSync<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
+    ] as const;
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
     // If the stored quality is no longer available on this platform

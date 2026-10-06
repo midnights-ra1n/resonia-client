@@ -31,15 +31,12 @@ export function buildStreamUrl(
 
   if (options.format && options.format !== "raw") {
     params.set("format", options.format);
-    // Sans taille annoncée, un flux transcodé à la volée arrive sans Content-Length : les
-    // navigateurs le traitent comme un direct (durée infinie, aucun préchargement — Chromium
-    // n'y garde que ~2 s d'avance, la moindre irrégularité réseau coupe la lecture). Le serveur
-    // annonce ici une taille ESTIMÉE (durée × débit) : le flux redevient un fichier ordinaire
-    // pour le lecteur, téléchargé d'avance. Taille approximative : voir rangeFetcher pour
-    // l'usage qui en est fait côté cache.
-    // Pas avec `timeOffset` : la taille estimée resterait celle du morceau entier alors que le
-    // flux s'arrête plus tôt — le lecteur y verrait un téléchargement tronqué (erreur réseau).
-    if (!options.timeOffset) params.set("estimateContentLength", "true");
+    // Ne JAMAIS demander `estimateContentLength` : Navidrome annonce alors un Content-Length
+    // estimé (durée × débit nominal), et le serveur HTTP Go refuse d'écrire au-delà de la taille
+    // déclarée. Dès que le transcodage réel dépasse l'estimation (débit effectif un peu au-dessus
+    // du nominal, en-têtes du conteneur), la fin de la piste est silencieusement coupée — la
+    // lecture s'arrêtait quelques secondes avant la fin, et le fichier tronqué était mis en cache
+    // comme complet.
   }
   if (options.timeOffset && options.timeOffset > 0) {
     params.set("timeOffset", String(Math.floor(options.timeOffset)));

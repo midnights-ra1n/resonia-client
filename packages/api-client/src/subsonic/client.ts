@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumSummary, AlbumWithSongsDTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumDetailsDTO, AlbumSummary, AlbumWithSongsDTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDetailsDTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -240,6 +240,18 @@ async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
   async getAlbum(albumId: string): Promise<AlbumWithSongsDTO> {
     const result = await this.request<{ album: AlbumWithSongsDTO }>("getAlbum", { id: albumId });
     return result.album;
+  }
+
+  /** Même requête que `getAlbum`, typée avec tous les champs étendus (OpenSubsonic). */
+  async getAlbumDetails(albumId: string): Promise<AlbumDetailsDTO> {
+    const result = await this.request<{ album: AlbumDetailsDTO }>("getAlbum", { id: albumId });
+    return result.album;
+  }
+
+  /** Fiche complète d'un titre : format, crédits (compositeurs, producteurs...), statistiques. */
+  async getSong(songId: string): Promise<SongDetailsDTO> {
+    const result = await this.request<{ song: SongDetailsDTO }>("getSong", { id: songId });
+    return result.song;
   }
 
   async getStarred2(): Promise<SongDTO[]> {

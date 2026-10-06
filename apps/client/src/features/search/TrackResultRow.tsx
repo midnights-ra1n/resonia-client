@@ -2,7 +2,7 @@ import { Play } from "../../components/icons";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
@@ -143,15 +143,11 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={song.title}
+        <TrackInfoModal
+          songId={song.id}
+          fallback={song}
           coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: song.artist },
-            { label: t("album.labelAlbum"), value: song.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(song.duration) },
-          ]}
         />
       )}
     </div>

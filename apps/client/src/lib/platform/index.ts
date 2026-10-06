@@ -10,6 +10,7 @@ export interface ResoniaBridge {
   getVersion(): Promise<string>;
   store: {
     get(key: string): Promise<unknown>;
+    getSync(key: string): unknown;
     set(key: string, value: unknown): Promise<void>;
     remove(key: string): Promise<void>;
   };

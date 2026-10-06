@@ -6,6 +6,7 @@ import { start as startAirplaySender } from "@lox-audioserver/node-airplay-sende
 import type { LoxAirplaySender } from "@lox-audioserver/node-airplay-sender";
 import { dirname, join } from "node:path";
 import { networkInterfaces } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 
@@ -235,8 +236,45 @@ async function createWindow() {
   }
 }
 
+// Délai au-delà duquel une fermeture demandée est FORCÉE. Une fermeture normale prend une fraction
+// de seconde ; si un process enfant (renderer, GPU, audio) est planté ou figé, Electron peut sinon
+// attendre indéfiniment sa réponse — l'app « ne répond plus » et le process principal tourne à vide
+// en saturant un cœur, jusqu'à un arrêt forcé depuis le Moniteur d'activité.
+const QUIT_WATCHDOG_MS = 4000;
+let quitWatchdog: NodeJS.Timeout | null = null;
+
 app.on("before-quit", () => {
   isQuitting = true;
+  quitWatchdog ??= setTimeout(() => {
+    console.warn("[app] Fermeture bloquée — arrêt forcé");
+    app.exit(0);
+  }, QUIT_WATCHDOG_MS);
+});
+
+/** Les fichiers de l'app sont-ils encore lisibles ? Faux si elle a été lancée depuis un volume qui
+ *  vient d'être éjecté ou déconnecté (disque externe, image disque montée) : le système ne peut
+ *  alors plus relire le code des process, qui plantent tous (SIGBUS) — rien ne peut plus
+ *  fonctionner, ni même se fermer proprement. */
+function appBundleReachable(): boolean {
+  try {
+    return existsSync(app.getAppPath());
+  } catch {
+    return false;
+  }
+}
+
+// Process enfant planté : si c'est parce que l'app elle-même est devenue illisible, quitter tout de
+// suite plutôt que de laisser le process principal tourner à vide (CPU saturé).
+app.on("child-process-gone", (_event, details) => {
+  if (details.reason === "clean-exit") return;
+  console.error("[app] Process enfant arrêté :", details.type, details.reason, details.exitCode);
+  if (!appBundleReachable()) app.exit(1);
+});
+app.on("render-process-gone", (_event, _webContents, details) => {
+  if (details.reason === "clean-exit") return;
+  console.error("[app] Renderer arrêté :", details.reason, details.exitCode);
+  if (isQuitting) app.exit(0);
+  else if (!appBundleReachable()) app.exit(1);
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -319,12 +357,16 @@ function registerIpcHandlers() {
 
   async function loadStoreData(): Promise<Record<string, unknown>> {
     if (storeData) return storeData;
+    let parsed: Record<string, unknown>;
     try {
-      storeData = JSON.parse(await readFile(storePath, "utf8"));
+      parsed = JSON.parse(await readFile(storePath, "utf8"));
     } catch {
-      storeData = {};
+      parsed = {};
     }
-    return storeData!;
+    // Une lecture synchrone (`store:getSync`) a pu charger le fichier pendant l'attente : la garder,
+    // sans quoi les écritures faites entre-temps sur cette copie seraient perdues.
+    storeData ??= parsed;
+    return storeData;
   }
 
   // Débounce : le cache audio persiste ses métadonnées à chaque chunk téléchargé (~256 Ko) —
@@ -339,7 +381,32 @@ function registerIpcHandlers() {
     }, 1000);
   }
 
+  // Écriture en attente (débounce d'1 s ci-dessus) faite tout de suite à la fermeture : sans ça, les
+  // derniers réglages/métadonnées modifiés juste avant de quitter étaient perdus.
+  app.on("will-quit", () => {
+    if (!storeSaveTimer || !storeData) return;
+    clearTimeout(storeSaveTimer);
+    storeSaveTimer = null;
+    try {
+      writeFileSync(storePath, JSON.stringify(storeData));
+    } catch {
+      /* disque indisponible : rien de plus à faire à la fermeture */
+    }
+  });
+
   ipcMain.handle("store:get", async (_e, key: string) => (await loadStoreData())[key] ?? null);
+  // Lecture synchrone au démarrage du renderer (voir `getSync` dans le preload). Le fichier est
+  // lu ici de façon synchrone s'il ne l'a pas encore été : quelques Ko, une seule fois.
+  ipcMain.on("store:getSync", (event, key: string) => {
+    if (!storeData) {
+      try {
+        storeData = JSON.parse(readFileSync(storePath, "utf8"));
+      } catch {
+        storeData = {};
+      }
+    }
+    event.returnValue = storeData![key] ?? null;
+  });
   ipcMain.handle("store:set", async (_e, key: string, value: unknown) => {
     const data = await loadStoreData();
     data[key] = value;

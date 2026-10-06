@@ -132,9 +132,9 @@ export async function streamRange(
       handlers.onTotal(total && total !== "*" ? Number(total) : -1);
     } else {
       // 200 : le serveur ignore la plage. Son Content-Length n'est pas fiable comme taille
-      // exacte — pour un flux transcodé, c'est une ESTIMATION (`estimateContentLength`, voir
-      // buildStreamUrl), le fichier réel pouvant être plus court ou plus long. Seule la fin
-      // propre du flux fait foi : taille totale inconnue ici.
+      // exacte — pour un flux transcodé, il peut s'agir d'une ESTIMATION côté serveur, le
+      // fichier réel pouvant être plus court ou plus long. Seule la fin propre du flux fait
+      // foi : taille totale inconnue ici.
       handlers.onTotal(-1);
       skip = start;
       if (start > 0) networkDebugLog("stream:range-ignored", { url, start });

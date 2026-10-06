@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { storage } from "../lib/storage";
+import { clearQueries } from "../lib/cache/queryCache";
 import type { EncryptedPassword } from "../lib/security/passwordVault";
 
 export interface StoredServer {
@@ -53,22 +54,21 @@ export const useServersStore = create<ServersState>((set, get) => ({
   activeServerId: null,
   hydrated: false,
 
+  // Lecture SYNCHRONE (voir `StorageAdapter.getSync`), appelée dans main.tsx avant le premier
+  // rendu : la session est connue d'emblée, l'app s'affiche sans écran de chargement.
   hydrate: async () => {
-    const [stored, storedActiveId] = await Promise.all([
-      storage.get<StoredServer[]>(STORAGE_KEY),
-      storage.get<string>(ACTIVE_STORAGE_KEY),
-    ]);
+    const stored = storage.getSync<StoredServer[]>(STORAGE_KEY);
+    const storedActiveId = storage.getSync<string>(ACTIVE_STORAGE_KEY);
     let servers = stored ?? [];
     // Serveurs enregistrés avant l'arrivée des bulles de compte : on leur attribue une couleur
     // une fois pour toutes, plutôt qu'à chaque lancement (elle doit rester stable).
-    if (servers.some((s) => !s.avatarColor)) {
-      servers = servers.map((s) => (s.avatarColor ? s : { ...s, avatarColor: pickAvatarColor() }));
-      await storage.set(STORAGE_KEY, servers);
-    }
+    const needsColors = servers.some((s) => !s.avatarColor);
+    if (needsColors) servers = servers.map((s) => (s.avatarColor ? s : { ...s, avatarColor: pickAvatarColor() }));
     const activeServerId = servers.some((s) => s.id === storedActiveId)
       ? storedActiveId
       : (servers[0]?.id ?? null);
     set({ servers, activeServerId, hydrated: true });
+    if (needsColors) await storage.set(STORAGE_KEY, servers);
   },
 
   addServer: async (server) => {
@@ -91,6 +91,8 @@ export const useServersStore = create<ServersState>((set, get) => ({
       activeServerId ? storage.set(ACTIVE_STORAGE_KEY, activeServerId) : storage.remove(ACTIVE_STORAGE_KEY),
     ]);
     set({ servers, activeServerId });
+    // Métadonnées en cache de ce serveur (persistées entre deux lancements) : plus utiles.
+    clearQueries((key) => key.startsWith(`${id}:`));
   },
 
   setActiveServer: (id) => {

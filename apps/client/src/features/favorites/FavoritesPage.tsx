@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
@@ -283,23 +283,11 @@ export function FavoritesPage() {
       )}
 
       {rowInfoOpen && activeRowSong && (
-        <InfoModal
-          title={activeRowSong.title}
-          coverUrl={
-            activeRowSong.coverArt
-              ? client.getCoverArtUrl(activeRowSong.coverArt, 300)
-              : undefined
-          }
+        <TrackInfoModal
+          songId={activeRowSong.id}
+          fallback={activeRowSong}
+          coverUrl={activeRowSong.coverArt ? client.getCoverArtUrl(activeRowSong.coverArt, 300) : undefined}
           onClose={() => setRowInfoOpen(false)}
-          rows={[
-            { label: t("playlist.columnTitle"), value: activeRowSong.title },
-            { label: t("search.artistLabel"), value: activeRowSong.artist },
-            { label: t("album.labelAlbum"), value: activeRowSong.album },
-            {
-              label: t("playlist.columnDuration"),
-              value: formatTrackDuration(activeRowSong.duration),
-            },
-          ]}
         />
       )}
     </div>

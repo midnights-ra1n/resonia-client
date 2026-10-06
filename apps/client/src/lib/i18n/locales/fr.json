@@ -20,6 +20,27 @@
       "genericError": "Une erreur inconnue est survenue."
     }
   },
+  "account": {
+    "menuLabel": "Compte",
+    "servers": "Serveurs",
+    "addServer": "Ajouter un serveur",
+    "editServer": "Modifier le serveur",
+    "deleteServer": "Retirer le serveur",
+    "deleteConfirm": "Retirer {{name}} de Resonia ? Ses identifiants enregistrés seront oubliés.",
+    "delete": "Retirer",
+    "logout": "Se déconnecter",
+    "switchTo": "Basculer sur {{name}}",
+    "switchError": "Impossible de joindre {{name}}",
+    "form": {
+      "name": "Nom affiché",
+      "namePlaceholder": "Par défaut : l'adresse du serveur",
+      "passwordKeep": "Laisser vide pour conserver le mot de passe actuel",
+      "passwordRequired": "Saisissez le mot de passe pour confirmer la nouvelle adresse ou le nouvel utilisateur.",
+      "add": "Ajouter",
+      "adding": "Connexion...",
+      "saving": "Enregistrement..."
+    }
+  },
   "nav": {
     "home": "Accueil",
     "stats": "Statistiques",

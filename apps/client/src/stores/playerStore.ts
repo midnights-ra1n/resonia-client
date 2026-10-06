@@ -146,6 +146,9 @@ export interface PlayerState {
 
   playTrack: (track: Track, queue?: Track[]) => Promise<void>;
   playFromStart: (queue: Track[]) => Promise<void>;
+  /** Arrête la lecture et vide la file — changement de serveur, déconnexion : les pistes
+   *  appartiennent à l'ancien serveur et ne doivent plus être lues ni préchargées. */
+  resetPlayback: () => void;
 
   isPlaying: boolean;
   togglePlay: () => void;
@@ -975,6 +978,27 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       set({ playOrderPosition: nextPos, queueIndex: nextQueueIndex });
       prefetchScheduler.stop();
       loadAndPlay(queue[nextQueueIndex], queue, 0);
+    },
+
+    resetPlayback: () => {
+      // Invalide tout chargement en vol : il ne doit pas relancer une piste de l'ancien serveur.
+      loadGeneration++;
+      engine.stop();
+      releaseActiveLocalUrl(null);
+      prefetchScheduler.stop();
+      decodedCache.clear();
+      set({
+        currentTrack: null,
+        isPlaying: false,
+        currentTime: 0,
+        queue: [],
+        queueIndex: -1,
+        playOrder: [],
+        playOrderPosition: -1,
+        showLyrics: false,
+      });
+      clearNowPlaying();
+      resetPlaybackFlags();
     },
 
     volume: 0.75,

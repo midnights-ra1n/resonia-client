@@ -1,8 +1,7 @@
-import { SubsonicClient } from "@resonia/api-client";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "../../lib/i18n";
-import { useServersStore } from "../../stores/serversStore";
-import { encryptPassword } from "../../lib/security/passwordVault";
+import { authenticateServer } from "../../lib/subsonic/authenticateServer";
+import { pickAvatarColor, useServersStore } from "../../stores/serversStore";
 import LogoFull from "../../assets/Logo_full.svg?react";
 
 export function LoginPage() {
@@ -21,18 +20,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const client = new SubsonicClient({ url: serverUrl, username, password });
-      await client.ping();
-
-      const encryptedPassword = await encryptPassword(password);
+      const session = await authenticateServer(serverUrl, username, password);
 
       await addServer({
         id: crypto.randomUUID(),
         name: new URL(serverUrl).hostname,
-        url: serverUrl,
-        username,
-        ...client.credentials,
-        encryptedPassword,
+        ...session,
+        avatarColor: pickAvatarColor(),
         createdAt: Date.now(),
       });
     } catch (err) {

@@ -20,6 +20,27 @@
       "genericError": "An unknown error occurred."
     }
   },
+  "account": {
+    "menuLabel": "Account",
+    "servers": "Servers",
+    "addServer": "Add a server",
+    "editServer": "Edit server",
+    "deleteServer": "Remove server",
+    "deleteConfirm": "Remove {{name}} from Resonia? Its saved credentials will be forgotten.",
+    "delete": "Remove",
+    "logout": "Log out",
+    "switchTo": "Switch to {{name}}",
+    "switchError": "Couldn't reach {{name}}",
+    "form": {
+      "name": "Display name",
+      "namePlaceholder": "Defaults to the server address",
+      "passwordKeep": "Leave empty to keep the current password",
+      "passwordRequired": "Enter the password to confirm the new address or username.",
+      "add": "Add",
+      "adding": "Connecting...",
+      "saving": "Saving..."
+    }
+  },
   "nav": {
     "home": "Home",
     "stats": "Statistics",

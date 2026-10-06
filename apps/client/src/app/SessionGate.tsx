@@ -23,10 +23,18 @@ export function SessionGate({ children }: { children: ReactNode }) {
     hydrateSettings();
   }, [hydrate, hydrateSettings]);
 
+  // Revalide la session uniquement quand la connexion du serveur actif change (bascule,
+  // identifiants modifiés) — pas pour un simple renommage ou l'ajout d'un autre serveur, qui
+  // démonteraient sinon toute l'app le temps du ping.
+  const activeServer = servers.find((s) => s.id === activeServerId);
+  const sessionKey = activeServer
+    ? `${activeServer.id}|${activeServer.url}|${activeServer.username}|${activeServer.token}`
+    : null;
+
   useEffect(() => {
     if (!hydrated) return;
 
-    const activeServer = servers.find((s) => s.id === activeServerId);
+    const activeServer = useServersStore.getState().servers.find((s) => s.id === activeServerId);
     if (!activeServer) {
       setStatus("invalid");
       return;
@@ -49,7 +57,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, servers, activeServerId, removeServer]);
+  }, [hydrated, sessionKey, activeServerId, removeServer]);
 
   if (!hydrated || status === "checking") {
     return (

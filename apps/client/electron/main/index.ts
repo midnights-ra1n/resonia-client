@@ -6,6 +6,7 @@ import { start as startAirplaySender } from "@lox-audioserver/node-airplay-sende
 import type { LoxAirplaySender } from "@lox-audioserver/node-airplay-sender";
 import { dirname, join } from "node:path";
 import { networkInterfaces } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 
@@ -17,7 +18,7 @@ import type { FileHandle } from "node:fs/promises";
 // (productName "Resonia", identifiant com.resonia.client dans tauri.conf.json).
 app.setName("Resonia");
 
-// Resonia n'a pas de thème clair (voir index.css — fond #0A0A0A codé en dur partout) : sans
+// Resonia n'a pas de thème clair (voir index.css — fond #0C0B0A, palette Carotte partout) : sans
 // ça, un système en mode clair rend le chrome natif (fond des boutons de fenêtre macOS, menus
 // contextuels natifs, dialogues systèmes) clair alors que tout le contenu web est sombre —
 // contraste visuel cassé exactement à la frontière entre les deux. Même intention que
@@ -26,10 +27,13 @@ app.setName("Resonia");
 // natifs par défaut, indépendante de ce réglage).
 nativeTheme.themeSource = "dark";
 
-// Icônes réutilisées telles quelles depuis l'ancien build Tauri (src-tauri/icons/), copiées
-// dans build/ pour rester indépendantes de src-tauri (supprimé en fin de migration) — voir
-// aussi electron-builder.yml (Phase 4) qui les reprendra pour l'empaquetage.
-const APP_ICON_PNG = join(app.getAppPath(), "build", "icon.png");
+// Icône de fenêtre/barre des tâches Windows/Linux uniquement. Sur macOS, AUCUNE icône n'est imposée
+// à l'exécution : celle du Dock, de Cmd+Tab et du panneau « À propos » vient du bundle, compilée
+// depuis build/Resonia.icon (Assets.car, voir electron-builder.yml) — la seule source qui porte
+// les effets Liquid Glass (reflets, variantes claire/sombre/teintée). Une image PNG passée à
+// `dock.setIcon`/`iconPath` la remplaçait par une version plate.
+const isMac = process.platform === "darwin";
+const APP_ICON_PNG = isMac ? undefined : join(app.getAppPath(), "build", "icons", "256x256.png");
 
 // Panneau "À propos de Resonia" natif (menu Resonia > À propos, voir `installApplicationMenu` —
 // `role: "appMenu"` le câble automatiquement à cet item). `app.getVersion()` lit la version
@@ -40,7 +44,7 @@ app.setAboutPanelOptions({
   applicationName: "Resonia",
   applicationVersion: app.getVersion(),
   version: app.getVersion(),
-  iconPath: APP_ICON_PNG,
+  ...(APP_ICON_PNG ? { iconPath: APP_ICON_PNG } : {}),
   copyright: "Copyright © Resonia",
 });
 
@@ -52,6 +56,17 @@ app.setAboutPanelOptions({
 if (process.platform === "linux" && !process.env["PULSE_LATENCY_MSEC"]) {
   process.env["PULSE_LATENCY_MSEC"] = "60";
 }
+
+// Une connexion HTTP/1.1 par requête au lieu d'un seul tuyau HTTP/2 (ou QUIC/HTTP/3, annoncé par
+// beaucoup de reverse proxies via `alt-svc`) partagé par TOUTES les requêtes vers le serveur. Mesuré
+// sur une instance Navidrome derrière un proxy qui plafonne le débit PAR CONNEXION (~55 Ko/s) :
+// en HTTP/2, flux audio, pochettes, API et préchargement se partageaient ces 55 Ko/s — l'AAC 256
+// (32 Ko/s) calait dès qu'une grille de pochettes se chargeait, et chaque pochette attendait son
+// tour. En HTTP/1.1, Chromium ouvre jusqu'à 6 connexions par hôte, chacune avec son propre débit :
+// le flux de lecture garde la sienne. Coût : une poignée de main TLS par connexion ouverte, amortie
+// par le keep-alive. Doit être posé avant `app.whenReady()` (lu au démarrage du service réseau).
+app.commandLine.appendSwitch("disable-http2");
+app.commandLine.appendSwitch("disable-quic");
 
 const isDev = !app.isPackaged;
 
@@ -141,17 +156,15 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow({
     title: "Resonia",
-    // Sans effet sur macOS empaqueté (l'icône du Dock vient du bundle .app, voir
-    // electron-builder.yml en Phase 4) mais utile en dev et sur Windows/Linux, où l'icône de
-    // fenêtre/barre des tâches est bien celle-ci — mêmes fichiers que l'ancien build Tauri.
-    icon: APP_ICON_PNG,
+    // Windows/Linux : icône de fenêtre/barre des tâches. macOS : non définie, voir APP_ICON_PNG.
+    ...(APP_ICON_PNG ? { icon: APP_ICON_PNG } : {}),
     x: state.x,
     y: state.y,
     width: state.width,
     height: state.height,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: "#0A0A0A",
+    backgroundColor: "#0C0B0A",
     // Affiché seulement sur "ready-to-show" : évite le flash blanc / la peinture
     // supplémentaire d'une fenêtre visible avant que le renderer ait quoi que ce soit à montrer.
     show: false,
@@ -164,6 +177,12 @@ async function createWindow() {
       // et consomme CPU/RAM en continu — inutile pour une UI qui n'a pas de champ de texte
       // libre significatif (recherche, noms de playlist).
       spellcheck: false,
+      // Lecteur de musique : la fenêtre est souvent masquée (fermer = masquer sur macOS) ou
+      // derrière d'autres pendant l'écoute. Le bridage d'arrière-plan de Chromium y retardait
+      // timers et callbacks (reprise du contexte audio, préchargement, enchaînement de piste)
+      // jusqu'à faire attendre ou caler la lecture. Sans coût au repos : le renderer n'a plus
+      // aucun timer périodique hors lecture.
+      backgroundThrottling: false,
       devTools: isDev,
     },
   });
@@ -217,8 +236,45 @@ async function createWindow() {
   }
 }
 
+// Délai au-delà duquel une fermeture demandée est FORCÉE. Une fermeture normale prend une fraction
+// de seconde ; si un process enfant (renderer, GPU, audio) est planté ou figé, Electron peut sinon
+// attendre indéfiniment sa réponse — l'app « ne répond plus » et le process principal tourne à vide
+// en saturant un cœur, jusqu'à un arrêt forcé depuis le Moniteur d'activité.
+const QUIT_WATCHDOG_MS = 4000;
+let quitWatchdog: NodeJS.Timeout | null = null;
+
 app.on("before-quit", () => {
   isQuitting = true;
+  quitWatchdog ??= setTimeout(() => {
+    console.warn("[app] Fermeture bloquée — arrêt forcé");
+    app.exit(0);
+  }, QUIT_WATCHDOG_MS);
+});
+
+/** Les fichiers de l'app sont-ils encore lisibles ? Faux si elle a été lancée depuis un volume qui
+ *  vient d'être éjecté ou déconnecté (disque externe, image disque montée) : le système ne peut
+ *  alors plus relire le code des process, qui plantent tous (SIGBUS) — rien ne peut plus
+ *  fonctionner, ni même se fermer proprement. */
+function appBundleReachable(): boolean {
+  try {
+    return existsSync(app.getAppPath());
+  } catch {
+    return false;
+  }
+}
+
+// Process enfant planté : si c'est parce que l'app elle-même est devenue illisible, quitter tout de
+// suite plutôt que de laisser le process principal tourner à vide (CPU saturé).
+app.on("child-process-gone", (_event, details) => {
+  if (details.reason === "clean-exit") return;
+  console.error("[app] Process enfant arrêté :", details.type, details.reason, details.exitCode);
+  if (!appBundleReachable()) app.exit(1);
+});
+app.on("render-process-gone", (_event, _webContents, details) => {
+  if (details.reason === "clean-exit") return;
+  console.error("[app] Renderer arrêté :", details.reason, details.exitCode);
+  if (isQuitting) app.exit(0);
+  else if (!appBundleReachable()) app.exit(1);
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -260,12 +316,6 @@ function installApplicationMenu() {
 
 void app.whenReady().then(() => {
   installApplicationMenu();
-  // En dev/preview (app non empaquetée), le Dock affiche par défaut l'icône générique
-  // d'Electron — pas celle de `build/icon.png`. L'imposer explicitement ici évite de confondre
-  // Resonia avec n'importe quelle autre app Electron ouverte en parallèle pendant les tests.
-  // Uniquement en dev : un .app packagé (electron-builder, `mac.icon`) a déjà la bonne icône de
-  // Dock via son propre bundle — appeler ceci en prod n'apporterait rien.
-  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(APP_ICON_PNG);
 
   // Checklist sécurité Electron ("Verify permission requests"/"Enable Sandboxing") : l'app n'a
   // besoin d'aucune permission navigateur (caméra, micro, géoloc, notifications...) — refuser
@@ -307,12 +357,16 @@ function registerIpcHandlers() {
 
   async function loadStoreData(): Promise<Record<string, unknown>> {
     if (storeData) return storeData;
+    let parsed: Record<string, unknown>;
     try {
-      storeData = JSON.parse(await readFile(storePath, "utf8"));
+      parsed = JSON.parse(await readFile(storePath, "utf8"));
     } catch {
-      storeData = {};
+      parsed = {};
     }
-    return storeData!;
+    // Une lecture synchrone (`store:getSync`) a pu charger le fichier pendant l'attente : la garder,
+    // sans quoi les écritures faites entre-temps sur cette copie seraient perdues.
+    storeData ??= parsed;
+    return storeData;
   }
 
   // Débounce : le cache audio persiste ses métadonnées à chaque chunk téléchargé (~256 Ko) —
@@ -327,7 +381,32 @@ function registerIpcHandlers() {
     }, 1000);
   }
 
+  // Écriture en attente (débounce d'1 s ci-dessus) faite tout de suite à la fermeture : sans ça, les
+  // derniers réglages/métadonnées modifiés juste avant de quitter étaient perdus.
+  app.on("will-quit", () => {
+    if (!storeSaveTimer || !storeData) return;
+    clearTimeout(storeSaveTimer);
+    storeSaveTimer = null;
+    try {
+      writeFileSync(storePath, JSON.stringify(storeData));
+    } catch {
+      /* disque indisponible : rien de plus à faire à la fermeture */
+    }
+  });
+
   ipcMain.handle("store:get", async (_e, key: string) => (await loadStoreData())[key] ?? null);
+  // Lecture synchrone au démarrage du renderer (voir `getSync` dans le preload). Le fichier est
+  // lu ici de façon synchrone s'il ne l'a pas encore été : quelques Ko, une seule fois.
+  ipcMain.on("store:getSync", (event, key: string) => {
+    if (!storeData) {
+      try {
+        storeData = JSON.parse(readFileSync(storePath, "utf8"));
+      } catch {
+        storeData = {};
+      }
+    }
+    event.returnValue = storeData![key] ?? null;
+  });
   ipcMain.handle("store:set", async (_e, key: string, value: unknown) => {
     const data = await loadStoreData();
     data[key] = value;
@@ -429,6 +508,368 @@ function registerIpcHandlers() {
       };
     },
   );
+
+  // ---- Téléchargements du cache audio (voir BlobStore.download côté renderer). Faits ici plutôt que
+  // dans le renderer pour trois raisons, toutes mesurées sur un serveur Navidrome derrière un proxy
+  // qui plafonne le débit PAR CONNEXION (~50 Ko/s) :
+  //   - session réseau dédiée → son propre groupe de connexions : Chromium n'en ouvre que 6 par hôte
+  //     et par session, celles du renderer restent libres pour la lecture et les pochettes ;
+  //   - plusieurs plages téléchargées en parallèle (quand le serveur répond 206 avec une taille
+  //     exacte, typiquement le fichier original) : les débits par connexion s'additionnent ;
+  //   - écriture directe à la bonne position du fichier : aucun octet ne traverse l'IPC. ----
+  const DOWNLOAD_SEGMENTS = 3;
+  const MIN_SEGMENT_BYTES = 1024 * 1024;
+  const DOWNLOAD_STALL_TIMEOUT_MS = 20_000;
+  const DOWNLOAD_MAX_RETRIES = 3;
+  const DOWNLOAD_PROGRESS_INTERVAL_MS = 250;
+  // Connexion lente : mesuré sur un serveur réel, environ une connexion TCP sur sept à dix tombe à
+  // ~40-50 Ko/s au lieu de 0,4 à 1,4 Mo/s, et le reste. Après SLOW_CHECK_AFTER_MS de réception,
+  // une plage nettement plus lente que le meilleur débit déjà vu sur ce serveur est relancée :
+  // interrompre une réponse HTTP/1.1 en cours ferme sa socket, la reprise part sur une autre.
+  const SLOW_CHECK_AFTER_MS = 3000;
+  const SLOW_MAX_BYTES_PER_SEC = 128 * 1024;
+  const SLOW_RATIO = 4;
+  const MAX_SLOW_RECONNECTS = 2;
+  // Meilleur débit observé par hôte (octets/s) — référence pour juger une connexion lente sans
+  // jamais boucler sur un serveur simplement lent partout.
+  const bestRateByHost = new Map<string, number>();
+
+  class SlowConnectionError extends Error {
+    constructor(rate: number) {
+      super(`Connexion lente (${Math.round(rate / 1024)} Ko/s), relance sur une autre connexion`);
+    }
+  }
+
+  let downloadSession: Electron.Session | null = null;
+  const getDownloadSession = () => (downloadSession ??= session.fromPartition("resonia-downloads"));
+  const activeDownloads = new Map<number, AbortController>();
+  // Pause douce (voir SuspendSignal côté renderer) : les réponses de ces téléchargements ne sont
+  // plus lues — le contrôle de flux TCP fait cesser l'envoi côté serveur — sans fermer les
+  // connexions ni perdre les plages en cours. Peut arriver avant `download:run` (même ordre IPC).
+  const suspendedDownloads = new Set<number>();
+  const resumeWaiters = new Map<number, Set<() => void>>();
+
+  class DownloadHttpError extends Error {
+    readonly status: number;
+    constructor(status: number) {
+      super(`Requête de flux échouée (${status})`);
+      this.status = status;
+    }
+  }
+
+  interface DownloadSegment {
+    start: number;
+    end: number; // exclusif ; Infinity tant que la taille est inconnue
+    done: number;
+  }
+
+  function isRetryable(err: unknown): boolean {
+    if (err instanceof DownloadHttpError) return err.status >= 500 || err.status === 408 || err.status === 429;
+    return true;
+  }
+
+  function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) return reject(new Error("aborted"));
+      const timer = setTimeout(resolve, ms);
+      signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("aborted"));
+      }, { once: true });
+    });
+  }
+
+  async function runDownload(
+    id: number,
+    opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number },
+    sendProgress: (bytes: number, total: number, received: number) => void,
+  ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }> {
+    // Même garde que `net:fetch` : ce process est privilégié, jamais de schéma autre que http(s).
+    if (!/^https?:\/\//i.test(opts.url)) throw new Error("download:run refuse un schéma non http(s)");
+    if (opts.baseDir !== "appCache" && opts.baseDir !== "appData") throw new Error("download:run : dossier inconnu");
+
+    const userAbort = new AbortController();
+    activeDownloads.set(id, userAbort);
+    // Annule aussi les autres plages dès qu'une échoue définitivement.
+    const internal = new AbortController();
+    userAbort.signal.addEventListener("abort", () => internal.abort(), { once: true });
+
+    const filePath = resolvePath(opts.baseDir, opts.path);
+    await mkdir(dirname(filePath), { recursive: true });
+    const fh = await openForWrite(filePath);
+    // Plages parallèles d'un run précédent interrompu : tout ce qui suit le point de reprise
+    // (préfixe contigu, voir TrackDownloader.resumePosition) peut contenir des trous — on le jette
+    // pour que la taille du fichier ne soit jamais prise pour une progression réelle.
+    await fh.truncate(opts.from);
+
+    /** Attend la fin d'une pause douce ; rejette si le téléchargement est annulé entre-temps. */
+    function waitWhileSuspended(): Promise<void> {
+      if (!suspendedDownloads.has(id)) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        let waiters = resumeWaiters.get(id);
+        if (!waiters) resumeWaiters.set(id, (waiters = new Set()));
+        const onAbort = () => {
+          waiters!.delete(wake);
+          reject(new Error("aborted"));
+        };
+        const wake = () => {
+          internal.signal.removeEventListener("abort", onAbort);
+          resolve();
+        };
+        waiters.add(wake);
+        if (internal.signal.aborted) onAbort();
+        else internal.signal.addEventListener("abort", onAbort, { once: true });
+      });
+    }
+
+    let total = -1;
+    let segments: DownloadSegment[] = [{ start: opts.from, end: Infinity, done: 0 }];
+    let received = 0;
+    let lastProgressAt = 0;
+
+    // Point de reprise : octets contigus écrits depuis le début du fichier.
+    const contiguous = () => {
+      let pos = opts.from;
+      for (const seg of segments) {
+        if (seg.start > pos) break;
+        pos = Math.max(pos, seg.start + seg.done);
+        if (seg.start + seg.done < seg.end) break;
+      }
+      return pos;
+    };
+    const report = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastProgressAt < DOWNLOAD_PROGRESS_INTERVAL_MS) return;
+      lastProgressAt = now;
+      sendProgress(contiguous(), total, received);
+      received = 0;
+    };
+
+    /** Une requête, avec délai d'inactivité réarmé à chaque morceau reçu. */
+    async function request(range: string) {
+      const ctrl = new AbortController();
+      const onAbort = () => ctrl.abort();
+      internal.signal.addEventListener("abort", onAbort, { once: true });
+      if (internal.signal.aborted) ctrl.abort();
+      let stalled = false;
+      let timer: NodeJS.Timeout | null = null;
+      const arm = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          stalled = true;
+          ctrl.abort();
+        }, DOWNLOAD_STALL_TIMEOUT_MS);
+      };
+      const disarm = () => {
+        if (timer) clearTimeout(timer);
+        timer = null;
+      };
+      const dispose = () => {
+        disarm();
+        internal.signal.removeEventListener("abort", onAbort);
+      };
+      try {
+        await waitWhileSuspended();
+      } catch (err) {
+        dispose();
+        throw err;
+      }
+      arm();
+      try {
+        const res = await getDownloadSession().fetch(opts.url, { headers: { Range: range }, signal: ctrl.signal });
+        return { res, arm, disarm, dispose, stalled: () => stalled };
+      } catch (err) {
+        dispose();
+        throw stalled ? new Error("Délai réseau dépassé") : err;
+      }
+    }
+
+    /** Lit le corps et l'écrit à la position de la plage, jusqu'à sa fin (ou celle du flux).
+     *  `skip` : octets à ignorer en tête (serveur qui a ignoré la plage demandée et répond 200). */
+    const host = new URL(opts.url).host;
+
+    async function pump(
+      req: Awaited<ReturnType<typeof request>>,
+      seg: DownloadSegment,
+      skip: number,
+      mayReconnect: boolean,
+    ): Promise<"eof" | "limit"> {
+      if (!req.res.body) throw new Error("Réponse sans corps");
+      const reader = req.res.body.getReader();
+      // Fenêtre de mesure du débit (voir SLOW_CHECK_AFTER_MS), remise à zéro après une pause.
+      let windowStart = Date.now();
+      let windowBytes = 0;
+      let rateChecked = !mayReconnect;
+      // Plage terminée avant la fenêtre de mesure (connexion rapide) : son débit sert quand même de
+      // référence.
+      const recordRate = () => {
+        const elapsed = Date.now() - windowStart;
+        if (elapsed < 500 || windowBytes === 0) return;
+        const rate = (windowBytes * 1000) / elapsed;
+        if (rate > (bestRateByHost.get(host) ?? 0)) bestRateByHost.set(host, rate);
+      };
+      try {
+        for (;;) {
+          let result: Awaited<ReturnType<typeof reader.read>>;
+          if (suspendedDownloads.has(id)) {
+            // Pas de délai d'inactivité pendant une pause volontaire.
+            req.disarm();
+            await waitWhileSuspended();
+            req.arm();
+            windowStart = Date.now();
+            windowBytes = 0;
+          }
+          try {
+            result = await reader.read();
+          } catch (err) {
+            throw req.stalled() ? new Error("Délai réseau dépassé") : err;
+          }
+          req.arm();
+          if (result.done) {
+            recordRate();
+            return "eof";
+          }
+          let chunk = result.value;
+          if (skip > 0) {
+            const dropped = Math.min(skip, chunk.byteLength);
+            skip -= dropped;
+            chunk = chunk.subarray(dropped);
+          }
+          const remaining = seg.end - (seg.start + seg.done);
+          if (chunk.byteLength > remaining) chunk = chunk.subarray(0, remaining);
+          if (chunk.byteLength > 0) {
+            await fh.write(chunk, 0, chunk.byteLength, seg.start + seg.done);
+            seg.done += chunk.byteLength;
+            received += chunk.byteLength;
+            windowBytes += chunk.byteLength;
+            report();
+          }
+          const elapsed = Date.now() - windowStart;
+          if (!rateChecked && elapsed >= SLOW_CHECK_AFTER_MS && seg.start + seg.done < seg.end) {
+            rateChecked = true;
+            const rate = (windowBytes * 1000) / elapsed;
+            const best = bestRateByHost.get(host) ?? 0;
+            if (rate > best) bestRateByHost.set(host, rate);
+            // Débit de référence inconnu : une seule relance exploratoire (voir runSegment).
+            if (rate < SLOW_MAX_BYTES_PER_SEC && (best === 0 || rate * SLOW_RATIO < best)) {
+              void reader.cancel().catch(() => {});
+              throw new SlowConnectionError(rate);
+            }
+          }
+          if (seg.start + seg.done >= seg.end) {
+            recordRate();
+            void reader.cancel().catch(() => {});
+            return "limit";
+          }
+        }
+      } finally {
+        req.dispose();
+      }
+    }
+
+    async function runSegment(seg: DownloadSegment, initial?: Awaited<ReturnType<typeof request>>) {
+      let attempt = 0;
+      let slowReconnects = 0;
+      let pending = initial;
+      while (seg.start + seg.done < seg.end) {
+        const doneBefore = seg.done;
+        try {
+          const from = seg.start + seg.done;
+          const req = pending ?? (await request(seg.end === Infinity ? `bytes=${from}-` : `bytes=${from}-${seg.end - 1}`));
+          pending = undefined;
+          const { status } = req.res;
+          if (status === 416) {
+            req.dispose();
+            if (seg.end !== Infinity) throw new DownloadHttpError(416);
+            seg.end = from; // plus rien à lire : fin normale
+            break;
+          }
+          if (status !== 200 && status !== 206) {
+            req.dispose();
+            throw new DownloadHttpError(status);
+          }
+          // Flux transcodé (200, plages ignorées) : une relance repartirait de l'octet 0 et
+          // relancerait le transcodage — on ne relance que les réponses partielles (206).
+          const mayReconnect =
+            status === 206 && slowReconnects < MAX_SLOW_RECONNECTS && (slowReconnects === 0 || (bestRateByHost.get(host) ?? 0) > 0);
+          const outcome = await pump(req, seg, status === 200 ? from : 0, mayReconnect);
+          if (outcome === "eof") {
+            if (seg.end === Infinity) seg.end = seg.start + seg.done; // taille révélée par la fin du flux
+            else if (seg.start + seg.done < seg.end) throw new Error("Flux interrompu avant la fin de la plage");
+          }
+        } catch (err) {
+          if (internal.signal.aborted) throw err;
+          if (err instanceof SlowConnectionError) {
+            slowReconnects++;
+            continue; // relance immédiate, sur une nouvelle connexion
+          }
+          if (seg.done > doneBefore) attempt = 0; // seuls des échecs consécutifs comptent
+          if (!isRetryable(err) || attempt >= DOWNLOAD_MAX_RETRIES) throw err;
+          attempt++;
+          await sleepUnlessAborted(500 * 2 ** (attempt - 1), internal.signal);
+        }
+      }
+    }
+
+    try {
+      const first = await request(`bytes=${opts.from}-`);
+      const contentRange = first.res.headers.get("content-range");
+      const announced = first.res.status === 206 && contentRange ? Number(contentRange.split("/")[1]) : NaN;
+      if (Number.isFinite(announced) && announced > opts.from) {
+        // Taille exacte et plages acceptées : découpage en plages parallèles.
+        total = announced;
+        const remaining = total - opts.from;
+        const maxSegments = Math.max(1, Math.min(DOWNLOAD_SEGMENTS, Math.floor(opts.maxSegments ?? DOWNLOAD_SEGMENTS)));
+        const count = Math.max(1, Math.min(maxSegments, Math.floor(remaining / MIN_SEGMENT_BYTES)));
+        const size = Math.ceil(remaining / count);
+        segments = Array.from({ length: count }, (_, i) => ({
+          start: opts.from + i * size,
+          end: Math.min(total, opts.from + (i + 1) * size),
+          done: 0,
+        }));
+        await Promise.all(segments.map((seg, i) => runSegment(seg, i === 0 ? first : undefined)));
+      } else {
+        // 200 (fichier transcodé à la volée, plages ignorées), 416 ou taille inconnue : séquentiel.
+        await runSegment(segments[0], first);
+      }
+      const bytes = contiguous();
+      if (total < 0) total = bytes;
+      report(true);
+      return { complete: bytes >= total, bytes, total, error: null };
+    } catch (err) {
+      internal.abort();
+      return {
+        complete: false,
+        bytes: contiguous(),
+        total,
+        error: userAbort.signal.aborted ? null : (err as Error).message ?? String(err),
+      };
+    } finally {
+      activeDownloads.delete(id);
+      suspendedDownloads.delete(id);
+      resumeWaiters.delete(id);
+      await fh.close().catch(() => {});
+    }
+  }
+
+  ipcMain.handle(
+    "download:run",
+    (event, id: number, opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number }) =>
+      runDownload(id, opts, (bytes, total, received) => {
+        if (!event.sender.isDestroyed()) event.sender.send("download:progress", id, bytes, total, received);
+      }),
+  );
+  ipcMain.on("download:abort", (_e, id: number) => activeDownloads.get(id)?.abort());
+  ipcMain.on("download:suspend", (_e, id: number, suspended: boolean) => {
+    if (suspended) {
+      suspendedDownloads.add(id);
+      return;
+    }
+    suspendedDownloads.delete(id);
+    const waiters = resumeWaiters.get(id);
+    resumeWaiters.delete(id);
+    waiters?.forEach((wake) => wake());
+  });
 
   // ---- powerSaveBlocker : n'empêche que la mise en veille de L'APP (pas l'écran), tenu
   // uniquement pendant une lecture active — jamais en idle. Démarré/arrêté par le renderer

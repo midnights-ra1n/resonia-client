@@ -62,16 +62,16 @@ export function DownloadsIndicator() {
         title={t("downloads.indicatorHeading")}
       >
         <Download size={18} />
-        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-500" />
+        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent" />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-white/10 bg-neutral-900/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-panel border border-white/5 bg-surface-2 p-4 shadow-e2">
           <h3 className="text-sm font-semibold text-white">{t("downloads.indicatorHeading")}</h3>
 
           <div className="mt-3">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
-              <div className="h-full rounded-full bg-emerald-500 transition-all duration-300" style={{ width: `${percent}%` }} />
+              <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${percent}%` }} />
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-neutral-400">
               <span>{t("downloads.indicatorTracks", { done: stats.completedTracks, total: stats.totalTracks })}</span>
@@ -95,7 +95,7 @@ export function DownloadsIndicator() {
           <Link
             to="/downloads"
             onClick={() => setOpen(false)}
-            className="mt-3 block rounded-md px-2 py-1.5 text-center text-xs font-medium text-neutral-400 transition hover:bg-white/10 hover:text-white"
+            className="mt-3 block rounded-full px-3 py-1.5 text-center text-xs font-medium text-neutral-400 transition hover:bg-white/10 hover:text-white"
           >
             {t("downloads.viewAll")}
           </Link>

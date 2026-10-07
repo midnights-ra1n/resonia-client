@@ -48,6 +48,7 @@ class FakeTrackDownloader {
     this.ran = true;
   }
   pause() {}
+  setSuspended() {}
   cancel() {
     this.cancelled = true;
   }

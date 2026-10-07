@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld("resonia", {
 
   store: {
     get: (key: string): Promise<unknown> => ipcRenderer.invoke("store:get", key),
+    // Synchrone (IPC bloquant, quelques dizaines de µs) : uniquement pour les quelques clés lues
+    // au démarrage, avant le premier rendu — voir `StorageAdapter.getSync`.
+    getSync: (key: string): unknown => ipcRenderer.sendSync("store:getSync", key),
     set: (key: string, value: unknown): Promise<void> => ipcRenderer.invoke("store:set", key, value),
     remove: (key: string): Promise<void> => ipcRenderer.invoke("store:remove", key),
   },
@@ -40,6 +43,22 @@ contextBridge.exposeInMainWorld("resonia", {
   powerSave: {
     start: (): Promise<void> => ipcRenderer.invoke("powersave:start"),
     stop: (): Promise<void> => ipcRenderer.invoke("powersave:stop"),
+  },
+
+  downloads: {
+    run: (
+      id: number,
+      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number },
+    ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }> =>
+      ipcRenderer.invoke("download:run", id, opts),
+    abort: (id: number): void => ipcRenderer.send("download:abort", id),
+    suspend: (id: number, suspended: boolean): void => ipcRenderer.send("download:suspend", id, suspended),
+    onProgress: (cb: (id: number, bytes: number, total: number, received: number) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, id: number, bytes: number, total: number, received: number) =>
+        cb(id, bytes, total, received);
+      ipcRenderer.on("download:progress", listener);
+      return () => ipcRenderer.removeListener("download:progress", listener);
+    },
   },
 
   airplay: {

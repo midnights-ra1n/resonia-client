@@ -55,7 +55,7 @@ export function DownloadProgressRow({ item }: { item: PendingDownloadItem }) {
         <MarqueeText text={item.track.artist} className="text-xs text-neutral-400" />
         {status === "downloading" && progress.totalBytes > 0 && (
           <div className="mt-1.5 h-1 w-full max-w-xs overflow-hidden rounded-full bg-neutral-800">
-            <div className="h-full rounded-full bg-emerald-500 transition-all duration-300" style={{ width: `${percent}%` }} />
+            <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${percent}%` }} />
           </div>
         )}
       </div>

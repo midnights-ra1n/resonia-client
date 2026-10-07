@@ -1,5 +1,6 @@
 # Config de packaging desktop — branchée sur le CI de release (voir .github/workflows/
-# release-stable.yml et release-beta.yml), qui l'invoque via `electron-builder --publish`.
+# release.yml), qui l'invoque via `electron-builder --publish never` sur chaque OS puis publie
+# lui-même tous les fichiers produits en une seule fois.
 #
 # Mêmes identifiants que l'ancien build Tauri (nom, icône, identifiant système), pour qu'un
 # utilisateur migrant de l'un à l'autre retrouve la même app :
@@ -42,12 +43,16 @@ files:
   - dist-electron/preload/**
   - dist-electron/renderer/**
   - package.json
-  # `build/icon.icns`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
+  # `build/Resonia.icon`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
   # directement depuis `buildResources` (ci-dessus) pour l'icône du BUNDLE lui-même, jamais à
-  # l'exécution. `build/icon.png`, lui, EST lu à l'exécution par electron/main/index.ts
-  # (icône de fenêtre/barre des tâches Windows/Linux) — sans cette ligne il manquait purement
-  # et simplement de l'asar packagé, provoquant un rejet de promesse non catché au démarrage.
-  - build/icon.png
+  # l'exécution. `build/icons/256x256.png`, lui, EST lu à l'exécution par
+  # electron/main/index.ts (icône de fenêtre/barre des tâches Windows/Linux uniquement — macOS
+  # n'impose rien et garde l'icône Liquid Glass du bundle).
+  - build/icons/256x256.png
+  # electron-builder ajoute d'office les `dependencies` de package.json (node_modules) quels que
+  # soient les motifs ci-dessus — ~100 Mo d'outils de build (tailwind, lightningcss…) jamais lus
+  # à l'exécution. Exclusion explicite pour respecter l'intention décrite plus haut.
+  - "!node_modules/**"
 
 mac:
   target:
@@ -59,8 +64,21 @@ mac:
     - target: dmg
     - target: zip
     - target: pkg
-  icon: build/icon.icns
+  # Icône Icon Composer (`.icon`, format « Liquid Glass » de macOS Tahoe et suivants). À partir
+  # de ce seul fichier, electron-builder compile via `actool` (Xcode 26+ requis sur la machine
+  # de build — voir le job macOS du workflow de release) :
+  #   - Contents/Resources/Assets.car + CFBundleIconName → icône Liquid Glass (variantes
+  #     claire/sombre/teintée) lue par macOS 26 Tahoe, 27 et suivants ;
+  #   - Contents/Resources/icon.icns + CFBundleIconFile → icône classique, lue par les macOS
+  #     antérieurs à Tahoe (qui ignorent Assets.car) — et réutilisée pour le .dmg/.pkg.
+  # Chaque version de macOS choisit automatiquement celle qu'elle sait afficher. Le .icns
+  # d'actool ne contient que 16 et 128 px : build/afterPack.cjs le remplace par build/icon.icns
+  # (16 → 1024 px, voir scripts/build-mac-icns.sh).
+  icon: build/Resonia.icon
   category: public.app-category.music
+  # Arch toujours explicite dans le nom (Apple Silicon uniquement : GitHub ne fournit plus de
+  # runners macOS Intel), pour rester cohérent avec les noms des fichiers Linux.
+  artifactName: ${productName}-${version}-${arch}.${ext}
   # Découverte AirPlay (preuve de concept, voir electron/main/index.ts) : macOS affiche bien
   # l'invite "réseau local" sans ces clés (le socket UDP/multicast brut ouvert par notre lib
   # mDNS pure JS ne passe pas par l'API Bonjour native d'Apple, seule vraiment filtrée par
@@ -98,21 +116,40 @@ linux:
   # ici, au niveau linux, où il s'applique à toutes les cibles (AppImage y compris, sans risque :
   # juste un nom de fichier différent, productName au lieu du nom de package).
   artifactName: ${productName}-${version}-${arch}.${ext}
-  # electron-builder ne génère aucune métadonnée AppStream pour les cibles fpm (deb/rpm) — sans
-  # elle, KDE Discover/GNOME Software n'ont pas de quoi construire une fiche d'app et restent
-  # bloqués en boucle de chargement à l'ouverture du paquet (observé avec le .rpm). `linux.fpm`
-  # passe des arguments bruts à fpm ; la syntaxe SOURCE=DEST y installe ce fichier directement à
-  # l'emplacement système attendu. Ne s'applique qu'à deb/rpm (fpm) — l'AppImage n'a pas
-  # d'équivalent dans electron-builder. Chemin relatif à `working-directory: apps/client` (voir
-  # les workflows de release), résolu par fpm depuis là où electron-builder l'exécute.
-  fpm:
-    - "build/com.resonia.client.metainfo.xml=/usr/share/metainfo/com.resonia.client.metainfo.xml"
   # Aligne le WM_CLASS Electron sur le nom du .desktop généré (déjà "resonia.desktop", dérivé
   # d'`executableName`) — sans ça, electron-builder avertit que les environnements de bureau
   # peuvent ne pas rattacher les fenêtres en cours d'exécution à cette entrée .desktop. Nécessite
   # `desktopName: "resonia.desktop"` dans apps/client/package.json (lu par app-builder-lib).
   syncDesktopName: true
 
+# Icône du volume .dmg monté (Finder, bureau) : le .icns complet plutôt que celui d'actool.
+dmg:
+  icon: build/icon.icns
+
+# Voir build/afterPack.cjs : installe l'icône .icns complète des macOS antérieurs à Tahoe.
+afterPack: build/afterPack.cjs
+# Voir build/beforePack.cjs : recompile dist-electron/ s'il est plus ancien que les sources.
+beforePack: build/beforePack.cjs
+
 nsis:
+  # Sans espace : le nom par défaut ("Resonia Setup X.exe") est renommé en "Resonia.Setup.X.exe"
+  # par GitHub à l'upload, alors que latest.yml référence "Resonia-Setup-X.exe" — l'auto-update
+  # Windows casserait dès que les fichiers ne sont plus uploadés par electron-builder lui-même.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
+
+# electron-builder ne génère aucune métadonnée AppStream pour les cibles fpm (deb/rpm) — sans
+# elle, KDE Discover/GNOME Software n'ont pas de quoi construire une fiche d'app et restent
+# bloqués en boucle de chargement à l'ouverture du paquet (observé avec le .rpm). `fpm` passe des
+# arguments bruts à fpm ; la syntaxe SOURCE=DEST y installe ce fichier directement à
+# l'emplacement système attendu. La clé n'existe PAS au niveau `linux` (le schéma la rejette et
+# fait échouer electron-builder sur TOUTES les plateformes) : uniquement par cible, deb et rpm.
+# Chemin relatif à apps/client (working-directory du workflow de release).
+deb:
+  fpm:
+    - "build/com.resonia.client.metainfo.xml=/usr/share/metainfo/com.resonia.client.metainfo.xml"
+
+rpm:
+  fpm:
+    - "build/com.resonia.client.metainfo.xml=/usr/share/metainfo/com.resonia.client.metainfo.xml"

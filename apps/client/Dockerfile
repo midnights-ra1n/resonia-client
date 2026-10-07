@@ -1,7 +1,7 @@
 # Image Docker pour la version web de Resonia uniquement (pas de téléchargement hors-ligne, pas
 # de transcodage configurable : la qualité audio web est forcée en AAC 256 kbps, cf.
-# src/lib/audio/qualityOptions.ts). Les clients de bureau (Tauri) sont distribués via les
-# workflows release-stable.yml / release-beta.yml, pas via cette image.
+# src/lib/audio/qualityOptions.ts). Les clients de bureau (Electron) sont distribués via le
+# workflow .github/workflows/release.yml, qui publie aussi cette image sur GHCR.
 #
 # Contexte de build attendu : la racine du monorepo (nécessaire pour pnpm-lock.yaml et les
 # packages du workspace @resonia/*).

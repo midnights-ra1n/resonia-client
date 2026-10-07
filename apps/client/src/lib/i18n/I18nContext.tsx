@@ -1,4 +1,5 @@
-import { createContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { I18nContext } from "./context";
 import { storage } from "../storage";
 import { resolveTranslation } from "./resolvePath";
 import { translations } from "./translations";
@@ -6,32 +7,18 @@ import { DEFAULT_LOCALE, SUPPORTED_LOCALES, isSupportedLocale, type Locale } fro
 
 const STORAGE_KEY = "resonia:locale";
 
-interface I18nContextValue {
-  locale: Locale;
-  setLocale: (locale: Locale) => void;
-  supportedLocales: Locale[];
-  t: (key: string, vars?: Record<string, string | number>) => string;
-  ready: boolean;
-}
-
-export const I18nContext = createContext<I18nContextValue | null>(null);
-
 function detectBrowserLocale(): Locale {
   const browserLang = navigator.language.split("-")[0];
   return isSupportedLocale(browserLang) ? browserLang : DEFAULT_LOCALE;
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const stored = await storage.get<Locale>(STORAGE_KEY);
-      setLocaleState(stored && isSupportedLocale(stored) ? stored : detectBrowserLocale());
-      setReady(true);
-    })();
-  }, []);
+  // Lecture synchrone : la bonne langue dès le premier rendu, sans passer par l'anglais par défaut.
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    const stored = storage.getSync<Locale>(STORAGE_KEY);
+    return stored && isSupportedLocale(stored) ? stored : detectBrowserLocale();
+  });
+  const ready = true;
 
   const setLocale = (next: Locale) => {
     setLocaleState(next);

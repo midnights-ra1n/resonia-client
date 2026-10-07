@@ -72,15 +72,16 @@ function AlbumCard({ album, onPlay, onOpen }: AlbumCardProps) {
   return (
     <div
       role="listitem"
-      className="group relative w-[170px] shrink-0 snap-start cursor-pointer rounded-md p-3 bg-neutral-900/40 hover:bg-neutral-800/70 transition-colors duration-200"
+      className="group relative w-[170px] shrink-0 snap-start cursor-pointer rounded-panel p-3 hover:bg-surface-2 transition-colors duration-200"
       onClick={onOpen}
     >
-      <div className="relative w-full aspect-square overflow-hidden rounded-md shadow-lg bg-neutral-800">
+      <div className="relative w-full aspect-square overflow-hidden rounded-cover bg-surface-2 shadow-e1 after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-white/[0.06]">
         {album.coverArtUrl ? (
           <img
             src={album.coverArtUrl}
             alt={t("home.mostPlayedAlbums.coverAlt", { name: album.name })}
             loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover"
           />
         ) : (
@@ -103,13 +104,13 @@ function AlbumCard({ album, onPlay, onOpen }: AlbumCardProps) {
             absolute bottom-2 right-2
             flex items-center justify-center
             h-11 w-11 rounded-full
-            bg-emerald-500 text-black shadow-xl
+            bg-accent text-on-accent shadow-xl
             opacity-0 translate-y-2
             group-hover:opacity-100 group-hover:translate-y-0
             focus-visible:opacity-100 focus-visible:translate-y-0
-            transition-[opacity,transform,background-color] duration-200 ease-out
-            hover:scale-105 hover:bg-emerald-400
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300
+            transition-[opacity,transform,translate,scale,background-color] duration-200 ease-out
+            hover:scale-105 hover:bg-accent-hover
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-hover
           "
         >
           <PlayIcon />
@@ -131,7 +132,7 @@ function AlbumCard({ album, onPlay, onOpen }: AlbumCardProps) {
 function AlbumCardSkeleton() {
   return (
     <div className="w-[170px] shrink-0 rounded-md p-3 animate-pulse">
-      <div className="w-full aspect-square rounded-md bg-neutral-800" />
+      <div className="w-full aspect-square rounded-cover bg-surface-2" />
       <div className="mt-3 h-3.5 w-4/5 rounded bg-neutral-800" />
       <div className="mt-2 h-3 w-2/3 rounded bg-neutral-800" />
     </div>

@@ -3,8 +3,10 @@ import { MarqueeText } from "../../components/MarqueeText";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useCallback, useRef, useState } from "react";
 import { useScrollingClass } from "../../hooks/useScrollingClass";
+import { useDelayedUnmount } from "../../hooks/useDelayedUnmount";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { useServersStore } from "../../stores/serversStore";
+import { CoverImage } from "../../components/CoverImage";
 
 const MAX_QUEUE_DISPLAY = 50;
 
@@ -18,11 +20,17 @@ export function QueuePanel() {
   const showQueue = usePlayerStore((s) => s.showQueue);
   const toggleQueue = usePlayerStore((s) => s.toggleQueue);
 
-  if (!showQueue) return null;
+  // Reste monté pendant le repli animé de son conteneur (voir AppLayout, 320 ms).
+  const mounted = useDelayedUnmount(showQueue, 320);
+  if (!mounted) return null;
 
   return (
-    <div className="fixed right-0 top-0 bottom-20 z-40 flex w-80 flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl">
-      <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-4 py-3">
+    // Carte flottante à part entière dans la rangée d'AppLayout (et non plus un calque fixe
+    // par-dessus) : le contenu et le lecteur se resserrent à côté, rien n'est masqué — le
+    // bouton file d'attente du lecteur reste cliquable. Son ouverture/fermeture est animée par
+    // le conteneur repliable d'AppLayout (largeur), pas ici.
+    <aside className="flex w-80 shrink-0 flex-col overflow-hidden rounded-panel border border-white/5 bg-neutral-900 shadow-e2">
+      <div className="flex shrink-0 items-center justify-between px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-white">File d'attente</h2>
         <button onClick={toggleQueue} className="text-neutral-400 transition-colors hover:text-white" title="Fermer">
           <X size={18} />
@@ -30,7 +38,7 @@ export function QueuePanel() {
       </div>
 
       <QueueList />
-    </div>
+    </aside>
   );
 }
 
@@ -158,7 +166,7 @@ function QueueItem({
   return (
     <li className="relative">
       {showIndicatorBefore && (
-        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-accent" />
       )}
 
       <div
@@ -166,19 +174,19 @@ function QueueItem({
         onDragStart={() => onDragStart(localIndex)}
         onDragOver={(e) => onDragOverItem(e, localIndex)}
         onDragEnd={onDragEnd}
-        className={`group flex cursor-grab items-center gap-3 px-4 py-2 transition-colors active:cursor-grabbing ${
-          isDragging ? "opacity-40" : "hover:bg-neutral-800/50"
+        className={`group mx-2 flex cursor-grab items-center gap-3 rounded-xl px-2 py-2 transition-colors active:cursor-grabbing ${
+          isDragging ? "opacity-40" : "hover:bg-neutral-800/60"
         }`}
       >
         <div className="shrink-0 text-neutral-600 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-neutral-400">
           <DotsSixVertical size={14} />
         </div>
 
-        <img
+        <CoverImage
           src={coverUrl}
           alt=""
           draggable={false}
-          className="h-10 w-10 shrink-0 rounded object-cover"
+          className="h-10 w-10 shrink-0 rounded-lg object-cover"
           loading="lazy"
           decoding="async"
         />
@@ -206,7 +214,7 @@ function QueueItem({
       </div>
 
       {showIndicatorAfter && (
-        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-accent" />
       )}
     </li>
   );

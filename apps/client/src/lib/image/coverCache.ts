@@ -1,4 +1,5 @@
 import { electronFetch } from "../net/electronFetch";
+import { trackForegroundRequest } from "../network/foregroundActivity";
 import { storage } from "../storage";
 import { createBlobStore } from "../storage/blobStore";
 import { isElectron } from "../platform";
@@ -64,7 +65,10 @@ function cacheKeyFor(serverId: string, coverArtId: string, size: number): string
  *  résultat final (tout finit par se télécharger et se mettre en cache), juste son ordre
  *  d'arrivée — largement suffisant ici puisqu'aucune pochette individuelle n'est urgente au
  *  point de justifier une vraie priorisation par distance au viewport. */
-const MAX_CONCURRENT_COVER_FETCHES = 6;
+// 3 et non 6 : Chromium n'ouvre que 6 connexions HTTP/1.1 par hôte (voir `disable-http2` dans
+// electron/main/index.ts), partagées avec le flux de lecture et le préchargement audio — une grille
+// de pochettes ne doit jamais toutes les occuper au moment où l'utilisateur lance une piste.
+const MAX_CONCURRENT_COVER_FETCHES = 3;
 let activeCoverFetches = 0;
 const coverFetchQueue: Array<() => void> = [];
 
@@ -77,7 +81,8 @@ function runQueuedCoverFetch() {
 }
 
 function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
+  // Attente dans la file comprise : une page n'est complète qu'une fois ses pochettes arrivées.
+  return trackForegroundRequest(new Promise((resolve, reject) => {
     const run = () => {
       task()
         .then(resolve, reject)
@@ -88,70 +93,145 @@ function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
     };
     coverFetchQueue.push(run);
     runQueuedCoverFetch();
-  });
+  }));
 }
 
-/** Certains hôtes distants (ex. music.apple.com pour le scraping HTML) ne renvoient pas
- *  d'en-tête CORS pour notre origine ; côté bureau, on passe donc par `electronFetch` (process
- *  principal, non soumis à la politique CORS du renderer) pour fiabiliser le
- *  téléchargement quel que soit l'hôte (les CDN d'artwork type mzstatic envoient bien un
- *  en-tête CORS ouvert, mais ne pas en dépendre reste plus robuste). */
+/** `fetch` direct d'abord, en priorité basse (le flux de lecture passe avant) : Navidrome et les CDN
+ *  d'artwork renvoient un en-tête CORS ouvert. Sur bureau, passer systématiquement par
+ *  `electronFetch` faisait télécharger chaque pochette en entier par le process principal puis la
+ *  recopier par IPC — un aller-retour et une copie de plus par image, tous sérialisés dans un seul
+ *  process. Il ne sert plus que de repli pour un hôte qui refuse le CORS (échec réseau `TypeError`). */
 async function fetchForCache(url: string): Promise<Response> {
   return withCoverFetchLimit(async () => {
-    if (isElectron()) return electronFetch(url);
-    return fetch(url);
+    try {
+      return await fetch(url, { priority: "low" });
+    } catch (err) {
+      if (isElectron() && err instanceof TypeError) return electronFetch(url);
+      throw err;
+    }
   });
 }
 
-async function readMeta(): Promise<CacheEntryMeta[]> {
-  return (await storage.get<CacheEntryMeta[]>(META_KEY)) ?? [];
+// Métadonnées tenues EN MÉMOIRE (Map, accès O(1)), chargées une seule fois puis persistées
+// par lots. Avant : chaque affichage de pochette relisait et re-parsait la liste complète
+// (des milliers d'entrées, des centaines de Ko de JSON) depuis le stockage, deux fois, puis la
+// re-sérialisait et la réécrivait entièrement — des Mo de JSON brassés par carrousel affiché,
+// CPU et ramasse-miettes sollicités en continu pendant le défilement. Les écritures
+// concurrentes (lecture-modification-écriture en parallèle) pouvaient aussi perdre des entrées.
+const PERSIST_DELAY_MS = 1500;
+let metaPromise: Promise<Map<string, CacheEntryMeta>> | null = null;
+let totalBytes = 0;
+let persistTimer: number | null = null;
+
+function loadMeta(): Promise<Map<string, CacheEntryMeta>> {
+  metaPromise ??= storage.get<CacheEntryMeta[]>(META_KEY).then((list) => {
+    const map = new Map<string, CacheEntryMeta>();
+    totalBytes = 0;
+    for (const entry of list ?? []) {
+      map.set(entry.key, entry);
+      totalBytes += entry.size;
+    }
+    return map;
+  });
+  return metaPromise;
 }
 
-async function writeMeta(entries: CacheEntryMeta[]): Promise<void> {
-  await storage.set(META_KEY, entries);
+/** Persistance regroupée : une seule écriture du stockage par fenêtre de 1,5 s, quel que soit
+ *  le nombre de pochettes affichées entre-temps. */
+function schedulePersist() {
   scheduleSizeNotify();
+  if (persistTimer !== null) return;
+  persistTimer = window.setTimeout(async () => {
+    persistTimer = null;
+    const meta = await loadMeta();
+    await storage.set(META_KEY, Array.from(meta.values()));
+  }, PERSIST_DELAY_MS);
+}
+
+// Fermeture de l'onglet/fenêtre avec une persistance encore en attente : on écrit tout de suite
+// (au mieux) plutôt que de perdre les entrées des dernières pochettes mises en cache — leurs
+// fichiers resteraient sinon sur le disque sans être comptés dans la taille du cache.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    if (persistTimer === null || !metaPromise) return;
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+    void metaPromise.then((meta) => storage.set(META_KEY, Array.from(meta.values())));
+  });
 }
 
 async function touchEntry(key: string, size?: number, contentType?: string): Promise<void> {
-  const meta = await readMeta();
-  const existing = meta.find((e) => e.key === key);
+  const meta = await loadMeta();
+  const existing = meta.get(key);
   if (existing) {
     existing.lastAccessedAt = Date.now();
-    if (size !== undefined) existing.size = size;
+    if (size !== undefined) {
+      totalBytes += size - existing.size;
+      existing.size = size;
+    }
     if (contentType !== undefined) existing.contentType = contentType;
   } else {
-    meta.push({ key, size: size ?? 0, contentType: contentType ?? "application/octet-stream", lastAccessedAt: Date.now() });
+    meta.set(key, {
+      key,
+      size: size ?? 0,
+      contentType: contentType ?? "application/octet-stream",
+      lastAccessedAt: Date.now(),
+    });
+    totalBytes += size ?? 0;
   }
-  await writeMeta(meta);
+  schedulePersist();
 }
 
 async function enforceLimit(): Promise<void> {
-  const meta = await readMeta();
-  const total = meta.reduce((sum, e) => sum + e.size, 0);
-  if (total <= maxBytes) return;
+  const meta = await loadMeta();
+  if (totalBytes <= maxBytes) return;
 
-  const sorted = [...meta].sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
-  let currentTotal = total;
-  const remaining: CacheEntryMeta[] = [...meta];
-
-  for (const entry of sorted) {
-    if (currentTotal <= maxBytes) break;
+  const oldestFirst = Array.from(meta.values()).sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+  for (const entry of oldestFirst) {
+    if (totalBytes <= maxBytes) break;
+    meta.delete(entry.key);
+    totalBytes -= entry.size;
     await store.deleteFile(entry.key);
-    currentTotal -= entry.size;
-    const idx = remaining.findIndex((e) => e.key === entry.key);
-    if (idx !== -1) remaining.splice(idx, 1);
   }
+  schedulePersist();
+}
 
-  await writeMeta(remaining);
+/** Corps texte (XML/JSON/HTML) : réponse d'erreur, jamais une image. Pas de liste blanche
+ *  `image/*` : certains proxys servent les pochettes en `application/octet-stream`. */
+function isErrorContentType(contentType: string): boolean {
+  return /^text\/|json/i.test(contentType) || (/xml/i.test(contentType) && !/svg/i.test(contentType));
+}
+
+/** Retire une entrée dont le fichier est absent ou incohérent, pour qu'elle soit retéléchargée. */
+async function dropEntry(key: string): Promise<void> {
+  const meta = await loadMeta();
+  const entry = meta.get(key);
+  if (entry) {
+    meta.delete(key);
+    totalBytes -= entry.size;
+    schedulePersist();
+  }
+  await store.deleteFile(key).catch(() => {});
 }
 
 async function readCachedCover(key: string): Promise<{ blob: Blob; contentType: string } | null> {
-  const meta = await readMeta();
-  const entry = meta.find((e) => e.key === key);
+  const entry = (await loadMeta()).get(key);
   if (!entry) return null;
-  const bytes = await store.readAll(key);
-  if (!bytes) return null;
-  return { blob: new Blob([bytes], { type: entry.contentType }), contentType: entry.contentType };
+  let blob = await store.readAsBlob(key, entry.contentType);
+  // Taille différente de celle enregistrée à l'écriture : fichier tronqué (écriture interrompue)
+  // ou suivi de restes d'une image précédente — une pochette cassée à l'affichage, et pour
+  // toujours puisque servie depuis le cache. On la jette pour la retélécharger.
+  // Type non image : réponse d'erreur du serveur mise en cache par une version précédente.
+  if (!blob || (entry.size > 0 && blob.size !== entry.size) || isErrorContentType(entry.contentType)) {
+    await dropEntry(key);
+    return null;
+  }
+  // Sur OPFS, le Blob est le fichier disque lui-même : toute réécriture ou éviction ultérieure
+  // de ce fichier rend illisible l'URL `blob:` encore affichée ailleurs (image cassée). Une
+  // pochette ne pèse que quelques dizaines de Ko : on la copie en mémoire, comme le fait déjà
+  // le backend bureau (lecture via IPC).
+  if (!isElectron()) blob = new Blob([await blob.arrayBuffer()], { type: entry.contentType });
+  return { blob, contentType: entry.contentType };
 }
 
 /** Object URL locale si la pochette est déjà en cache, sinon null (pas d'appel réseau ici). */
@@ -191,16 +271,50 @@ export async function loadAndCacheCover(
     console.warn(`[coverCache] Lecture du cache impossible pour ${key}`, err);
   }
 
-  const response = await fetchForCache(fetchUrl);
-  if (!response.ok || !response.body) {
-    throw new Error(`Échec du téléchargement de la pochette (${response.status})`);
+  return URL.createObjectURL(await downloadCover(key, fetchUrl));
+}
+
+/** Téléchargements en vol, par clé — jusqu'à la fin de leur écriture sur disque : plusieurs
+ *  composants (ou le préchargement du lecteur, voir playerStore) demandant la même pochette en
+ *  même temps partagent une seule requête et une seule écriture. Deux écritures concurrentes du même fichier pouvaient sinon s'entremêler et
+ *  laisser une image corrompue en cache. */
+const inFlightDownloads = new Map<string, Promise<Blob>>();
+
+function downloadCover(key: string, fetchUrl: string): Promise<Blob> {
+  let pending = inFlightDownloads.get(key);
+  if (!pending) {
+    pending = fetchAndStoreCover(key, fetchUrl, () => inFlightDownloads.delete(key));
+    inFlightDownloads.set(key, pending);
+  }
+  return pending;
+}
+
+async function fetchAndStoreCover(key: string, fetchUrl: string, done: () => void): Promise<Blob> {
+  let blob: Blob;
+  let contentType: string;
+  try {
+    const response = await fetchForCache(fetchUrl);
+    if (!response.ok || !response.body) {
+      throw new Error(`Échec du téléchargement de la pochette (${response.status})`);
+    }
+    blob = await response.blob();
+    contentType = blob.type || response.headers.get("content-type") || "application/octet-stream";
+    // L'API Subsonic renvoie ses erreurs (pochette introuvable, jeton expiré...) en HTTP 200 avec
+    // un corps XML/JSON : à ne jamais mettre en cache comme image.
+    if (isErrorContentType(contentType) || blob.size === 0) {
+      throw new Error(`Réponse de pochette invalide (${contentType}, ${blob.size} octets)`);
+    }
+  } catch (err) {
+    done();
+    throw err;
   }
 
-  const blob = await response.blob();
-  const contentType = blob.type || response.headers.get("content-type") || "application/octet-stream";
-
-  (async () => {
+  void (async () => {
     try {
+      // Fichier repris de zéro : les deux backends ouvrent un fichier existant SANS le tronquer
+      // (reprise de téléchargement audio). Une image plus petite qu'un ancien fichier resté sur
+      // le disque (métadonnées perdues avant leur persistance) en gardait sinon la fin.
+      await store.deleteFile(key);
       const writer = await store.createWriter(key);
       await writer.seek(0);
       await writer.write(await blob.arrayBuffer());
@@ -209,21 +323,25 @@ export async function loadAndCacheCover(
       await enforceLimit();
     } catch (err) {
       console.warn(`[coverCache] Écriture du cache impossible pour ${key}`, err);
+    } finally {
+      done();
     }
   })();
 
-  return URL.createObjectURL(blob);
+  return blob;
 }
 
 export async function currentCoverCacheSize(): Promise<number> {
-  const meta = await readMeta();
-  return meta.reduce((sum, e) => sum + e.size, 0);
+  await loadMeta();
+  return totalBytes;
 }
 
 export async function clearCoverCache(): Promise<void> {
-  const meta = await readMeta();
-  for (const entry of meta) {
-    await store.deleteFile(entry.key);
-  }
-  await writeMeta([]);
+  const meta = await loadMeta();
+  const keys = Array.from(meta.keys());
+  meta.clear();
+  totalBytes = 0;
+  for (const key of keys) await store.deleteFile(key);
+  await storage.set(META_KEY, []);
+  scheduleSizeNotify();
 }

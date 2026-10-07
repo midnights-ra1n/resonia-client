@@ -1,8 +1,8 @@
 {
-  "name": "resonia-client",
+  "name": "Resonia",
   "version": "1.0.0-beta.5",
   "private": true,
-  "description": "Resonia — client Spotify-like pour Navidrome / OpenSubsonic",
+  "description": "The ultimate customisable and fast Navidrome client",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.20.0+sha512.9a6f330a95b66446ea088faf1521405a8a01f07fde7124cc9958dfed52d4bb436737e65b08f85f37b46fcba375092558ac51262b816844b22f63406ed166bfee",
@@ -14,9 +14,9 @@
     "verify": "turbo run lint test build"
   },
   "devDependencies": {
-    "eslint": "^10.8.0",
-    "prettier": "^3.9.6",
-    "turbo": "^2.10.8",
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.9",
+    "turbo": "^2.11.7",
     "typescript": "^7.0.2"
   }
 }

@@ -2,6 +2,154 @@
 @import "./assets/fonts/fonts.css";
 
 /*
+ * Palette "Resonia Orange" (thème par défaut) — thème sombre chaud, accent carotte #FFA343.
+ * Les autres thèmes (Catppuccin, Nord, Monokai, Tokyo Night, Everforest) surchargent ces mêmes
+ * variables en style inline sur <html> : voir lib/appearance/themes.ts.
+ *
+ * Tous les gris tirent vers le brun (teinte ~28°) : un gris neutre à côté du carotte paraît
+ * bleu et sale. Plutôt que de réécrire chaque classe `neutral-*` du code, on redéfinit ici
+ * l'échelle `neutral` de Tailwind avec ces gris chauds (mêmes luminances que l'échelle d'origine,
+ * donc mêmes contrastes partout) : zéro coût runtime, tout est résolu en variables CSS.
+ *
+ * Règle d'usage de l'orange : un seul élément orange PLEIN par écran (le bouton Lecture). Le
+ * reste de l'accent passe en texte, contour, barre de progression ou halo 14 % (`accent-soft`).
+ * Le carotte signale ce qui joue, jamais la décoration.
+ */
+@theme {
+  /* Neutres chauds — la base */
+  --color-neutral-50: #faf7f3;
+  --color-neutral-100: #f4efe8; /* text-1 */
+  --color-neutral-200: #e6e0d8;
+  --color-neutral-300: #cdc6bd;
+  --color-neutral-400: #a9a29a; /* text-2 — artistes, méta */
+  --color-neutral-500: #8a8279; /* text-3 — durées, labels */
+  --color-neutral-600: #5c544c;
+  --color-neutral-700: #413a33; /* border-strong */
+  --color-neutral-800: #272320; /* surface-3 */
+  --color-neutral-900: #161412; /* surface-1 */
+  --color-neutral-950: #0c0b0a; /* bg-base */
+
+  --color-white: #f4efe8;
+  --color-black: #090807;
+
+  --color-bg-sunken: #090807;
+  --color-bg-base: #0c0b0a;
+  --color-surface-1: #161412;
+  --color-surface-2: #1e1b18;
+  --color-surface-3: #272320;
+  --color-border-strong: #413a33;
+
+  --color-text-1: #f4efe8;
+  --color-text-2: #a9a29a;
+  --color-text-3: #8a8279;
+
+  /* Accent carotte */
+  --color-accent: #ffa343;
+  --color-accent-hover: #ffbb74;
+  --color-accent-pressed: #e0821f;
+  /* Dérivés de l'accent : suivent automatiquement le thème actif. */
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  --color-on-accent: #1a0f03;
+
+  /* Contre-accent & états */
+  --color-teal: #4fb9a5;
+  --color-success: #5fbf7e;
+  --color-warning: #f2c14e;
+  --color-danger: #e5675a;
+
+  /* Formes : 12 pochettes, 18 panneaux, 24 barre de lecture (`rounded-cover/panel/bar`). */
+  --radius-cover: 12px;
+  --radius-panel: 18px;
+  --radius-bar: 24px;
+
+  /* Élévation : le « flottant » vient de l'ombre et du rayon, pas des marges. Ombres
+   * STATIQUES uniquement (jamais animées) : rasterisées une fois puis composées, aucun coût
+   * par frame — contrairement à un backdrop-filter, banni de l'app.
+   * Tailwind recopie ces valeurs telles quelles dans les classes `shadow-*` : la teinte passe
+   * donc par des variables `--shadow-ink-*` (voir `:root` plus bas), seul moyen pour un thème
+   * de la changer. Ombre de contact (1re couche) invisible sur les thèmes sombres. */
+  --shadow-e1: 0 1px 2px var(--shadow-ink-contact), 0 4px 14px var(--shadow-ink-1);
+  --shadow-e2: 0 2px 6px var(--shadow-ink-contact), 0 14px 36px var(--shadow-ink-2);
+  --shadow-e3:
+    0 2px 6px var(--shadow-ink-contact), 0 14px 36px var(--shadow-ink-2),
+    0 0 32px -12px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  --shadow-play: 0 6px 20px -6px color-mix(in srgb, var(--color-accent) 55%, transparent);
+
+  /* Mouvement : une seule courbe douce (décélération longue, sans rebond) pour toute l'app.
+   * Redéfinir les valeurs PAR DÉFAUT de Tailwind suffit à adoucir chaque `transition-*` déjà
+   * présent dans le code. N'animer que opacity/transform : composition GPU, jamais de layout. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --default-transition-duration: 220ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-page-in: page-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-page-out: page-out 140ms cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-fade-in: fade-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-out: fade-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-pop-in: pop-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-panel-in: panel-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes page-out {
+    to {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.97);
+    }
+  }
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+  }
+
+  /* Police de l'interface, choisie dans Paramètres → Apparence (voir lib/appearance/fonts.ts).
+   * `font-sans` (défaut Tailwind, champs de formulaire compris via le preflight) la suit. */
+  --font-sans: var(--font-ui, "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif);
+
+  /* Les classes amber/red existantes suivent les états de la palette. */
+  --color-amber-400: #f5cd6e;
+  --color-amber-500: #f2c14e;
+  --color-red-300: #f0998f;
+  --color-red-400: #eb8074;
+  --color-red-500: #e5675a;
+}
+
+/* Teinte des ombres `shadow-e*` (voir @theme). Les thèmes clairs la remplacent par une ombre
+ * légère teintée (themes.ts) : du noir à 45-60 % y fait des halos gris sales. */
+:root {
+  --shadow-ink-contact: transparent;
+  --shadow-ink-1: rgb(0 0 0 / 0.45);
+  --shadow-ink-2: rgb(0 0 0 / 0.6);
+}
+
+/* Thèmes clairs : ombres Tailwind par défaut (pochettes, menus) adoucies et teintées. */
+:root[data-scheme="light"] :is(.shadow-lg, .shadow-xl, .shadow-2xl) {
+  --tw-shadow-color: var(--shadow-ink-2);
+}
+
+/*
  * html/body doivent rester non-scrollables et de la couleur du thème : sans ça, dès que le
  * contenu interne (déjà scrollable via overflow-y-auto) dépasse d'un pixel la fenêtre, ou lors
  * du "rubber-band bounce" natif de WebKit, c'est le fond blanc par défaut du document qui
@@ -14,15 +162,45 @@ body,
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
-  background-color: #0a0a0a;
+  background-color: var(--color-bg-base);
 }
 
 body {
-  font-family: "Roboto", sans-serif;
+  font-family: var(--font-sans);
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  color: var(--color-text-1);
+}
+
+/* Curseur « main » sur tout ce qui est cliquable : le preflight de Tailwind v4 remet les boutons
+ * en curseur par défaut. Dans `@layer base` pour que les utilitaires (`cursor-grab`,
+ * `cursor-not-allowed`...) posés sur un élément gardent la priorité. */
+@layer base {
+  :is(button, [role="button"], [role="radio"], [role="menuitem"], [role="tab"], [role="option"], select, summary):not(
+      :disabled,
+      [aria-disabled="true"]
+    ) {
+    cursor: pointer;
+  }
+}
+
+/* Changement de thème en direct (themes.ts) : aucune transition de couleur pendant la bascule. */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
+}
+
+/* Thèmes clairs : les zones posées sur une couleur de pochette foncée (vue paroles) gardent un
+ * texte clair — `text-white` y redevient clair. */
+:root[data-scheme="light"] .on-media {
+  --color-white: var(--on-media-text);
+}
+
+::selection {
+  background-color: var(--color-accent-soft);
 }
 
 img {
@@ -66,6 +244,24 @@ img {
   contain-intrinsic-size: 160px 216px;
 }
 
+/* Dégradés de bord sur un contenu défilant coupé (haut de page sous l'en-tête, côtés des
+ * carrousels) — même esprit que le dégradé sous le lecteur flottant (voir AppLayout). Calques
+ * statiques, seule leur opacité change (composition GPU) : masqués du côté où rien n'est coupé,
+ * selon `data-at-start` / `data-at-end` posés par useScrollEdges sur le parent commun. */
+.edge-fade-start,
+.edge-fade-end {
+  pointer-events: none;
+  position: absolute;
+  /* Au-dessus des éléments positionnés du contenu (en-têtes collants, badges), sous le lecteur. */
+  z-index: 5;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+[data-at-start] > .edge-fade-start,
+[data-at-end] > .edge-fade-end {
+  opacity: 0;
+}
+
 /* Scrollbar customisation */
 ::-webkit-scrollbar {
   width: 6px;
@@ -77,7 +273,7 @@ img {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2d33;
+  background: var(--color-border-strong);
   border-radius: 999px;
   opacity: 0.5;
   transition: opacity 0.2s ease;
@@ -93,7 +289,7 @@ img {
 }
 
 .playlist-listings-scrollable::-webkit-scrollbar-thumb {
-  background: #2a2d33;
+  background: var(--color-border-strong);
   border-radius: 999px;
   opacity: 0.5;
   width: 6px;
@@ -113,4 +309,39 @@ img {
 .lyrics-scrollable::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* Pochettes : apparition en fondu une fois l'image DÉCODÉE (voir components/CoverImage.tsx)
+ * plutôt qu'un affichage brut ligne par ligne. Opacity seule : composition GPU. */
+.cover-img {
+  opacity: 0;
+  transition: opacity 260ms var(--ease-out);
+}
+.cover-img[data-loaded] {
+  opacity: 1;
+}
+
+/* Sélecteur « gélule » : l'apparence native est retirée, sinon WebKit (Safari, WebKitGTK)
+ * dessine son propre contrôle et ignore le `border-radius`. La flèche est un SVG inline (aucune
+ * requête), teinte text-2 ; le `pr-10` posé sur l'élément lui réserve la place. */
+@utility select-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a9a29a'%3E%3Cpath d='M12 15.4 6.6 10l1.4-1.4 4 4 4-4 1.4 1.4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  background-size: 18px;
+  cursor: pointer;
+}
+
+/* Réglage système « Réduire les animations » : tout mouvement décoratif devient instantané. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { updateReadmeDownloads } from "./readme-downloads.mjs";
 
 const version = process.argv[2];
 if (!version || !/^\d+\.\d+\.\d+(-beta\.\d+)?$/.test(version)) {
@@ -31,6 +32,9 @@ writeFileSync(clientPackageJsonPath, JSON.stringify(clientJson, null, 2) + "\n")
 
 console.log(`Version : ${previous} → ${version}`);
 
+// Liens de téléchargement du README (voir scripts/readme-downloads.mjs).
+updateReadmeDownloads(version);
+
 // Rappel local seulement — le vrai garde-fou est côté CI (scripts/extract-changelog.mjs, appelé
 // par .github/workflows/release-*.yml), qui fait échouer la release si cette section manque
 // encore au moment du push. Ici on se contente de prévenir tout de suite plutôt que de laisser
@@ -46,4 +50,4 @@ if (!hasSection) {
   );
 }
 
-console.log(`\nProchaines étapes :\n  git add package.json apps/client/package.json CHANGELOG.md\n  git commit -m "bump version to ${version}"\n  git push origin <beta|stable>`);
+console.log(`\nProchaines étapes :\n  git add package.json apps/client/package.json CHANGELOG.md README.md\n  git commit -m "bump version to ${version}"\n  git push origin <beta|stable>`);

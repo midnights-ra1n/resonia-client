@@ -1,52 +1,132 @@
 name: CI
 
-# Vérifications de qualité sur chaque pull request : lint, tests et build, chacun comme check
-# séparé pour pouvoir choisir individuellement lesquels rendre obligatoires dans les règles de
-# protection de branche (Settings → Branches → Require status checks to pass).
+# Qualité sur chaque PR et chaque push sur les branches longues : lint, tests et build, chacun
+# comme check séparé (noms de jobs stables : ils peuvent être rendus obligatoires dans
+# Settings → Branches → Require status checks).
+#
+# Les PR qui visent beta/stable (donc une future release) vérifient en plus que l'empaquetage
+# desktop passe sur les 3 OS et que l'image Docker web se construit — pour découvrir une casse
+# de packaging AVANT le merge, pas pendant la release.
 on:
   pull_request:
-  # Aussi sur push direct vers les branches longues : permet au check de tourner sans passer par
-  # une PR (utile pour l'amorcer la première fois, avant qu'il soit sélectionnable comme required
-  # status check dans les règles de protection de branche).
   push:
-    branches:
-      - development
-      - beta
-      - stable
+    branches: [development, beta, stable]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un nouveau push sur une PR annule le run précédent devenu inutile (jamais sur les branches
+# longues : chaque commit y garde son propre statut).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: 22
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Build Electron (main/preload/renderer)
+        run: pnpm --filter @resonia/client run electron:build
+
+  # Empaquetage desktop non publié (`--dir` : app décompressée, sans installeurs) sur chaque OS.
+  package:
+    if: github.event_name == 'pull_request' && (github.base_ref == 'beta' || github.base_ref == 'stable')
+    name: package (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runner: macos-26
+            args: --mac --arm64
+          - name: windows
+            runner: windows-latest
+            args: --win --x64
+          - name: linux
+            runner: ubuntu-22.04
+            args: --linux --x64
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # L'icône macOS est un document Icon Composer (.icon, Liquid Glass) : electron-builder le
+      # compile avec actool, qui doit venir de Xcode 26 ou plus récent. On sélectionne le Xcode
+      # le plus récent du runner et on échoue tôt, avec un message clair, s'il est trop ancien.
+      - name: Xcode 26+ (actool pour l'icône Liquid Glass)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          latest=$(printf '%s\n' /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1 || true)
+          if [[ -d "$latest" ]]; then sudo xcode-select -s "$latest"; fi
+          version=$(actool --version | grep -A1 short-bundle-version | tail -1 | sed -E 's/.*<string>([0-9.]+)<.*/\1/')
+          echo "actool $version ($(xcode-select -p))"
+          if (( ${version%%.*} < 26 )); then
+            echo "::error::actool $version trop ancien : Xcode 26+ requis pour compiler build/Resonia.icon."
+            exit 1
+          fi
+      - run: pnpm --filter @resonia/client run electron:build
+      - name: electron-builder --dir
+        working-directory: apps/client
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --dir --publish never ${{ matrix.args }}
+
+  docker:
+    if: github.event_name == 'pull_request' && (github.base_ref == 'beta' || github.base_ref == 'stable')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/client/Dockerfile
+          push: false
+          cache-from: type=gha

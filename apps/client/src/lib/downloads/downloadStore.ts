@@ -460,10 +460,11 @@ class DownloadStore {
     const meta = await this.loadMeta();
     const entry = meta.get(downloadKeyFor(trackId, qualityId));
     if (!entry?.complete) return null;
-    const full = await this.readDownloadedFull(trackId, qualityId);
-    if (!full || full.byteLength === 0) return null;
+    // Blob adossé au disque quand le stockage le permet (voir BlobStore.readAsBlob) ; l'URL
+    // renvoyée doit être révoquée par l'appelant (playerStore) dès la piste suivante.
     const mime = { aac: "audio/aac", opus: "audio/ogg", mp3: "audio/mpeg" }[format];
-    return URL.createObjectURL(new Blob([full], { type: mime }));
+    const blob = await downloadBlobStore.readAsBlob(downloadKeyFor(trackId, qualityId), mime);
+    return blob ? URL.createObjectURL(blob) : null;
   }
 
   async listDownloaded(): Promise<DownloadedTrackMeta[]> {

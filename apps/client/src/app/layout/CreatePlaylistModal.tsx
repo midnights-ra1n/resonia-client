@@ -5,6 +5,7 @@ import { useTranslation } from "../../lib/i18n";
 import { uploadPlaylistArtwork } from "../../lib/navidrome/nativeApi";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { useServersStore } from "../../stores/serversStore";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface CreatePlaylistModalProps {
   onClose: () => void;
@@ -57,6 +58,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
         }
       }
 
+      emitPlaylistsChanged();
       onCreated?.(created);
       onClose();
     } catch (err) {
@@ -67,9 +69,9 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-2xl bg-neutral-900 p-6 shadow-xl"
+        className="w-full max-w-md rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -100,7 +102,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -110,7 +112,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full resize-none rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full resize-none rounded-[20px] bg-neutral-800 px-4 py-2.5 text-white outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
@@ -119,7 +121,7 @@ export function CreatePlaylistModal({ onClose, onCreated }: CreatePlaylistModalP
           <button
             type="submit"
             disabled={submitting || !name.trim()}
-            className="w-full rounded-full bg-emerald-500 py-2.5 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+            className="w-full rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover disabled:opacity-50"
           >
             {submitting ? t("playlists.creating") : t("playlists.create")}
           </button>

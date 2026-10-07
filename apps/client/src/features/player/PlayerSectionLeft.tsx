@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
@@ -8,10 +8,10 @@ import { useContextMenu } from "../../components/menu/useContextMenu";
 import { usePlayerStore, DEFAULT_COVER_URL } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useCoverArt } from "../../hooks/useCoverArt";
-import { formatTrackDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { LikeButton } from "./LikeButton";
+import { CoverImage } from "../../components/CoverImage";
 
 // Bouton like : 20px (h-5 w-5) + 8px d'écart avant le texte.
 const BUTTON_WIDTH = 20;
@@ -78,11 +78,11 @@ export function PlayerSectionLeft() {
 
   return (
     <div className="flex items-center gap-3 h-full min-w-0">
-      <img
+      <CoverImage
         key={currentTrack?.id ?? "empty"}
         src={coverUrl}
         alt="Cover"
-        className="w-12 h-12 rounded-md object-cover shrink-0 bg-neutral-800"
+        className="w-12 h-12 rounded object-cover shrink-0 bg-surface-3"
         decoding="async"
       />
 
@@ -109,11 +109,13 @@ export function PlayerSectionLeft() {
             changement de piste plutôt que de garder l'état de la précédente. */}
         <div key={currentTrack?.id ?? "empty"}>
           <MarqueeText
+            auto
             text={title}
             to={currentTrack?.albumId ? `/albums/${currentTrack.albumId}` : undefined}
             className="text-sm text-white hover:underline"
           />
           <MarqueeText
+            auto
             text={artist}
             to={currentTrack?.artistId ? `/artists/${currentTrack.artistId}` : undefined}
             className="text-xs text-neutral-400 hover:text-white hover:underline"
@@ -144,15 +146,11 @@ export function PlayerSectionLeft() {
       )}
 
       {infoOpen && currentTrack && (
-        <InfoModal
-          title={currentTrack.title}
+        <TrackInfoModal
+          songId={currentTrack.id}
+          fallback={currentTrack}
           coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: currentTrack.artist },
-            { label: t("album.labelAlbum"), value: currentTrack.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(currentTrack.duration) },
-          ]}
         />
       )}
     </div>

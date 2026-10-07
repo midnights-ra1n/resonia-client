@@ -7,3 +7,4 @@ export * from "./lastfm/client";
 export * from "./m8tec/client";
 export * from "./itunes/client";
 export * from "./lrclib/client";
+export * from "./spotify/client";

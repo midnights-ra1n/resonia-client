@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
@@ -14,6 +14,7 @@ import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useLikedSongs } from "./useLikedSongs";
+import { PageSkeleton } from "../../components/PageSkeleton";
 
 export function FavoritesPage() {
   const { songs, loading, error, unlike } = useLikedSongs();
@@ -48,7 +49,7 @@ export function FavoritesPage() {
   } = useTrackListSelection(songs.length);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !client) {
@@ -64,6 +65,8 @@ export function FavoritesPage() {
       album: song.album,
       albumId: song.albumId,
       duration: song.duration,
+      suffix: song.suffix,
+      bitRate: song.bitRate,
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : undefined,
@@ -97,15 +100,16 @@ export function FavoritesPage() {
 
   return (
     <div>
-      <div className="flex items-end gap-6 bg-gradient-to-b from-purple-800 to-neutral-900 px-8 pb-6 pt-16">
-        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded bg-gradient-to-br from-indigo-500 to-purple-700 shadow-2xl">
-          <Heart size={80} className="text-white" fill="currentColor" />
+      <div className="flex items-end gap-6 bg-gradient-to-b from-accent-soft to-neutral-900 px-8 pb-6 pt-16">
+        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded-xl bg-surface-2 shadow-2xl">
+          <Heart size={80} className="text-accent" fill="currentColor" />
         </div>
 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-white">{t("favorites.title")}</p>
           <h1 className="mt-2">
             <MarqueeText
+              auto
               text={t("favorites.title")}
               className="text-5xl font-black text-white"
             />
@@ -121,19 +125,19 @@ export function FavoritesPage() {
           <>
             <button
               onClick={handlePlayAll}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover"
               title={t("favorites.play")}
             >
               {isThisListPlaying ? (
-                <Pause size={22} fill="black" className="text-neutral-900" />
+                <Pause size={22} fill="currentColor" className="text-on-accent" />
               ) : (
-                <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+                <Play size={22} fill="currentColor" className="ml-1 text-on-accent" />
               )}
             </button>
 
             <button
               onClick={toggleShuffle}
-              className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+              className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
               title={t("favorites.shuffle")}
             >
               <Shuffle size={24} />
@@ -183,13 +187,13 @@ export function FavoritesPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_40px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
-                      isSelected ? "bg-neutral-800/70" : ""
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_40px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
+                      isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""
                     }`}
                   >
                     <div className="flex items-center justify-center text-sm text-neutral-400">
                       {isCurrent && isPlaying ? (
-                        <Pause size={14} className="text-emerald-400" fill="currentColor" />
+                        <Pause size={14} className="text-accent" fill="currentColor" />
                       ) : (
                         <>
                           <span className="group-hover:hidden">{index + 1}</span>
@@ -206,7 +210,7 @@ export function FavoritesPage() {
                       <MarqueeText
                         text={song.title}
                         draggable={false}
-                        className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                        className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
                       />
                       <MarqueeText
                         text={song.artist}
@@ -247,7 +251,7 @@ export function FavoritesPage() {
                         unlike(song.id);
                       }}
                       title={t("favorites.unlike")}
-                      className="flex items-center justify-center text-emerald-400 opacity-0 transition hover:scale-110 group-hover:opacity-100"
+                      className="flex items-center justify-center text-accent opacity-0 transition hover:scale-110 group-hover:opacity-100"
                     >
                       <Heart size={16} fill="currentColor" />
                     </button>
@@ -279,23 +283,11 @@ export function FavoritesPage() {
       )}
 
       {rowInfoOpen && activeRowSong && (
-        <InfoModal
-          title={activeRowSong.title}
-          coverUrl={
-            activeRowSong.coverArt
-              ? client.getCoverArtUrl(activeRowSong.coverArt, 300)
-              : undefined
-          }
+        <TrackInfoModal
+          songId={activeRowSong.id}
+          fallback={activeRowSong}
+          coverUrl={activeRowSong.coverArt ? client.getCoverArtUrl(activeRowSong.coverArt, 300) : undefined}
           onClose={() => setRowInfoOpen(false)}
-          rows={[
-            { label: t("playlist.columnTitle"), value: activeRowSong.title },
-            { label: t("search.artistLabel"), value: activeRowSong.artist },
-            { label: t("album.labelAlbum"), value: activeRowSong.album },
-            {
-              label: t("playlist.columnDuration"),
-              value: formatTrackDuration(activeRowSong.duration),
-            },
-          ]}
         />
       )}
     </div>

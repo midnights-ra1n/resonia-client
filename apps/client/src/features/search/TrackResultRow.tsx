@@ -2,7 +2,7 @@ import { Play } from "../../components/icons";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
@@ -14,6 +14,7 @@ import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
+import { CoverImage } from "../../components/CoverImage";
 
 function formatDuration(seconds: number): string {
   return formatTrackDuration(seconds);
@@ -51,9 +52,10 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? song.coverArt : undefined,
+    song.coverArt,
     80,
     coverUrl,
+    coverInView,
   );
 
   const isCurrent = currentTrackId === song.id;
@@ -67,6 +69,8 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
       album: s.album,
       albumId: s.albumId,
       duration: s.duration,
+      suffix: s.suffix,
+      bitRate: s.bitRate,
       coverUrl: client && s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : undefined,
       coverArtId: s.coverArt,
     };
@@ -95,7 +99,7 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
     >
       <div ref={coverRef} className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          <CoverImage src={cachedCoverUrl} alt={song.album} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}
@@ -109,7 +113,7 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
           text={song.title}
           to={song.albumId ? `/albums/${song.albumId}` : undefined}
           onClick={(e) => e.stopPropagation()}
-          className={`text-sm font-medium hover:underline ${isCurrent && isPlaying ? "text-emerald-400" : "text-white"}`}
+          className={`text-sm font-medium hover:underline ${isCurrent && isPlaying ? "text-accent" : "text-white"}`}
         />
         <MarqueeText
           text={song.artist}
@@ -139,15 +143,11 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={song.title}
+        <TrackInfoModal
+          songId={song.id}
+          fallback={song}
           coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: song.artist },
-            { label: t("album.labelAlbum"), value: song.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(song.duration) },
-          ]}
         />
       )}
     </div>

@@ -14,6 +14,18 @@ export interface DecodedTrack {
 // gapless), au prix d'un redécodage si l'utilisateur revient plus de deux pistes en arrière.
 const MAX_ENTRIES = 3;
 
+// Borne en OCTETS en plus du nombre d'entrées : 3 pistes de 4 min font ~130 Mo de PCM float32,
+// mais 3 mixes d'une heure en 96 kHz dépasseraient 4 Go. Au-delà du budget, on évince les plus
+// anciennes — sans jamais descendre sous MIN_ENTRIES (piste active + suivante planifiée,
+// indispensables au gapless : une piste longue reste lue intégralement, même seule au-dessus
+// du budget).
+const MAX_BYTES = 320 * 1024 * 1024;
+const MIN_ENTRIES = 2;
+
+function sizeOf(track: DecodedTrack): number {
+  return track.buffer.length * track.buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
+}
+
 /** Petit cache LRU en mémoire des pistes déjà décodées + rognées, pour éviter de
  *  redécoder à un retour arrière ou une répétition rapprochée. Volontairement borné :
  *  un AudioBuffer stéréo 44.1kHz de quelques minutes pèse plusieurs dizaines de Mo de
@@ -33,9 +45,12 @@ export class DecodedBufferCache {
   set(key: string, value: DecodedTrack) {
     this.map.delete(key);
     this.map.set(key, value);
-    while (this.map.size > MAX_ENTRIES) {
+    let total = 0;
+    for (const entry of this.map.values()) total += sizeOf(entry);
+    while (this.map.size > MAX_ENTRIES || (total > MAX_BYTES && this.map.size > MIN_ENTRIES)) {
       const oldest = this.map.keys().next().value;
       if (oldest === undefined) break;
+      total -= sizeOf(this.map.get(oldest)!);
       this.map.delete(oldest);
     }
   }

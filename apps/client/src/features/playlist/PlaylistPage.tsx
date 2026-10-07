@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
-import { InfoModal } from "../../components/InfoModal";
+import { PlaylistInfoModal } from "../../components/PlaylistInfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu, type MenuItem } from "../../components/menu/ContextMenu";
 import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuItems";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
@@ -31,6 +32,9 @@ import { useCoverArt } from "../../hooks/useCoverArt";
 import { downloadStore } from "../../lib/downloads/downloadStore";
 import { useTracksDownloadStatus } from "../../lib/downloads/useTracksDownloadStatus";
 import { useDownloadedTrackIds } from "../../lib/downloads/useDownloadedTrackIds";
+import { CoverImage } from "../../components/CoverImage";
+import { PageSkeleton } from "../../components/PageSkeleton";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 const SORT_FIELDS: PlaylistSortBy[] = ["default", "title", "artist", "album"];
 
@@ -146,7 +150,7 @@ export function PlaylistPage() {
   const dominantColor = useDominantColor(cachedHeaderCoverUrl);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !playlist || !client) {
@@ -171,6 +175,8 @@ export function PlaylistPage() {
       album: song.album,
       albumId: song.albumId,
       duration: song.duration,
+      suffix: song.suffix,
+      bitRate: song.bitRate,
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : coverUrl,
@@ -297,14 +303,15 @@ export function PlaylistPage() {
         style={
           dominantColor
             ? {
-                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #171717))`,
+                // Thèmes clairs : couleur de pochette atténuée vers le fond (`--dominant-strength`).
+                backgroundImage: `linear-gradient(to bottom, color-mix(in srgb, ${dominantColor} var(--dominant-strength, 100%), var(--color-neutral-900)), var(--color-neutral-900))`,
               }
             : undefined
         }
       >
         <div className="h-56 w-56 shrink-0 overflow-hidden rounded shadow-2xl">
           {coverUrl ? (
-            <img
+            <CoverImage
               src={coverUrl}
               alt={name}
               className="h-full w-full object-cover"
@@ -326,6 +333,7 @@ export function PlaylistPage() {
           </p>
           <h1 className="mt-2">
             <MarqueeText
+              auto
               text={name}
               className="text-5xl font-black text-white"
             />
@@ -347,23 +355,23 @@ export function PlaylistPage() {
           <>
             <button
               onClick={handlePlayPlaylist}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover"
               title={t("playlist.play")}
             >
               {isThisPlaylistPlaying ? (
-                <Pause size={22} fill="black" className="text-neutral-900" />
+                <Pause size={22} fill="currentColor" className="text-on-accent" />
               ) : (
                 <Play
                   size={22}
-                  fill="black"
-                  className="ml-1 text-neutral-900"
+                  fill="currentColor"
+                  className="ml-1 text-on-accent"
                 />
               )}
             </button>
 
             <button
               onClick={toggleShuffle}
-              className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+              className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
               title={t("playlist.shuffle")}
             >
               <Shuffle size={24} />
@@ -374,7 +382,7 @@ export function PlaylistPage() {
               disabled={downloadStatus === "complete" || downloadStatus === "downloading"}
               className={`transition-colors ${
                 downloadStatus === "complete"
-                  ? "text-emerald-400"
+                  ? "text-accent"
                   : "text-neutral-400 hover:text-white disabled:cursor-default disabled:hover:text-neutral-400"
               }`}
               title={
@@ -479,17 +487,17 @@ export function PlaylistPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[16px_32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[16px_32px_1fr_1fr_72px_96px_64px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
                       dragIndex === index ? "opacity-40" : ""
-                    } ${isSelected ? "bg-neutral-800/70" : ""}`}
+                    } ${isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""}`}
                   >
                     {canReorder &&
                       hoverIndex === index &&
                       dropPosition === "before" && (
-                        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                        <div className="pointer-events-none absolute -top-px left-0 right-0 z-10 h-0.5 bg-accent" />
                       )}
 
-                    <div className="flex items-center justify-center text-emerald-400" title={downloadedTrackIds.has(song.id) ? t("playlist.downloaded") : undefined}>
+                    <div className="flex items-center justify-center text-accent" title={downloadedTrackIds.has(song.id) ? t("playlist.downloaded") : undefined}>
                       {downloadedTrackIds.has(song.id) && <Download size={12} />}
                     </div>
 
@@ -497,7 +505,7 @@ export function PlaylistPage() {
                       {isCurrent && isPlaying ? (
                         <Pause
                           size={14}
-                          className="text-emerald-400"
+                          className="text-accent"
                           fill="currentColor"
                         />
                       ) : canReorder ? (
@@ -528,7 +536,7 @@ export function PlaylistPage() {
                       <MarqueeText
                         text={song.title}
                         draggable={false}
-                        className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                        className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
                       />
                       <MarqueeText
                         text={song.artist}
@@ -575,7 +583,7 @@ export function PlaylistPage() {
                     {canReorder &&
                       hoverIndex === index &&
                       dropPosition === "after" && (
-                        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-emerald-500" />
+                        <div className="pointer-events-none absolute -bottom-px left-0 right-0 z-10 h-0.5 bg-accent" />
                       )}
                   </div>
                 );
@@ -632,48 +640,15 @@ export function PlaylistPage() {
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={name}
-          coverUrl={coverUrl}
-          onClose={() => setInfoOpen(false)}
-          rows={[
-            ...(playlist.owner
-              ? [{ label: t("playlist.owner"), value: playlist.owner }]
-              : []),
-            {
-              label: t("playlist.trackCount", { count: playlist.songCount }),
-              value: formatAlbumDuration(playlist.duration, t),
-            },
-            ...(playlist.comment
-              ? [
-                  {
-                    label: t("playlists.descriptionLabel"),
-                    value: playlist.comment,
-                  },
-                ]
-              : []),
-          ]}
-        />
+        <PlaylistInfoModal playlist={{ ...playlist, name }} coverUrl={coverUrl} onClose={() => setInfoOpen(false)} />
       )}
 
       {rowInfoOpen && activeRowSong && (
-        <InfoModal
-          title={activeRowSong.title}
-          coverUrl={
-            activeRowSong.coverArt
-              ? client.getCoverArtUrl(activeRowSong.coverArt, 300)
-              : coverUrl
-          }
+        <TrackInfoModal
+          songId={activeRowSong.id}
+          fallback={activeRowSong}
+          coverUrl={activeRowSong.coverArt ? client.getCoverArtUrl(activeRowSong.coverArt, 300) : coverUrl}
           onClose={() => setRowInfoOpen(false)}
-          rows={[
-            { label: t("playlist.columnTitle"), value: activeRowSong.title },
-            { label: t("search.artistLabel"), value: activeRowSong.artist },
-            { label: t("album.labelAlbum"), value: activeRowSong.album },
-            {
-              label: t("playlist.columnDuration"),
-              value: formatTrackDuration(activeRowSong.duration),
-            },
-          ]}
         />
       )}
 
@@ -695,6 +670,7 @@ export function PlaylistPage() {
           onCancel={() => setDeleteOpen(false)}
           onConfirm={async () => {
             await client.deletePlaylist(playlist.id);
+            emitPlaylistsChanged();
             navigate("/");
           }}
         />

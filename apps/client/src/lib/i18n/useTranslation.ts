@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { I18nContext } from "./I18nContext";
+import { I18nContext } from "./context";
 
 export function useTranslation() {
   const context = useContext(I18nContext);

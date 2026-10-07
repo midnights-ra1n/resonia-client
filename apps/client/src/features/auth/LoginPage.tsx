@@ -1,8 +1,8 @@
-import { SubsonicClient } from "@resonia/api-client";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "../../lib/i18n";
-import { useServersStore } from "../../stores/serversStore";
-import { encryptPassword } from "../../lib/security/passwordVault";
+import { authenticateServer } from "../../lib/subsonic/authenticateServer";
+import { pickAvatarColor, useServersStore } from "../../stores/serversStore";
+import LogoFull from "../../assets/Logo_full.svg?react";
 
 export function LoginPage() {
   const addServer = useServersStore((s) => s.addServer);
@@ -20,18 +20,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const client = new SubsonicClient({ url: serverUrl, username, password });
-      await client.ping();
-
-      const encryptedPassword = await encryptPassword(password);
+      const session = await authenticateServer(serverUrl, username, password);
 
       await addServer({
         id: crypto.randomUUID(),
         name: new URL(serverUrl).hostname,
-        url: serverUrl,
-        username,
-        ...client.credentials,
-        encryptedPassword,
+        ...session,
+        avatarColor: pickAvatarColor(),
         createdAt: Date.now(),
       });
     } catch (err) {
@@ -45,10 +40,9 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-neutral-900 p-8 shadow-xl">
 
-        <div className="flex justify-center items-center">
-          {/* Voir Sidebar.tsx : `import.meta.env.BASE_URL`, jamais un chemin racine en dur —
-              casse sous Electron empaqueté (chargé via `file://`, base relative). */}
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="Description" className="w-48" />
+        <div className="flex justify-center items-center pb-2">
+          {/* Même logo complet que la sidebar (SVG intégré au bundle, voir Sidebar.tsx). */}
+          <LogoFull role="img" aria-label="Resonia" className="h-12 w-auto text-text-1" />
         </div>
 
         <h1 className="text-2xl font-bold text-white text-center">{t("auth.login.title")}</h1>
@@ -61,7 +55,7 @@ export function LoginPage() {
             placeholder={t("auth.login.serverUrlPlaceholder")}
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -72,7 +66,7 @@ export function LoginPage() {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -83,7 +77,7 @@ export function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -92,7 +86,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-full bg-emerald-500 py-2.5 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+          className="w-full rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover disabled:opacity-50"
         >
           {loading ? t("auth.login.submitting") : t("auth.login.submit")}
         </button>
@@ -104,7 +98,7 @@ export function LoginPage() {
               key={l}
               type="button"
               onClick={() => setLocale(l)}
-              className={l === locale ? "font-semibold text-emerald-400" : "hover:text-neutral-300"}
+              className={l === locale ? "font-semibold text-accent" : "hover:text-neutral-300"}
             >
               {l.toUpperCase()}
             </button>

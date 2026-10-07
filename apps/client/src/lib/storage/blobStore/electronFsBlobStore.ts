@@ -1,6 +1,8 @@
 import { DesktopBaseDir } from "./baseDirectory";
 import type { BlobStore, BlobWriter } from "./types";
 
+let nextDownloadId = 1;
+
 // Même contrainte que côté OPFS : caractères réservés sur certains systèmes de fichiers.
 function safeName(key: string): string {
   return key.replace(/[:/\\]/g, "_");
@@ -59,8 +61,36 @@ export function createElectronFsBlobStore(rootDir: string, baseDir: DesktopBaseD
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     },
 
+    async readAsBlob(key, type) {
+      // Pas de fichier adossé au disque côté renderer (lecture via IPC) : copie en mémoire,
+      // que l'appelant DOIT libérer (URL.revokeObjectURL) dès que la piste n'est plus lue.
+      const bytes = await bridge().blobStore.readFile(baseDir, pathFor(key));
+      return bytes && bytes.byteLength > 0 ? new Blob([bytes as Uint8Array<ArrayBuffer>], { type }) : null;
+    },
+
     async deleteFile(key) {
       await bridge().blobStore.remove(baseDir, pathFor(key));
+    },
+
+    async download(key, url, from, signal, handlers, suspension, options) {
+      const api = bridge();
+      const id = nextDownloadId++;
+      const unsubscribe = api.downloads.onProgress((eventId, bytes, total, received) => {
+        if (eventId === id) handlers.onProgress(bytes, total, received);
+      });
+      const onAbort = () => api.downloads.abort(id);
+      signal.addEventListener("abort", onAbort, { once: true });
+      // Envoyé AVANT `run` (messages IPC ordonnés) : un téléchargement suspendu dès le départ
+      // n'ouvre aucune connexion.
+      if (suspension?.suspended) api.downloads.suspend(id, true);
+      const unsubscribeSuspension = suspension?.onChange((suspended) => api.downloads.suspend(id, suspended));
+      try {
+        return await api.downloads.run(id, { baseDir, path: pathFor(key), url, from, maxSegments: options?.maxSegments });
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+        unsubscribeSuspension?.();
+        unsubscribe();
+      }
     },
   };
 }

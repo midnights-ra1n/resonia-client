@@ -5,6 +5,9 @@ node_modules/
 # Build outputs
 dist/
 build/
+# Ressources d'empaquetage desktop (icônes, métadonnées AppStream) : SOURCES, pas des sorties de
+# build — à versionner, sinon le CI de release empaquette l'app sans icône.
+!apps/client/build/
 
 # Env
 .env

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ClockCounterClockwise, Pulse, Radio, X } from "../../../components/icons";
+import { Check, ClockCounterClockwise, Copy, Pulse, Radio, X } from "../../../components/icons";
+import { useTranslation } from "../../../lib/i18n";
 import { usePlayerStore } from "../../../stores/playerStore";
 import { cacheStore } from "../../../lib/audio/cache/cacheStore";
 import {
+  formatDebugLog,
   getBandwidthHistory,
   onDebugReset,
   resetDebugStats,
@@ -143,7 +145,7 @@ function LiveChunkStrip({ events, trackId }: { events: DebugLogEntry[]; trackId:
               <div
                 key={e.id}
                 title={`${formatBytes(bytes)} @ offset ${e.data.rangeStart}`}
-                className={`w-1.5 shrink-0 rounded-sm transition-colors ${isLast ? "animate-pulse bg-emerald-400" : "bg-emerald-600/60"}`}
+                className={`w-1.5 shrink-0 rounded-sm transition-colors ${isLast ? "animate-pulse bg-accent-hover" : "bg-accent-pressed/60"}`}
                 style={{ height: `${Math.max(15, (bytes / maxBytes) * 100)}%` }}
               />
             );
@@ -217,8 +219,8 @@ function NetworkTab() {
         </div>
         <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${
-              cachePercent >= 95 ? "bg-red-500" : cachePercent >= 80 ? "bg-amber-500" : "bg-emerald-500"
+            className={`h-full rounded-full transition-[width] duration-300 ${
+              cachePercent >= 95 ? "bg-red-500" : cachePercent >= 80 ? "bg-amber-500" : "bg-accent"
             }`}
             style={{ width: `${cachePercent}%` }}
           />
@@ -240,7 +242,7 @@ function NetworkTab() {
                 </div>
                 <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-neutral-800">
                   <div
-                    className={`h-full rounded-full ${t.error ? "bg-red-500" : t.protected ? "bg-emerald-500" : "bg-neutral-500"}`}
+                    className={`h-full rounded-full ${t.error ? "bg-red-500" : t.protected ? "bg-accent" : "bg-neutral-500"}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -304,7 +306,7 @@ function Stat({ label, value, tone, live }: { label: string; value: string; tone
   return (
     <div className="rounded-md bg-neutral-800/60 px-2 py-1.5">
       <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-neutral-500">
-        {live && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />}
+        {live && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-hover" />}
         {label}
       </div>
       <div className={`text-sm font-semibold tabular-nums ${tone === "warn" ? "text-amber-400" : "text-white"}`}>
@@ -319,17 +321,36 @@ export function DebugPanel() {
   const toggleDebugPanel = usePlayerStore((s) => s.toggleDebugPanel);
   const [tab, setTab] = useState<Tab>("network");
   const history = useBandwidthHistory();
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLog = () => {
+    navigator.clipboard
+      .writeText(formatDebugLog())
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch((err) => console.warn("[debug] Copie du journal impossible", err));
+  };
 
   if (!showDebugPanel) return null;
 
   return (
-    <div className="fixed bottom-24 right-4 z-40 flex w-80 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/95 shadow-2xl backdrop-blur-sm">
+    <div className="fixed bottom-[100px] right-6 z-40 flex w-80 flex-col overflow-hidden rounded-panel border border-white/5 bg-surface-2 shadow-e2">
       <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-3 py-2">
         <div className="flex items-center gap-1.5">
           <TabButton icon={<Radio size={12} />} label="Network" active={tab === "network"} onClick={() => setTab("network")} />
           <TabButton icon={<Pulse size={12} />} label="Decode" active={tab === "decode"} onClick={() => setTab("decode")} />
         </div>
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleCopyLog}
+            className="text-neutral-500 transition-colors hover:text-white"
+            title={copied ? t("debug.logCopied") : t("debug.copyLog")}
+          >
+            {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
+          </button>
           <button onClick={resetDebugStats} className="text-neutral-500 transition-colors hover:text-white" title="Reset stats">
             <ClockCounterClockwise size={13} />
           </button>

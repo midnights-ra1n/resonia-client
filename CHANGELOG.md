@@ -18,6 +18,11 @@ this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 
 ## 1.0.0-beta.5
 - Fixed missing app description and infinite loading in KDE Discover / GNOME Software for the .deb and .rpm packages (added AppStream metadata)
+- New UI (themes, custom fonts, progress bar waveform, new pages layout)
+- Improved Web Audio API
+- Added Spotify API optional support
+- Added more details on song properties
+- Added waveform
 
 ## 1.0.0-beta.4
 - re-release of beta 4

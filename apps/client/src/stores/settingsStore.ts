@@ -9,18 +9,28 @@ import { storage } from "../lib/storage";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
 import { setCoverCacheMaxBytes } from "../lib/image/coverCache";
 import { setAudioDebugEnabled } from "../lib/audio/debug/audioDebugLogger";
+import { decryptPassword, encryptPassword, type EncryptedPassword } from "../lib/security/passwordVault";
 
 export type PlaylistSortBy = "default" | "title" | "artist" | "album";
 export type PlaylistSortDirection = "asc" | "desc";
+/** Source des métadonnées Spotify de la page artiste. "off" (défaut) : aucune requête ne part
+ *  vers Spotify. "official" : API Web avec le Client ID/Secret de l'utilisateur. "unofficial" :
+ *  API privée du lecteur web (approche SpotAPI), bureau uniquement. */
+export type SpotifyMetadataMode = "off" | "official" | "unofficial";
 
 interface SettingsState {
   audioQualityId: string;
   lastfmApiKey: string;
+  spotifyMetadataMode: SpotifyMetadataMode;
+  spotifyClientId: string;
+  spotifyClientSecret: string;
   animatedArtworkBaseUrl: string;
   cacheMaxBytes: number;
   playlistSortBy: PlaylistSortBy;
   playlistSortDirection: PlaylistSortDirection;
   devModeEnabled: boolean;
+  /** Forme d'onde dans la barre de lecture (voir lib/audio/waveform). */
+  showWaveform: boolean;
   checkUpdatesOnLaunch: boolean;
   betaUpdatesEnabled: boolean;
   /** Version que l'utilisateur a explicitement choisi de reporter ("Plus tard" dans la pop-up
@@ -31,6 +41,8 @@ interface SettingsState {
   hydrate: () => Promise<void>;
   setAudioQuality: (id: string) => Promise<void>;
   setLastfmApiKey: (key: string) => Promise<void>;
+  setSpotifyMetadataMode: (mode: SpotifyMetadataMode) => Promise<void>;
+  setSpotifyCredentials: (clientId: string, clientSecret: string) => Promise<void>;
   setAnimatedArtworkBaseUrl: (url: string) => Promise<void>;
   setCacheMaxBytes: (bytes: number) => Promise<void>;
   setPlaylistSort: (
@@ -38,6 +50,7 @@ interface SettingsState {
     direction: PlaylistSortDirection,
   ) => Promise<void>;
   setDevModeEnabled: (enabled: boolean) => Promise<void>;
+  setShowWaveform: (enabled: boolean) => Promise<void>;
   setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
   setBetaUpdatesEnabled: (enabled: boolean) => Promise<void>;
   setDismissedUpdateVersion: (version: string | null) => Promise<void>;
@@ -45,6 +58,10 @@ interface SettingsState {
 
 const STORAGE_KEY = "resonia:settings:audioQuality";
 const LASTFM_API_KEY_STORAGE_KEY = "resonia:settings:lastfmApiKey";
+const SPOTIFY_MODE_STORAGE_KEY = "resonia:settings:spotifyMetadataMode";
+const SPOTIFY_CLIENT_ID_STORAGE_KEY = "resonia:settings:spotifyClientId";
+// Chiffré (AES-GCM, voir passwordVault) : jamais de secret en clair dans le stockage.
+const SPOTIFY_CLIENT_SECRET_STORAGE_KEY = "resonia:settings:spotifyClientSecret";
 const ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY =
   "resonia:settings:animatedArtworkBaseUrl";
 const CACHE_MAX_BYTES_STORAGE_KEY = "resonia:settings:cacheMaxBytes";
@@ -52,6 +69,7 @@ const PLAYLIST_SORT_BY_STORAGE_KEY = "resonia:settings:playlistSortBy";
 const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
 const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
+const SHOW_WAVEFORM_STORAGE_KEY = "resonia:settings:showWaveform";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
   "resonia:settings:checkUpdatesOnLaunch";
 const BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
@@ -84,19 +102,28 @@ function applyCacheMaxBytes(totalBytes: number) {
   setCoverCacheMaxBytes(coverBytes);
 }
 
+function isSpotifyMode(value: unknown): value is SpotifyMetadataMode {
+  return value === "off" || value === "official" || value === "unofficial";
+}
+
 export const useSettingsStore = create<SettingsState>((set) => ({
   audioQualityId: DEFAULT_QUALITY_ID,
   lastfmApiKey: "",
+  spotifyMetadataMode: "off",
+  spotifyClientId: "",
+  spotifyClientSecret: "",
   animatedArtworkBaseUrl: "",
   cacheMaxBytes: DEFAULT_CACHE_MAX_BYTES,
   playlistSortBy: "default",
   playlistSortDirection: "asc",
   devModeEnabled: false,
+  showWaveform: false,
   checkUpdatesOnLaunch: true,
   betaUpdatesEnabled: false,
   dismissedUpdateVersion: null,
   hydrated: false,
 
+  // Lecture SYNCHRONE, appelée dans main.tsx avant le premier rendu (voir serversStore.hydrate).
   hydrate: async () => {
     const [
       stored,
@@ -109,18 +136,26 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       checkUpdatesOnLaunch,
       betaUpdatesEnabled,
       dismissedUpdateVersion,
-    ] = await Promise.all([
-      storage.get<string>(STORAGE_KEY),
-      storage.get<string>(LASTFM_API_KEY_STORAGE_KEY),
-      storage.get<string>(ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY),
-      storage.get<number>(CACHE_MAX_BYTES_STORAGE_KEY),
-      storage.get<PlaylistSortBy>(PLAYLIST_SORT_BY_STORAGE_KEY),
-      storage.get<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
-      storage.get<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
-      storage.get<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
-      storage.get<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
-      storage.get<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
-    ]);
+      spotifyMode,
+      spotifyClientId,
+      spotifyClientSecret,
+      showWaveform,
+    ] = [
+      storage.getSync<string>(STORAGE_KEY),
+      storage.getSync<string>(LASTFM_API_KEY_STORAGE_KEY),
+      storage.getSync<string>(ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY),
+      storage.getSync<number>(CACHE_MAX_BYTES_STORAGE_KEY),
+      storage.getSync<PlaylistSortBy>(PLAYLIST_SORT_BY_STORAGE_KEY),
+      storage.getSync<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
+      storage.getSync<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
+      storage.getSync<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
+      storage.getSync<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
+      storage.getSync<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
+      storage.getSync<string>(SPOTIFY_MODE_STORAGE_KEY),
+      storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
+      storage.getSync<EncryptedPassword>(SPOTIFY_CLIENT_SECRET_STORAGE_KEY),
+      storage.getSync<boolean>(SHOW_WAVEFORM_STORAGE_KEY),
+    ] as const;
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
     // If the stored quality is no longer available on this platform
@@ -139,11 +174,21 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortBy: playlistSortBy ?? "default",
       playlistSortDirection: playlistSortDirection ?? "asc",
       devModeEnabled: devModeEnabled ?? false,
+      showWaveform: showWaveform ?? false,
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
       betaUpdatesEnabled: betaUpdatesEnabled ?? false,
       dismissedUpdateVersion: dismissedUpdateVersion ?? null,
+      spotifyMetadataMode: isSpotifyMode(spotifyMode) ? spotifyMode : "off",
+      spotifyClientId: spotifyClientId ?? "",
       hydrated: true,
     });
+
+    // Déchiffrement asynchrone, après le premier rendu : seule la page artiste en a besoin.
+    if (spotifyClientSecret) {
+      decryptPassword(spotifyClientSecret)
+        .then((secret) => set({ spotifyClientSecret: secret }))
+        .catch((err) => console.warn("[settings] Secret Spotify illisible", err));
+    }
   },
 
   setAudioQuality: async (id) => {
@@ -155,6 +200,20 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setLastfmApiKey: async (key) => {
     await storage.set(LASTFM_API_KEY_STORAGE_KEY, key);
     set({ lastfmApiKey: key });
+  },
+
+  setSpotifyMetadataMode: async (mode) => {
+    await storage.set(SPOTIFY_MODE_STORAGE_KEY, mode);
+    set({ spotifyMetadataMode: mode });
+  },
+
+  setSpotifyCredentials: async (clientId, clientSecret) => {
+    const id = clientId.trim();
+    const secret = clientSecret.trim();
+    await storage.set(SPOTIFY_CLIENT_ID_STORAGE_KEY, id);
+    if (secret) await storage.set(SPOTIFY_CLIENT_SECRET_STORAGE_KEY, await encryptPassword(secret));
+    else await storage.remove(SPOTIFY_CLIENT_SECRET_STORAGE_KEY);
+    set({ spotifyClientId: id, spotifyClientSecret: secret });
   },
 
   setAnimatedArtworkBaseUrl: async (url) => {
@@ -182,6 +241,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     await storage.set(DEV_MODE_ENABLED_STORAGE_KEY, enabled);
     setAudioDebugEnabled(enabled);
     set({ devModeEnabled: enabled });
+  },
+
+  setShowWaveform: async (enabled) => {
+    await storage.set(SHOW_WAVEFORM_STORAGE_KEY, enabled);
+    set({ showWaveform: enabled });
   },
 
   setCheckUpdatesOnLaunch: async (enabled) => {

@@ -35,6 +35,10 @@ export interface AlbumSummary {
   genre?: string;
   copyright?: string;
   recordLabels?: RecordLabel[];
+  /** OpenSubsonic : types de parution issus des tags MusicBrainz ("album", "single", "ep",
+   *  "compilation", "live"...), casse variable selon le serveur. */
+  releaseTypes?: string[];
+  isCompilation?: boolean;
 }
 
 export interface ArtistWithAlbumsDTO {
@@ -43,6 +47,21 @@ export interface ArtistWithAlbumsDTO {
   albumCount: number;
   coverArt?: string;
   album?: AlbumSummary[];
+  /** Présent (date ISO) si l'artiste est marqué favori sur le serveur. */
+  starred?: string;
+  musicBrainzId?: string;
+}
+
+/** `getArtistInfo2` : biographie et liens (Navidrome les obtient de Last.fm côté serveur), et
+ *  artistes similaires présents dans la bibliothèque. */
+export interface ArtistInfo2DTO {
+  biography?: string;
+  musicBrainzId?: string;
+  lastFmUrl?: string;
+  smallImageUrl?: string;
+  mediumImageUrl?: string;
+  largeImageUrl?: string;
+  similarArtist?: ArtistSummary[];
 }
 
 export interface ArtistSummary {
@@ -81,6 +100,79 @@ export interface AlbumWithSongsDTO extends AlbumSummary {
   song: SongDTO[];
 }
 
+/** Artiste référencé par une fiche OpenSubsonic (crédits, artistes multiples). */
+export interface ArtistRefDTO {
+  id: string;
+  name: string;
+}
+
+/** Crédit OpenSubsonic (`contributors`) : rôle normalisé par le serveur — Navidrome expose
+ *  notamment "composer", "lyricist", "producer", "arranger", "conductor", "engineer", "mixer",
+ *  "remixer", "djmixer", "director" et "performer" (avec l'instrument en `subRole`). */
+export interface ContributorDTO {
+  role: string;
+  subRole?: string;
+  artist: ArtistRefDTO;
+}
+
+export interface ReplayGainDTO {
+  trackGain?: number;
+  albumGain?: number;
+  trackPeak?: number;
+  albumPeak?: number;
+}
+
+export interface ItemDateDTO {
+  year?: number;
+  month?: number;
+  day?: number;
+}
+
+/** Fiche complète d'un titre (`getSong`) : champs Subsonic de base + extensions OpenSubsonic,
+ *  tous optionnels — un serveur Subsonic classique n'en renvoie qu'une partie. */
+export interface SongDetailsDTO extends SongDTO {
+  discNumber?: number;
+  genre?: string;
+  genres?: { name: string }[];
+  size?: number;
+  contentType?: string;
+  path?: string;
+  created?: string;
+  played?: string;
+  userRating?: number;
+  bpm?: number;
+  comment?: string;
+  samplingRate?: number;
+  bitDepth?: number;
+  channelCount?: number;
+  musicBrainzId?: string;
+  isrc?: string[];
+  replayGain?: ReplayGainDTO;
+  displayArtist?: string;
+  displayAlbumArtist?: string;
+  displayComposer?: string;
+  artists?: ArtistRefDTO[];
+  albumArtists?: ArtistRefDTO[];
+  contributors?: ContributorDTO[];
+  explicitStatus?: string;
+}
+
+/** Fiche complète d'un album (`getAlbum`) avec extensions OpenSubsonic. */
+export interface AlbumDetailsDTO extends AlbumSummary {
+  song: SongDetailsDTO[];
+  genres?: { name: string }[];
+  created?: string;
+  played?: string;
+  userRating?: number;
+  releaseTypes?: string[];
+  originalReleaseDate?: ItemDateDTO;
+  releaseDate?: ItemDateDTO;
+  isCompilation?: boolean;
+  musicBrainzId?: string;
+  displayArtist?: string;
+  version?: string;
+}
+
 export interface PlaylistSummary {
   id: string;
   name: string;
@@ -90,6 +182,8 @@ export interface PlaylistSummary {
   songCount: number;
   duration: number;
   coverArt?: string;
+  created?: string;
+  changed?: string;
 }
 
 export interface PlaylistWithSongsDTO extends PlaylistSummary {

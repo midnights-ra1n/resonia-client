@@ -17,13 +17,15 @@ import { useAnimatedAlbumCover } from "./useAnimatedAlbumCover";
 import { AnimatedAlbumCoverVideo } from "./AnimatedAlbumCoverVideo";
 import { useEffect, useState } from "react";
 import { getNativeClientForServer } from "../../lib/subsonic/getNativeClientForServer";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useTrackListSelection } from "../../hooks/useTrackListSelection";
 import { useDominantColor } from "../../hooks/useDominantColor";
 import { useCoverArt } from "../../hooks/useCoverArt";
+import { CoverImage } from "../../components/CoverImage";
+import { PageSkeleton } from "../../components/PageSkeleton";
 
 function formatTrackDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -124,7 +126,7 @@ export function AlbumPage() {
   const dominantColor = useDominantColor(cachedHeaderCoverUrl);
 
   if (loading) {
-    return <div className="p-8 text-neutral-400">{t("common.loading")}</div>;
+    return <PageSkeleton />;
   }
 
   if (error || !album || !client) {
@@ -148,6 +150,8 @@ export function AlbumPage() {
       album: song.album,
       albumId: album!.id,
       duration: song.duration,
+      suffix: song.suffix,
+      bitRate: song.bitRate,
       coverUrl: song.coverArt
         ? client!.getCoverArtUrl(song.coverArt, 300)
         : coverUrl,
@@ -200,7 +204,8 @@ export function AlbumPage() {
         style={
           dominantColor
             ? {
-                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #171717))`,
+                // Thèmes clairs : couleur de pochette atténuée vers le fond (`--dominant-strength`).
+                backgroundImage: `linear-gradient(to bottom, color-mix(in srgb, ${dominantColor} var(--dominant-strength, 100%), var(--color-neutral-900)), var(--color-neutral-900))`,
               }
             : undefined
         }
@@ -211,7 +216,7 @@ export function AlbumPage() {
              à montrer en cas de souci de lecture, aussi bref soit-il — pas de bascule d'un
              élément à l'autre à surveiller, juste la vraie pochette en permanence. */}
           {coverUrl ? (
-            <img
+            <CoverImage
               src={coverUrl}
               alt={album.name}
               className="h-full w-full object-cover"
@@ -236,6 +241,7 @@ export function AlbumPage() {
           </p>
           <h1 className="mt-2">
             <MarqueeText
+              auto
               text={album.name}
               className="text-5xl font-black text-white"
             />
@@ -261,19 +267,19 @@ export function AlbumPage() {
       <div className="flex items-center gap-6 bg-neutral-900/40 px-8 py-6 mb-6">
         <button
           onClick={handlePlayAlbum}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg transition hover:scale-105 hover:bg-emerald-400"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-accent shadow-play transition hover:scale-105 hover:bg-accent-hover"
           title={t("album.play")}
         >
           {isThisAlbumPlaying ? (
-            <Pause size={22} fill="black" className="text-neutral-900" />
+            <Pause size={22} fill="currentColor" className="text-on-accent" />
           ) : (
-            <Play size={22} fill="black" className="ml-1 text-neutral-900" />
+            <Play size={22} fill="currentColor" className="ml-1 text-on-accent" />
           )}
         </button>
 
         <button
           onClick={handleShuffleToggle}
-          className={`transition-colors ${isShuffle ? "text-emerald-400" : "text-neutral-400 hover:text-white"}`}
+          className={`transition-colors ${isShuffle ? "text-accent" : "text-neutral-400 hover:text-white"}`}
           title={t("album.shuffle")}
         >
           <Shuffle size={24} />
@@ -284,7 +290,7 @@ export function AlbumPage() {
           disabled={downloadStatus === "complete" || downloadStatus === "downloading"}
           className={`transition-colors ${
             downloadStatus === "complete"
-              ? "text-emerald-400"
+              ? "text-accent"
               : "text-neutral-400 hover:text-white disabled:cursor-default disabled:hover:text-neutral-400"
           }`}
           title={downloadStatus === "complete" ? t("album.downloaded") : downloadStatus === "downloading" ? t("album.downloading") : t("album.download")}
@@ -329,11 +335,11 @@ export function AlbumPage() {
                   setActiveSongId(song.id);
                   rowMenu.handleContextMenu(e);
                 }}
-                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-neutral-800/60 ${
-                  isSelected ? "bg-neutral-800/70" : ""
+                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
+                  isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""
                 }`}
               >
-                <div className="flex items-center justify-center text-emerald-400" title={downloadedTrackIds.has(song.id) ? t("album.downloaded") : undefined}>
+                <div className="flex items-center justify-center text-accent" title={downloadedTrackIds.has(song.id) ? t("album.downloaded") : undefined}>
                   {downloadedTrackIds.has(song.id) && <Download size={12} />}
                 </div>
 
@@ -341,7 +347,7 @@ export function AlbumPage() {
                   {isCurrent && isPlaying ? (
                     <Pause
                       size={14}
-                      className="text-emerald-400"
+                      className="text-accent"
                       fill="currentColor"
                     />
                   ) : (
@@ -359,7 +365,7 @@ export function AlbumPage() {
                 <div className="min-w-0">
                   <MarqueeText
                     text={song.title}
-                    className={`text-sm ${isCurrent ? "text-emerald-400" : "text-white"}`}
+                    className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
                   />
                   {song.artist !== album.artist && (
                     <MarqueeText
@@ -444,22 +450,11 @@ export function AlbumPage() {
           const activeSong = album.song.find((s) => s.id === activeSongId);
           if (!activeSong) return null;
           return (
-            <InfoModal
-              title={activeSong.title}
-              coverUrl={
-                activeSong.coverArt
-                  ? client!.getCoverArtUrl(activeSong.coverArt, 300)
-                  : coverUrl
-              }
+            <TrackInfoModal
+              songId={activeSong.id}
+              fallback={activeSong}
+              coverUrl={activeSong.coverArt ? client!.getCoverArtUrl(activeSong.coverArt, 300) : coverUrl}
               onClose={() => setRowInfoOpen(false)}
-              rows={[
-                { label: t("search.artistLabel"), value: activeSong.artist },
-                { label: t("album.labelAlbum"), value: activeSong.album },
-                {
-                  label: t("album.columnDuration"),
-                  value: formatTrackDuration(activeSong.duration),
-                },
-              ]}
             />
           );
         })()}

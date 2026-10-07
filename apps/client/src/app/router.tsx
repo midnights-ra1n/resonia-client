@@ -2,23 +2,39 @@ import { lazy, Suspense } from "react";
 import { createBrowserRouter, createHashRouter } from "react-router-dom";
 import { AppLayout } from "./layout/AppLayout";
 
-const HomePage = lazy(() => import("../features/home/HomePage").then((m) => ({ default: m.HomePage })));
-const StatsPage = lazy(() => import("../features/stats/StatsPage").then((m) => ({ default: m.StatsPage })));
-const DownloadsPage = lazy(() =>
-  import("../features/downloads/DownloadsPage").then((m) => ({ default: m.DownloadsPage })),
-);
-const SettingsPage = lazy(() =>
-  import("../features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })),
-);
-const SearchPage = lazy(() => import("../features/search/SearchPage").then((m) => ({ default: m.SearchPage })));
-const FavoritesPage = lazy(() =>
-  import("../features/favorites/FavoritesPage").then((m) => ({ default: m.FavoritesPage })),
-);
-const AlbumPage = lazy(() => import("../features/album/AlbumPage").then((m) => ({ default: m.AlbumPage })));
-const ArtistPage = lazy(() => import("../features/artist/ArtistPage").then((m) => ({ default: m.ArtistPage })));
-const PlaylistPage = lazy(() =>
-  import("../features/playlist/PlaylistPage").then((m) => ({ default: m.PlaylistPage })),
-);
+// Chargeurs des pages, partagés entre `lazy()` et `preloadRoutes()`.
+const loadHome = () => import("../features/home/HomePage").then((m) => ({ default: m.HomePage }));
+const loadStats = () => import("../features/stats/StatsPage").then((m) => ({ default: m.StatsPage }));
+const loadDownloads = () => import("../features/downloads/DownloadsPage").then((m) => ({ default: m.DownloadsPage }));
+const loadSettings = () => import("../features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage }));
+const loadSearch = () => import("../features/search/SearchPage").then((m) => ({ default: m.SearchPage }));
+const loadFavorites = () => import("../features/favorites/FavoritesPage").then((m) => ({ default: m.FavoritesPage }));
+const loadAlbum = () => import("../features/album/AlbumPage").then((m) => ({ default: m.AlbumPage }));
+const loadArtist = () => import("../features/artist/ArtistPage").then((m) => ({ default: m.ArtistPage }));
+const loadPlaylist = () => import("../features/playlist/PlaylistPage").then((m) => ({ default: m.PlaylistPage }));
+
+const HomePage = lazy(loadHome);
+const StatsPage = lazy(loadStats);
+const DownloadsPage = lazy(loadDownloads);
+const SettingsPage = lazy(loadSettings);
+const SearchPage = lazy(loadSearch);
+const FavoritesPage = lazy(loadFavorites);
+const AlbumPage = lazy(loadAlbum);
+const ArtistPage = lazy(loadArtist);
+const PlaylistPage = lazy(loadPlaylist);
+
+/** Charge en arrière-plan le code de toutes les pages, une fois l'app affichée et le navigateur
+ *  inactif : la première ouverture de chaque page est ensuite instantanée (aucun aller-retour
+ *  réseau ou disque au clic). Quelques centaines de Ko, une seule fois par lancement. */
+export function preloadRoutes(): void {
+  const run = () => {
+    for (const load of [loadAlbum, loadPlaylist, loadArtist, loadSearch, loadFavorites, loadSettings, loadDownloads, loadStats]) {
+      load().catch(() => {});
+    }
+  };
+  if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 4000 });
+  else setTimeout(run, 1500);
+}
 
 // Suspense minimal (pas de spinner) : les pages sont sur la même route déjà rendue par
 // AppLayout (sidebar, player bar...), un fallback visible créerait un flash inutile sur

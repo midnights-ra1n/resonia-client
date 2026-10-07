@@ -1,7 +1,8 @@
 import { storage } from "../../storage";
-import { TrackDownloader, type ChunkListener } from "./trackDownloader";
+import { TrackDownloader } from "./trackDownloader";
 import { cacheKeyFor, type CacheEntryMeta, type DownloadPriority, type ProgressListener } from "./types";
 import { audioCacheBlobStore, opfsDelete, opfsReadAll } from "./opfsStore";
+import { isElectron } from "../../platform";
 
 // Ancien format (un seul tableau sous une seule clé) — encore lu pour migrer les installations
 // existantes vers le format par-entrée ci-dessous, jamais plus écrit (voir `loadMeta`).
@@ -20,6 +21,12 @@ const META_ENTRY_PREFIX = "resonia:cache:meta:entry:";
 function metaEntryKey(key: string): string {
   return `${META_ENTRY_PREFIX}${key}`;
 }
+
+// Purge unique du cache audio de bureau : avant le correctif de reprise (voir
+// TrackDownloader.resumePosition), un téléchargement en plages parallèles interrompu pouvait être
+// repris au mauvais octet et marqué complet avec des trous — fichiers corrompus indiscernables
+// des autres. Le cache n'est qu'une copie : on le vide une fois plutôt que de les garder.
+const SPARSE_RESUME_PURGE_KEY = "resonia:cache:purged:sparse-resume-v1";
 
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 Go
 
@@ -41,6 +48,8 @@ class CacheStore {
   // celles-ci sont réécrites, jamais l'intégralité du cache.
   private dirtyKeys = new Set<string>();
   private indexDirty = false;
+  // Attentes de complétion par clé (voir waitForComplete), résolues par `touch`.
+  private completionWaiters = new Map<string, Set<() => void>>();
 
   setMaxBytes(bytes: number) {
     this.maxBytes = bytes;
@@ -91,6 +100,14 @@ class CacheStore {
             await storage.set(META_INDEX_KEY, legacy.map((e) => e.key));
             await storage.remove(LEGACY_META_KEY);
           }
+        }
+
+        if (isElectron() && !(await storage.get<boolean>(SPARSE_RESUME_PURGE_KEY))) {
+          const keys = Array.from(map.keys());
+          await Promise.all(keys.map((k) => opfsDelete(k).catch(() => {})));
+          await Promise.all([storage.set(META_INDEX_KEY, []), ...keys.map((k) => storage.remove(metaEntryKey(k)))]);
+          await storage.set(SPARSE_RESUME_PURGE_KEY, true);
+          map = new Map();
         }
 
         this.metaCache = map;
@@ -149,6 +166,41 @@ class CacheStore {
     );
     this.dirtyKeys.add(key);
     this.persistMeta();
+    if (patch.complete) {
+      const waiters = this.completionWaiters.get(key);
+      this.completionWaiters.delete(key);
+      waiters?.forEach((resolve) => resolve());
+    }
+  }
+
+  /** Se résout à `true` dès que la piste est intégralement en cache (immédiatement si elle l'est
+   *  déjà), ou à `false` si `signal` est annulé avant. Indépendant de l'existence d'un
+   *  téléchargement au moment de l'appel : c'est le planificateur de préchargement qui le lance,
+   *  à son tour, une connexion à la fois. */
+  async waitForComplete(trackId: string, qualityId: string, signal: AbortSignal): Promise<boolean> {
+    const key = cacheKeyFor(trackId, qualityId);
+    if (signal.aborted) return false;
+    if ((await this.loadMeta()).get(key)?.complete) return true;
+    if (signal.aborted) return false;
+    return new Promise((resolve) => {
+      let waiters = this.completionWaiters.get(key);
+      if (!waiters) {
+        waiters = new Set();
+        this.completionWaiters.set(key, waiters);
+      }
+      const onComplete = () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(true);
+      };
+      const onAbort = () => {
+        const current = this.completionWaiters.get(key);
+        current?.delete(onComplete);
+        if (current?.size === 0) this.completionWaiters.delete(key);
+        resolve(false);
+      };
+      waiters.add(onComplete);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   /** Récupère (ou crée) le downloader pour une clé donnée. Un seul writer OPFS par fichier. */
@@ -156,7 +208,10 @@ class CacheStore {
     const key = cacheKeyFor(trackId, qualityId);
     let task = this.tasks.get(key);
     if (!task) {
-      task = new TrackDownloader(key, streamUrl, audioCacheBlobStore);
+      // Point de reprise persisté (préfixe contigu), voir TrackDownloader.resumePosition.
+      task = new TrackDownloader(key, streamUrl, audioCacheBlobStore, async () => {
+        return (await this.loadMeta()).get(key)?.bytesCached ?? null;
+      });
       task.onProgress((progress) => {
         // enforceLimit() à chaque chunk (pas seulement en fin de téléchargement) : si le
         // cache est déjà plein pendant qu'on écrit une nouvelle piste, les entrées les plus
@@ -178,16 +233,20 @@ class CacheStore {
    * priority "active"   : bande passante illimitée, protégée de l'éviction par l'appelant.
    * priority "prefetch" : budget en octets, interrompu si non atteint.
    */
-  request(trackId: string, qualityId: string, streamUrl: string, priority: DownloadPriority, budgetBytes?: number): TrackDownloader {
+  request(
+    trackId: string,
+    qualityId: string,
+    streamUrl: string,
+    priority: DownloadPriority,
+    budgetBytes?: number,
+    maxSegments?: number,
+  ): TrackDownloader {
     const task = this.getOrCreateTask(trackId, qualityId, streamUrl);
     task.setPriority(priority, budgetBytes);
+    if (maxSegments !== undefined) task.setMaxSegments(maxSegments);
+    task.setSuspended(false); // demandé = autorisé à utiliser le réseau
     task.run(); // no-op si déjà en cours ou déjà complet
     return task;
-  }
-
-  onChunk(trackId: string, qualityId: string, cb: ChunkListener): (() => void) | null {
-    const task = this.tasks.get(cacheKeyFor(trackId, qualityId));
-    return task ? task.onChunk(cb) : null;
   }
 
   onProgress(trackId: string, qualityId: string, cb: ProgressListener): (() => void) | null {
@@ -197,6 +256,16 @@ class CacheStore {
 
   getTask(trackId: string, qualityId: string): TrackDownloader | null {
     return this.tasks.get(cacheKeyFor(trackId, qualityId)) ?? null;
+  }
+
+  /** `true` si le téléchargement en cours peut reprendre par plage HTTP (voir TrackDownloader). */
+  isRangeResumable(trackId: string, qualityId: string): boolean {
+    return this.tasks.get(cacheKeyFor(trackId, qualityId))?.isRangeResumable ?? false;
+  }
+
+  /** Pause douce (voir SuspendSignal) : connexion gardée ouverte, reprise instantanée. */
+  setSuspended(trackId: string, qualityId: string, suspended: boolean) {
+    this.tasks.get(cacheKeyFor(trackId, qualityId))?.setSuspended(suspended);
   }
 
   /** Arrête un téléchargement en cours sans supprimer les octets déjà en cache (reprise possible). */
@@ -224,10 +293,11 @@ class CacheStore {
    *  incomplet. */
   async resolvePlaybackUrl(trackId: string, qualityId: string, format: "aac" | "opus" | "mp3"): Promise<string | null> {
     if (!(await this.isFullyCached(trackId, qualityId))) return null;
-    const cachedFull = await this.readCachedFull(trackId, qualityId);
-    if (!cachedFull || cachedFull.byteLength === 0) return null;
+    // Blob adossé au disque (OPFS) plutôt qu'une copie en RAM du fichier entier — voir
+    // BlobStore.readAsBlob. L'URL renvoyée doit être révoquée par l'appelant (playerStore).
     const mime = { aac: "audio/aac", opus: "audio/ogg", mp3: "audio/mpeg" }[format];
-    return URL.createObjectURL(new Blob([cachedFull], { type: mime }));
+    const blob = await audioCacheBlobStore.readAsBlob(cacheKeyFor(trackId, qualityId), mime);
+    return blob ? URL.createObjectURL(blob) : null;
   }
 
   /** Éviction LRU : ne touche jamais aux clés protégées (piste active + fenêtre de préchargement). */

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Pause, Play, Playlist } from "../../components/icons";
 import { MarqueeText } from "../../components/MarqueeText";
-import { InfoModal } from "../../components/InfoModal";
+import { PlaylistInfoModal } from "../../components/PlaylistInfoModal";
 import { ConfirmDeleteModal } from "../../components/ConfirmDeleteModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildPlaylistMenuItems } from "../../components/menu/buildPlaylistMenuItems";
@@ -14,6 +14,8 @@ import { usePlayerStore, type Track } from "../../stores/playerStore";
 import type { PlaylistItem } from "../../hooks/usePlaylists";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { RenamePlaylistModal } from "./RenamePlaylistModal";
+import { CoverImage } from "../../components/CoverImage";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface PlaylistSidebarItemProps {
   playlist: PlaylistItem;
@@ -26,7 +28,6 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
 
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
-  const playTrack = usePlayerStore((s) => s.playTrack);
   const playFromStart = usePlayerStore((s) => s.playFromStart);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -68,12 +69,14 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
         artist: s.artist,
         album: s.album,
         duration: s.duration,
+        suffix: s.suffix,
+        bitRate: s.bitRate,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : undefined,
         coverArtId: s.coverArt,
       }));
 
       if (queue.length > 0) {
-        await playTrack(queue[0], queue);
+        await playFromStart(queue);
       }
     } catch (err) {
       console.error("[playlists] Impossible de lancer la playlist", err);
@@ -91,7 +94,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       >
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
           {cachedCoverUrl ? (
-            <img src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+            <CoverImage src={cachedCoverUrl} alt={playlist.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-neutral-600 group-hover:hidden">
               <Playlist size={16} />
@@ -136,12 +139,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={playlist.name}
-          coverUrl={cachedCoverUrl ?? undefined}
-          onClose={() => setInfoOpen(false)}
-          rows={[{ label: t("playlist.songCountLabel"), value: String(playlist.songCount) }]}
-        />
+        <PlaylistInfoModal playlist={playlist} coverUrl={cachedCoverUrl ?? undefined} onClose={() => setInfoOpen(false)} />
       )}
 
       {renameOpen && client && (
@@ -162,6 +160,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
           onCancel={() => setDeleteOpen(false)}
           onConfirm={async () => {
             await client.deletePlaylist(playlist.id);
+            emitPlaylistsChanged();
             onChanged();
           }}
         />

@@ -2,15 +2,15 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Play } from "../../components/icons";
 import type { SongDTO, SubsonicClient } from "@resonia/api-client";
-import { InfoModal } from "../../components/InfoModal";
+import { TrackInfoModal } from "../../components/TrackInfoModal";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildTrackMenuItems } from "../../components/menu/buildTrackMenuItems";
 import { useContextMenu } from "../../components/menu/useContextMenu";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
-import { formatTrackDuration } from "../../lib/format/duration";
 import { useTranslation } from "../../lib/i18n";
+import { CoverImage } from "../../components/CoverImage";
 
 interface RandomSongCardProps {
   song: SongDTO;
@@ -37,6 +37,8 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
     album: song.album,
     albumId: song.albumId,
     duration: song.duration,
+    suffix: song.suffix,
+    bitRate: song.bitRate,
     coverUrl,
     coverArtId: song.coverArt,
   };
@@ -48,19 +50,19 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
 
   return (
     <div
-      className="group relative w-40 shrink-0 rounded-lg bg-neutral-900 p-3 transition-colors hover:bg-neutral-800"
+      className="group relative w-40 shrink-0 rounded-panel p-3 transition-colors hover:bg-surface-2"
       onContextMenu={menu.handleContextMenu}
     >
       <button onClick={handlePlay} className="block w-full cursor-pointer text-left">
-        <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-neutral-800">
+        <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-cover bg-surface-2 shadow-e1 after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-white/[0.06]">
           {cachedCoverUrl ? (
-            <img src={cachedCoverUrl} alt={song.title} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+            <CoverImage src={cachedCoverUrl} alt={song.title} className="h-full w-full object-cover" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
           )}
 
-          <div className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-emerald-500 opacity-0 shadow-lg transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
-            <Play size={18} fill="black" className="ml-0.5 text-neutral-900" />
+          <div className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-play transition-[opacity,transform,translate,scale] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+            <Play size={18} fill="currentColor" className="ml-0.5 text-on-accent" />
           </div>
         </div>
 
@@ -96,15 +98,11 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={song.title}
+        <TrackInfoModal
+          songId={song.id}
+          fallback={song}
           coverUrl={cachedCoverUrl ?? undefined}
           onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: song.artist },
-            { label: t("album.labelAlbum"), value: song.album },
-            { label: t("playlist.columnDuration"), value: formatTrackDuration(song.duration) },
-          ]}
         />
       )}
     </div>

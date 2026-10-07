@@ -1,39 +1,15 @@
-import { useEffect, useState } from "react";
 import type { PlaylistSummary } from "@resonia/api-client";
+import { useCachedQuery } from "../../lib/cache/queryCache";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { useServersStore } from "../../stores/serversStore";
 
+const NO_PLAYLISTS: PlaylistSummary[] = [];
+
 export function useHomePlaylists() {
-  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const server = useServersStore((s) => s.servers.find((x) => x.id === s.activeServerId));
+  const key = server ? `${server.id}:playlists` : null;
 
-  const servers = useServersStore((s) => s.servers);
-  const activeServerId = useServersStore((s) => s.activeServerId);
+  const { data, loading } = useCachedQuery(key, () => getClientForServer(server!).getPlaylists());
 
-  useEffect(() => {
-    const server = servers.find((s) => s.id === activeServerId);
-    if (!server) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-
-    getClientForServer(server)
-      .getPlaylists()
-      .then((result) => {
-        if (!cancelled) setPlaylists(result);
-      })
-      .catch((err) => console.error("[home] Échec du chargement des playlists", err))
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [servers, activeServerId]);
-
-  return { playlists, loading };
+  return { playlists: data ?? NO_PLAYLISTS, loading };
 }

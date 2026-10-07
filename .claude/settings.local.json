@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node_modules/.bin/eslint src/lib/audio)",
+      "Bash(pnpm --filter @resonia/client build)",
+      "Bash(sed -i '' '/^import type { BlobDownloadResult } from/d' trackDownloader.ts)",
+      "Bash(npx prettier *)"
+    ]
+  }
+}

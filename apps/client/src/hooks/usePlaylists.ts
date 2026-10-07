@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { useTranslation } from "../lib/i18n";
+import { useMemo } from "react";
+import type { PlaylistSummary } from "@resonia/api-client";
+import { useCachedQuery } from "../lib/cache/queryCache";
+import { emitPlaylistsChanged } from "../lib/playlists/playlistEvents";
 import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { useServersStore } from "../stores/serversStore";
 
@@ -14,84 +16,31 @@ export interface PlaylistItem {
   lastPlayedTrackIds?: Set<string>;
 }
 
+const NO_PLAYLISTS: PlaylistSummary[] = [];
+
+/** Playlists de la barre latérale et du sous-menu « Ajouter à une playlist ». Même entrée de cache
+ *  que l'accueil (voir useHomePlaylists, clé `<serveur>:playlists`) : une seule requête pour les
+ *  deux, et des données persistées d'un lancement à l'autre (voir lib/cache/queryCache) — la
+ *  barre latérale est remplie dès le premier rendu. */
 export function usePlaylists() {
-  const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const server = useServersStore((s) => s.servers.find((x) => x.id === s.activeServerId));
+  const key = server ? `${server.id}:playlists` : null;
 
-  const servers = useServersStore((s) => s.servers);
-  const activeServerId = useServersStore((s) => s.activeServerId);
-  const { t } = useTranslation();
+  const { data, loading } = useCachedQuery(key, () => getClientForServer(server!).getPlaylists());
+  const summaries = data ?? NO_PLAYLISTS;
 
-  useEffect(() => {
-    const server = servers.find((s) => s.id === activeServerId);
-    if (!server) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
+  // URL de pochette dérivée à l'affichage (jamais persistée : elle contient le jeton d'auth).
+  const playlists = useMemo<PlaylistItem[]>(() => {
+    if (!server) return [];
     const client = getClientForServer(server);
+    return summaries.map((p) => ({
+      id: p.id,
+      name: p.name,
+      songCount: p.songCount,
+      coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
+      coverArtId: p.coverArt,
+    }));
+  }, [server, summaries]);
 
-    client
-      .getPlaylists()
-      .then((result) => {
-        if (cancelled) return;
-        setPlaylists(
-          result.map((p) => ({
-            id: p.id,
-            name: p.name,
-            songCount: p.songCount,
-            coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
-            coverArtId: p.coverArt,
-          })),
-        );
-      })
-      .catch((err) => {
-        console.error("[playlists] Échec du chargement", err);
-        if (!cancelled) setError(t("playlists.loadError"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [servers, activeServerId, t]);
-
-  const refreshPlaylists = async () => {
-    const cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const server = servers.find((s) => s.id === activeServerId);
-      if (!server) return;
-
-      const client = getClientForServer(server);
-
-      await client.getPlaylists().then((result) => {
-        if (cancelled) return;
-        setPlaylists(
-          result.map((p) => ({
-            id: p.id,
-            name: p.name,
-            songCount: p.songCount,
-            coverArt: p.coverArt ? client.getCoverArtUrl(p.coverArt, 80) : undefined,
-            coverArtId: p.coverArt,
-          })),
-        );
-      });
-    } catch (err) {
-      console.error("[playlists] Rafraîchissement échoué", err);
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
-  };
-
-  return { playlists, loading, error, refreshPlaylists };
+  return { playlists, loading, error: null, refreshPlaylists: emitPlaylistsChanged };
 }

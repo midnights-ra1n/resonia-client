@@ -2,6 +2,7 @@ import { X } from "../../components/icons";
 import { useState } from "react";
 import type { SubsonicClient } from "@resonia/api-client";
 import { useTranslation } from "../../lib/i18n";
+import { emitPlaylistsChanged } from "../../lib/playlists/playlistEvents";
 
 interface RenamePlaylistModalProps {
   playlistId: string;
@@ -26,6 +27,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
     setError(null);
     try {
       await client.updatePlaylist(playlistId, { name: trimmed });
+      emitPlaylistsChanged();
       onRenamed(trimmed);
       onClose();
     } catch (err) {
@@ -36,13 +38,13 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in"
       onClick={(e) => {
         e.stopPropagation();
         onClose();
       }}
     >
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-white">{t("playlists.renameTitle")}</h2>
           <button onClick={onClose} className="text-neutral-400 hover:text-white">
@@ -57,7 +59,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg bg-neutral-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full rounded-full bg-neutral-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-accent"
           />
 
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -65,7 +67,7 @@ export function RenamePlaylistModal({ playlistId, currentName, client, onClose, 
           <button
             type="submit"
             disabled={submitting || !name.trim()}
-            className="w-full rounded-full bg-emerald-500 py-2.5 font-semibold text-black transition hover:bg-emerald-400 disabled:opacity-50"
+            className="w-full rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover disabled:opacity-50"
           >
             {submitting ? t("playlists.renaming") : t("common.save")}
           </button>

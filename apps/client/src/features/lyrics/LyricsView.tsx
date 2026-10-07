@@ -7,7 +7,9 @@ import { getCachedLyrics, loadLyrics, type LyricsLine, type ParsedLyrics } from 
 import { DEFAULT_COVER_URL, usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 
-const FALLBACK_BG = "rgb(23, 23, 23)";
+/** Fond sans pochette : panneau du thème actif (les thèmes clairs fournissent un fond foncé,
+ *  la vue paroles restant toujours en texte clair — voir `.on-media` dans index.css). */
+const FALLBACK_BG = "var(--lyrics-fallback-bg, var(--color-surface-1))";
 
 /** Luminance perçue max tolérée avant d'assombrir la couleur dominante : au-delà, du texte
  *  blanc par-dessus n'aurait plus assez de contraste (pochettes très claires : blanc, pastel...). */
@@ -184,7 +186,7 @@ export function LyricsView() {
 
   if (!currentTrack) {
     return (
-      <div className="flex flex-1 min-h-0 items-center justify-center" style={{ backgroundColor: FALLBACK_BG }}>
+      <div className="on-media flex flex-1 min-h-0 items-center justify-center" style={{ backgroundColor: FALLBACK_BG }}>
         <p className="text-sm text-white/60">{t("lyrics.noTrack")}</p>
       </div>
     );
@@ -192,8 +194,9 @@ export function LyricsView() {
 
   return (
     <div
-      className="flex flex-1 min-h-0 flex-col items-center overflow-hidden transition-colors duration-700"
-      style={{ backgroundColor: bgColor }}
+      className="on-media flex flex-1 min-h-0 flex-col items-center overflow-hidden transition-colors duration-700"
+      // Police des paroles (Paramètres → Apparence) : par défaut, celle de l'interface.
+      style={{ backgroundColor: bgColor, fontFamily: "var(--font-lyrics, var(--font-sans))" }}
     >
       <div
         ref={scrollContainerRef}
@@ -229,7 +232,11 @@ export function LyricsView() {
                   // chaque frame de la transition (largeur des caractères qui change), ce qui
                   // provoquait le glitch visuel signalé — un vrai changement de layout mélangé à
                   // une transformation, jamais fluide.
-                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,color,opacity] duration-[260ms] ease-out will-change-transform ${
+                  // `will-change` uniquement autour de la ligne active (celles qui s'animent au
+                  // prochain changement) : sur TOUTES les lignes, il réservait une couche GPU
+                  // pleine largeur par ligne pendant toute la vue — des dizaines de Mo de
+                  // mémoire graphique pour un texte statique.
+                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,translate,scale,color,opacity] duration-[260ms] ease-out ${Math.abs(i - activeIndex) <= 1 ? "will-change-transform" : ""} ${
                     isActive ? "scale-[1.1] text-white opacity-100" : "scale-100 text-white/35 opacity-90 hover:text-white/60"
                   }`}
                 >

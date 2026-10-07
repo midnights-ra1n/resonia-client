@@ -4,7 +4,10 @@ import { PlayerSectionRight } from "./PlayerSectionRight";
 
 export function PlayerBar() {
   return (
-    <div className="flex items-center justify-between h-20 bg-neutral-900 border-t border-neutral-800 px-4 shrink-0">
+    // Carte flottante (élévation e3 : ombre + halo carotte) superposée au bas du contenu, voir
+    // AppLayout. Fond OPAQUE (pas de backdrop-filter : coût GPU continu sur WebKit/WebView2).
+    // Hauteur fixe de 72px : <main> réserve pb-[104px] dessous, DebugPanel se pose au-dessus.
+    <div className="flex h-[72px] shrink-0 items-center justify-between rounded-bar border border-white/5 bg-surface-2 px-4 shadow-e3">
       <div className="flex-1 min-w-0">
         <PlayerSectionLeft />
       </div>

@@ -97,8 +97,8 @@ export function UpdateNotifier() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in">
+      <div className="w-full max-w-sm rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in">
         <h2 className="mb-3 text-center text-sm font-semibold text-white">
           {t("update.available", { version: version ?? "" })}
         </h2>
@@ -124,7 +124,7 @@ export function UpdateNotifier() {
           <button
             type="button"
             onClick={() => void relaunch()}
-            className="flex-1 rounded-full bg-emerald-600 py-2.5 font-semibold text-white transition hover:bg-emerald-500"
+            className="flex-1 rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover active:bg-accent-pressed"
           >
             {t("update.install")}
           </button>

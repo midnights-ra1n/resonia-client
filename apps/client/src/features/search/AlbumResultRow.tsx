@@ -2,7 +2,7 @@ import { Play } from "../../components/icons";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AlbumSummary } from "@resonia/api-client";
-import { InfoModal } from "../../components/InfoModal";
+import { AlbumInfoModal } from "../../components/AlbumInfoModal";
 import { MarqueeText } from "../../components/MarqueeText";
 import { ContextMenu } from "../../components/menu/ContextMenu";
 import { buildAlbumMenuItems } from "../../components/menu/buildAlbumMenuItems";
@@ -14,6 +14,8 @@ import { useTranslation } from "../../lib/i18n";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
+import { CoverImage } from "../../components/CoverImage";
+import { albumPrefetchProps } from "../album/useAlbum";
 
 interface AlbumResultRowProps {
   album: AlbumSummary;
@@ -25,7 +27,7 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
   const [loading, setLoading] = useState(false);
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
-  const playTrack = usePlayerStore((s) => s.playTrack);
+  const playFromStart = usePlayerStore((s) => s.playFromStart);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
   const menu = useContextMenu();
   const [infoOpen, setInfoOpen] = useState(false);
@@ -36,9 +38,10 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
   const cachedCoverUrl = useCoverArt(
     activeServerId ?? undefined,
-    coverInView ? album.coverArt : undefined,
+    album.coverArt,
     80,
     coverUrl,
+    coverInView,
   );
 
   async function handlePlay(e: React.MouseEvent) {
@@ -56,11 +59,13 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
         album: s.album,
         albumId: s.albumId ?? album.id,
         duration: s.duration,
+        suffix: s.suffix,
+        bitRate: s.bitRate,
         coverUrl: s.coverArt ? client.getCoverArtUrl(s.coverArt, 300) : coverUrl,
         coverArtId: s.coverArt ?? album.coverArt,
       }));
 
-      if (queue.length > 0) await playTrack(queue[0], queue);
+      if (queue.length > 0) await playFromStart(queue);
     } catch (err) {
       console.error("[search] Impossible de lancer l'album", err);
     } finally {
@@ -72,6 +77,7 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
     <div
       role="button"
       tabIndex={0}
+      {...albumPrefetchProps(album.id)}
       onClick={() => navigate(`/albums/${album.id}`)}
       onKeyDown={(e) => e.key === "Enter" && navigate(`/albums/${album.id}`)}
       onContextMenu={menu.handleContextMenu}
@@ -79,7 +85,7 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
     >
       <div ref={coverRef} className="relative h-12 w-12 shrink-0 overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
-          <img src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          <CoverImage src={cachedCoverUrl} alt={album.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}
@@ -123,16 +129,7 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
       )}
 
       {infoOpen && (
-        <InfoModal
-          title={album.name}
-          coverUrl={cachedCoverUrl ?? undefined}
-          onClose={() => setInfoOpen(false)}
-          rows={[
-            { label: t("search.artistLabel"), value: album.artist },
-            ...(album.year ? [{ label: t("album.yearLabel"), value: String(album.year) }] : []),
-            { label: t("album.trackCount", { count: album.songCount }), value: formatAlbumDuration(album.duration, t) },
-          ]}
-        />
+        <AlbumInfoModal album={album} coverUrl={cachedCoverUrl ?? undefined} onClose={() => setInfoOpen(false)} />
       )}
     </div>
   );

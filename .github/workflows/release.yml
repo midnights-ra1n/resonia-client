@@ -20,20 +20,24 @@ name: Release
 # qu'à la toute fin. Une plateforme en échec = rien n'est publié.
 #
 # Artefacts :
-#   - macOS   : .dmg + .zip + .pkg, Apple Silicon ET Intel (x64 cross-packagé depuis le runner
-#               arm64 : aucun module natif, electron-builder n'a qu'à prendre le binaire Electron
-#               x64 — pas besoin des runners Intel, en pénurie).
+#   - macOS   : .dmg + .zip + .pkg, Apple Silicon uniquement (GitHub ne fournit plus de runners
+#               macOS Intel).
 #   - Windows : un installeur NSIS unique x64 + arm64 (l'installeur choisit l'arch).
 #   - Linux   : .AppImage + .deb + .rpm, x86_64 et arm64 (runners natifs, Ubuntu 22.04 pour une
 #               glibc ancienne = compatibilité maximale avec les distributions).
-#   - Web     : image Docker multi-arch sur GHCR (:X.Y.Z puis :beta ou :latest) + archive .zip
-#               du site statique pour auto-hébergement sans Docker.
+#   - Web     : image Docker multi-arch sur GHCR (:X.Y.Z, :latest et :beta) + archive .zip
+#               du site statique pour auto-hébergement sans Docker. :latest suit toujours la
+#               dernière version publiée, beta comprise.
 # Rien n'est signé ni notarisé (pas de certificat Apple / Windows) : Gatekeeper et SmartScreen
 # avertiront à l'ouverture.
 #
 # Notes de version : section de CHANGELOG.md (scripts/extract-changelog.mjs), vérifiée DÈS le
 # début du run (avant 30 min de builds) — c'est aussi le texte affiché dans la pop-up de mise
 # à jour de l'app (lib/update/updateService.ts).
+#
+# Anti-blocage : chaque étape longue (install, empaquetage, upload…) a son propre timeout, bien
+# en dessous de celui du job, pour qu'un téléchargement ou un upload qui pend échoue en quelques
+# minutes au lieu d'occuper le runner jusqu'au timeout global.
 on:
   push:
     branches: [beta, stable]
@@ -56,6 +60,9 @@ concurrency:
 env:
   NODE_VERSION: 22
   IMAGE: ghcr.io/${{ github.repository }}-web
+  # Restauration de cache (actions/cache, setup-node) : abandon après 5 min au lieu de 10 si le
+  # téléchargement d'un segment stagne — le job continue alors sans cache.
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: 5
 
 jobs:
   prepare:
@@ -153,6 +160,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: node scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
       - run: pnpm lint
       - run: pnpm test
@@ -174,14 +182,14 @@ jobs:
     if: needs.prepare.outputs.build == 'true'
     name: desktop (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macos
             runner: macos-26
-            args: --mac --arm64 --x64
+            args: --mac --arm64
             cache: ~/Library/Caches/electron-builder
           - name: windows
             runner: windows-latest
@@ -220,9 +228,10 @@ jobs:
       - name: Xcode 26+ (actool pour l'icône Liquid Glass)
         if: runner.os == 'macOS'
         shell: bash
+        timeout-minutes: 2
         run: |
-          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1 || true)
-          if [[ -n "$latest" ]]; then sudo xcode-select -s "$latest"; fi
+          latest=$(printf '%s\n' /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1 || true)
+          if [[ -d "$latest" ]]; then sudo xcode-select -s "$latest"; fi
           version=$(actool --version | grep -A1 short-bundle-version | tail -1 | sed -E 's/.*<string>([0-9.]+)<.*/\1/')
           echo "actool $version ($(xcode-select -p))"
           if (( ${version%%.*} < 26 )); then
@@ -233,16 +242,22 @@ jobs:
       # rpmbuild n'est pas garanti sur toutes les images (notamment les runners arm).
       - name: Outils de packaging Linux
         if: runner.os == 'Linux'
+        timeout-minutes: 5
         run: |
           if ! command -v rpmbuild >/dev/null; then
             sudo apt-get update -qq && sudo apt-get install -y -qq rpm
           fi
 
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: node scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
       - run: pnpm --filter @resonia/client run electron:build
+        timeout-minutes: 10
 
+      # Électron et les outils (NSIS, AppImage, fpm…) sont téléchargés ici au premier run : le
+      # timeout coupe un téléchargement bloqué. Un run normal prend 3 à 8 min selon l'OS.
       - name: Empaquetage (${{ matrix.args }})
+        timeout-minutes: 20
         working-directory: apps/client
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -266,6 +281,7 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/release"
 
       - uses: actions/upload-artifact@v4
+        timeout-minutes: 10
         with:
           name: release-${{ matrix.name }}
           path: release/*
@@ -274,13 +290,13 @@ jobs:
           compression-level: 0
 
   # Image web : construite à chaque run (valide le Dockerfile), poussée uniquement sous son tag
-  # de version immuable. Le tag flottant (:beta / :latest) n'est déplacé qu'une fois la release
+  # de version immuable. Les tags flottants (:latest, :beta) ne sont déplacés qu'une fois la release
   # réellement publiée (job release).
   web-image:
     needs: prepare
     if: needs.prepare.outputs.build == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: write
@@ -297,6 +313,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        timeout-minutes: 20
         with:
           context: .
           file: apps/client/Dockerfile
@@ -308,13 +325,14 @@ jobs:
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Un incident du service de cache GitHub ne doit pas faire échouer la release.
+          cache-to: type=gha,mode=max,ignore-error=true
 
   release:
     needs: [prepare, checks, desktop, web-image]
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     permissions:
       contents: write
       packages: write
@@ -328,6 +346,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v4
+        timeout-minutes: 10
         with:
           pattern: release-*
           path: release
@@ -351,11 +370,32 @@ jobs:
           ls -lh
           exit $status
 
+      # Les liens de téléchargement du README (régénérés par `pnpm bump`) doivent viser cette
+      # version et des fichiers réellement construits, sinon ils mèneraient à des 404.
+      - name: Vérifier les liens de téléchargement du README
+        run: node scripts/readme-downloads.mjs check release
+
       - name: Notes de version
         run: node scripts/extract-changelog.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
 
+      # Relance du job après une release déjà publiée (ex. : seule la promotion Docker avait
+      # échoué) : on ne recrée rien, sinon `gh release create` échouerait sur le tag existant.
+      # Une release en draft n'a pas encore de tag : `gh release view <tag>` ne la trouve pas.
+      - name: État de la release
+        id: state
+        timeout-minutes: 2
+        run: |
+          if [[ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" == "false" ]]; then
+            echo "::notice::$TAG est déjà publiée : seule l'image Docker sera promue."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Un draft laissé par un run précédent échoué (même tag) est supprimé : on repart propre.
       - name: Nettoyer un éventuel draft précédent
+        if: steps.state.outputs.published != 'true'
+        timeout-minutes: 2
         run: |
           gh api "repos/$GH_REPO/releases?per_page=100" \
             --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" |
@@ -364,7 +404,9 @@ jobs:
             gh api -X DELETE "repos/$GH_REPO/releases/$id"
           done
 
-      - name: Créer la release (draft) et uploader les fichiers
+      - name: Créer la release (draft)
+        if: steps.state.outputs.published != 'true'
+        timeout-minutes: 2
         run: |
           set -euo pipefail
           flags=()
@@ -374,17 +416,29 @@ jobs:
             flags+=(--title "Resonia $TAG")
           fi
           gh release create "$TAG" --draft --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
-          for attempt in 1 2 3 4 5; do
-            if timeout 20m gh release upload "$TAG" release/* --clobber; then
-              exit 0
-            fi
-            echo "::warning::Upload interrompu (tentative $attempt/5), reprise dans $((attempt * 15))s…"
-            sleep $((attempt * 15))
+
+      # Fichier par fichier, chacun avec son propre timeout : un upload qui pend est relancé après
+      # 5 min au lieu de bloquer tout le lot (un fichier de 150 Mo monte en moins d'une minute).
+      - name: Uploader les fichiers
+        if: steps.state.outputs.published != 'true'
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          for file in release/*; do
+            for attempt in 1 2 3 4; do
+              if timeout -k 30s 5m gh release upload "$TAG" "$file" --clobber; then
+                continue 2
+              fi
+              echo "::warning::Upload de ${file##*/} interrompu (tentative $attempt/4), reprise dans $((attempt * 10))s…"
+              sleep $((attempt * 10))
+            done
+            echo "::error::Upload de ${file##*/} impossible après 4 tentatives."
+            exit 1
           done
-          echo "::error::Upload impossible après 5 tentatives."
-          exit 1
 
       - name: Publier la release
+        if: steps.state.outputs.published != 'true'
+        timeout-minutes: 2
         run: |
           if [[ "$CHANNEL" == "beta" ]]; then
             gh release edit "$TAG" --draft=false --latest=false
@@ -394,12 +448,17 @@ jobs:
           echo "Release publiée : ${{ github.server_url }}/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: docker/login-action@v3
+        timeout-minutes: 2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Promouvoir l'image web (tag flottant :beta ou :latest)
+      # :latest suit toujours la dernière version publiée, beta comprise (c'est le tag donné dans
+      # le README) ; :beta n'est déplacé que par les préversions.
+      - name: Promouvoir l'image web (tags flottants :latest et :beta)
+        timeout-minutes: 5
         run: |
-          FLOATING=$([[ "$CHANNEL" == "beta" ]] && echo beta || echo latest)
-          docker buildx imagetools create -t "$IMAGE:$FLOATING" "$IMAGE:$VERSION"
+          tags=(-t "$IMAGE:latest")
+          if [[ "$CHANNEL" == "beta" ]]; then tags+=(-t "$IMAGE:beta"); fi
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:$VERSION"

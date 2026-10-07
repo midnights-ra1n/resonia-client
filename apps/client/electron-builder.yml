@@ -76,8 +76,8 @@ mac:
   # (16 → 1024 px, voir scripts/build-mac-icns.sh).
   icon: build/Resonia.icon
   category: public.app-category.music
-  # Arch toujours explicite dans le nom : le CI construit arm64 ET x64 dans le même appel, et
-  # le nom par défaut omet "x64" (ambigu à côté du fichier arm64 sur la page de release).
+  # Arch toujours explicite dans le nom (Apple Silicon uniquement : GitHub ne fournit plus de
+  # runners macOS Intel), pour rester cohérent avec les noms des fichiers Linux.
   artifactName: ${productName}-${version}-${arch}.${ext}
   # Découverte AirPlay (preuve de concept, voir electron/main/index.ts) : macOS affiche bien
   # l'invite "réseau local" sans ces clés (le socket UDP/multicast brut ouvert par notre lib

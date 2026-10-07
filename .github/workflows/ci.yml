@@ -101,8 +101,8 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1 || true)
-          if [[ -n "$latest" ]]; then sudo xcode-select -s "$latest"; fi
+          latest=$(printf '%s\n' /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1 || true)
+          if [[ -d "$latest" ]]; then sudo xcode-select -s "$latest"; fi
           version=$(actool --version | grep -A1 short-bundle-version | tail -1 | sed -E 's/.*<string>([0-9.]+)<.*/\1/')
           echo "actool $version ($(xcode-select -p))"
           if (( ${version%%.*} < 26 )); then

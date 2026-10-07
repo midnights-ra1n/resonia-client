@@ -188,7 +188,12 @@ export async function streamRange(
     let skip = 0;
     if (res.status === 206) {
       const total = res.headers.get("Content-Range")?.split("/")[1];
-      handlers.onTotal(total && total !== "*" ? Number(total) : -1);
+      // `Content-Range` n'est lisible en cross-origin que si le serveur l'expose
+      // (Access-Control-Expose-Headers) — rarement le cas. `Content-Length`, lui, l'est toujours :
+      // pour une plage ouverte (`bytes=start-`), taille totale = start + longueur de la réponse.
+      const length = Number(res.headers.get("Content-Length"));
+      if (total && total !== "*") handlers.onTotal(Number(total));
+      else handlers.onTotal(Number.isFinite(length) && length > 0 ? start + length : -1);
     } else {
       // 200 : le serveur ignore la plage. Son Content-Length n'est pas fiable comme taille
       // exacte — pour un flux transcodé, il peut s'agir d'une ESTIMATION côté serveur, le

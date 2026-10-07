@@ -7,6 +7,7 @@ import {
   type LyricsFontId,
 } from "../../lib/appearance/fonts";
 import { DEFAULT_THEME, THEMES, useThemeStore } from "../../lib/appearance/themes";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 const SELECT_CLASS =
   "select-pill mt-2 w-full rounded-full bg-neutral-900 border border-neutral-700 pl-4 pr-10 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]";
@@ -22,6 +23,8 @@ export function AppearanceSection() {
   const setLyricsFont = useAppearanceStore((s) => s.setLyricsFont);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const showWaveform = useSettingsStore((s) => s.showWaveform);
+  const setShowWaveform = useSettingsStore((s) => s.setShowWaveform);
 
   const fontLabel = (id: FontId, label: string) =>
     id === DEFAULT_FONT ? `${label} ${t("settings.fontDefaultSuffix")}` : label;
@@ -73,6 +76,30 @@ export function AppearanceSection() {
             })}
           </div>
         </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showWaveform}
+          onClick={() => setShowWaveform(!showWaveform)}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <span>
+            <span className="block text-sm font-medium text-white">{t("settings.waveform")}</span>
+            <span className="mt-1 block text-xs text-neutral-500">{t("settings.waveformDescription")}</span>
+          </span>
+          <span
+            className={`relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors ${
+              showWaveform ? "bg-accent" : "bg-neutral-700"
+            }`}
+          >
+            <span
+              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                showWaveform ? "translate-x-4" : "translate-x-0"
+              }`}
+            />
+          </span>
+        </button>
 
         <div>
           <label htmlFor="ui-font-select" className="block text-sm font-medium text-white">

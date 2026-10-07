@@ -289,7 +289,9 @@
     "spotifyTest": "Tester la connexion",
     "spotifyTesting": "Test en cours...",
     "spotifyTestOk": "Connexion réussie ({{artist}})",
-    "spotifyTestError": "Échec : {{error}}"
+    "spotifyTestError": "Échec : {{error}}",
+    "waveform": "Forme d'onde dans la barre de lecture",
+    "waveformDescription": "Affiche la forme d'onde du morceau (graves, médiums, aigus) comme dans les logiciels de mixage DJ. Calculée une seule fois par morceau puis gardée en cache."
   },
   "update": {
     "available": "Resonia {{version}} est disponible",

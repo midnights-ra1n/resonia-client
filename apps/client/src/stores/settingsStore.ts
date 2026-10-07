@@ -29,6 +29,8 @@ interface SettingsState {
   playlistSortBy: PlaylistSortBy;
   playlistSortDirection: PlaylistSortDirection;
   devModeEnabled: boolean;
+  /** Forme d'onde dans la barre de lecture (voir lib/audio/waveform). */
+  showWaveform: boolean;
   checkUpdatesOnLaunch: boolean;
   betaUpdatesEnabled: boolean;
   /** Version que l'utilisateur a explicitement choisi de reporter ("Plus tard" dans la pop-up
@@ -48,6 +50,7 @@ interface SettingsState {
     direction: PlaylistSortDirection,
   ) => Promise<void>;
   setDevModeEnabled: (enabled: boolean) => Promise<void>;
+  setShowWaveform: (enabled: boolean) => Promise<void>;
   setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
   setBetaUpdatesEnabled: (enabled: boolean) => Promise<void>;
   setDismissedUpdateVersion: (version: string | null) => Promise<void>;
@@ -66,6 +69,7 @@ const PLAYLIST_SORT_BY_STORAGE_KEY = "resonia:settings:playlistSortBy";
 const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
 const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
+const SHOW_WAVEFORM_STORAGE_KEY = "resonia:settings:showWaveform";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
   "resonia:settings:checkUpdatesOnLaunch";
 const BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
@@ -113,6 +117,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   playlistSortBy: "default",
   playlistSortDirection: "asc",
   devModeEnabled: false,
+  showWaveform: false,
   checkUpdatesOnLaunch: true,
   betaUpdatesEnabled: false,
   dismissedUpdateVersion: null,
@@ -134,6 +139,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       spotifyMode,
       spotifyClientId,
       spotifyClientSecret,
+      showWaveform,
     ] = [
       storage.getSync<string>(STORAGE_KEY),
       storage.getSync<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -148,6 +154,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<string>(SPOTIFY_MODE_STORAGE_KEY),
       storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
       storage.getSync<EncryptedPassword>(SPOTIFY_CLIENT_SECRET_STORAGE_KEY),
+      storage.getSync<boolean>(SHOW_WAVEFORM_STORAGE_KEY),
     ] as const;
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -167,6 +174,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortBy: playlistSortBy ?? "default",
       playlistSortDirection: playlistSortDirection ?? "asc",
       devModeEnabled: devModeEnabled ?? false,
+      showWaveform: showWaveform ?? false,
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
       betaUpdatesEnabled: betaUpdatesEnabled ?? false,
       dismissedUpdateVersion: dismissedUpdateVersion ?? null,
@@ -233,6 +241,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     await storage.set(DEV_MODE_ENABLED_STORAGE_KEY, enabled);
     setAudioDebugEnabled(enabled);
     set({ devModeEnabled: enabled });
+  },
+
+  setShowWaveform: async (enabled) => {
+    await storage.set(SHOW_WAVEFORM_STORAGE_KEY, enabled);
+    set({ showWaveform: enabled });
   },
 
   setCheckUpdatesOnLaunch: async (enabled) => {

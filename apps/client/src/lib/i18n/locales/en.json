@@ -289,7 +289,9 @@
     "spotifyTest": "Test connection",
     "spotifyTesting": "Testing...",
     "spotifyTestOk": "Connected ({{artist}})",
-    "spotifyTestError": "Failed: {{error}}"
+    "spotifyTestError": "Failed: {{error}}",
+    "waveform": "Waveform in the playback bar",
+    "waveformDescription": "Shows the track's waveform (lows, mids, highs) like DJ mixing software. Computed once per track, then kept in cache."
   },
   "update": {
     "available": "Resonia {{version}} is available",

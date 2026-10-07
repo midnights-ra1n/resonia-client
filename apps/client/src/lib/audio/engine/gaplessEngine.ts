@@ -32,12 +32,20 @@ const NATIVE_INSTANT_END_THRESHOLD_SECONDS = 2;
 
 // Avance de tampon natif au-delà de laquelle les téléchargements de fond peuvent démarrer sans
 // risquer de faire caler la piste en cours, et seuil bas sous lequel ils se remettent en pause
-// (hystérésis) — voir `updateNativePressure`. Marge large : une fois les téléchargements de fond
-// suspendus, les octets déjà en route (tampons du proxy, du système, de Chromium) continuent
-// d'arriver quelques secondes et retardent d'autant le rattrapage du flux lu. 10 s de marge n'y
-// suffisaient pas sur une connexion lente — la piste calait, reprenait, recalait.
-const NATIVE_SAFE_AHEAD_SECONDS = 30;
-const NATIVE_LOW_AHEAD_SECONDS = 15;
+// (hystérésis) — voir `updateNativePressure`. Le flux lu est transcodé par le serveur, parfois à
+// peine plus vite que le temps réel (mesuré : ~1,8× pour une piste pas encore transcodée) : son
+// avance ne grandit alors que lentement, et un seuil haut (30 s) retardait de près d'une minute
+// le téléchargement de l'original — pourtant rapide, sans transcodage — dont dépendent le gapless,
+// la forme d'onde et la lecture sans réseau. En mode "shared", une seule connexion de fond, coupée
+// net (fichier à plages) dès que l'avance retombe sous le seuil bas.
+const NATIVE_SAFE_AHEAD_SECONDS = 15;
+const NATIVE_LOW_AHEAD_SECONDS = 8;
+// Flux de taille inconnue (transcodage à la volée, réponse « chunked ») : Chromium n'y rapporte
+// qu'environ 2 s de `buffered`, quel que soit le débit réel — l'avance mesurée n'atteignait donc
+// jamais NATIVE_SAFE_AHEAD_SECONDS et AUCUN téléchargement de fond ne démarrait de toute la piste
+// (ni original en cache, ni forme d'onde, ni piste suivante prête pour le gapless). Pour ces flux,
+// le fond est autorisé après ce délai de lecture sans interruption, et retiré au moindre "waiting".
+const NATIVE_HEALTHY_PLAYBACK_MS = 3000;
 
 /** Usage réseau autorisé aux téléchargements de fond, selon les besoins du flux en cours de lecture :
  *  - "exclusive" : le flux lu manque d'avance (chargement, seek, attente) — rien d'autre ;
@@ -254,6 +262,10 @@ export class GaplessEngine {
   // Relance du flux natif bloqué (voir NATIVE_STALL_RECONNECT_MS), par chargement de piste.
   private nativeStallTimer: number | null = null;
   private nativeReconnects = 0;
+  // Début de la lecture native ininterrompue en cours (0 : à l'arrêt ou en attente), voir
+  // NATIVE_HEALTHY_PLAYBACK_MS.
+  private nativePlayingSince = 0;
+  private nativeHealthTimer: number | null = null;
 
   /** Durée de la piste selon ses métadonnées, fournie par l'appelant avant `loadAndPlay`. En
    *  streaming natif d'un flux transcodé (sans Content-Length), l'élément <audio> ne connaît pas
@@ -367,6 +379,12 @@ export class GaplessEngine {
     }
     if (complete) {
       this.setNetworkMode("free");
+      return;
+    }
+    if (!(Number.isFinite(audio.duration) && audio.duration > 0)) {
+      // Taille inconnue : `buffered` n'est pas représentatif, voir NATIVE_HEALTHY_PLAYBACK_MS.
+      const healthy = this.nativePlayingSince > 0 && now - this.nativePlayingSince >= NATIVE_HEALTHY_PLAYBACK_MS;
+      if (this.networkMode === "exclusive" && healthy && !audio.paused) this.setNetworkMode("shared");
       return;
     }
     // Hystérésis : relâchée à NATIVE_SAFE_AHEAD_SECONDS, reposée si l'avance retombe sous
@@ -635,6 +653,7 @@ export class GaplessEngine {
     audio.addEventListener("waiting", () => {
       if (this.trackState?.mode === "native") {
         networkDebugLog("native:waiting", { position: Math.round(audio.currentTime) });
+        this.nativePlayingSince = 0;
         this.setState("buffering");
         this.setNetworkMode("exclusive");
         this.armNativeStallWatchdog();
@@ -657,6 +676,14 @@ export class GaplessEngine {
     audio.addEventListener("playing", () => {
       if (this.trackState?.mode === "native") {
         this.clearNativeStallWatchdog();
+        this.nativePlayingSince = performance.now();
+        // Les événements "progress" peuvent s'arrêter (flux en pause côté réseau) : réévaluation
+        // garantie une fois le délai de lecture saine écoulé.
+        if (this.nativeHealthTimer !== null) window.clearTimeout(this.nativeHealthTimer);
+        this.nativeHealthTimer = window.setTimeout(() => {
+          this.nativeHealthTimer = null;
+          checkPressure();
+        }, NATIVE_HEALTHY_PLAYBACK_MS + 50);
         checkPressure();
         this.setState("playing");
         this.onNativePlaying?.();
@@ -1147,6 +1174,7 @@ export class GaplessEngine {
     this.nativeRangeSeekable = rangeSeekable;
     this.nativeTimeBase = 0;
     this.nativeReconnects = 0;
+    this.nativePlayingSince = 0;
     this.clearNativeStallWatchdog();
     if (this.context.state === "suspended") this.resumeContextWithRetry();
     this.discardPending();
@@ -1394,6 +1422,10 @@ export class GaplessEngine {
       this.trackState.pauseOffset = this.currentTime;
       this.trackState.isPaused = true;
       this.nativeAudio.pause();
+      this.nativePlayingSince = 0;
+      // En pause, le flux lu ne risque aucune coupure : les téléchargements de fond continuent de
+      // charger la piste (et les suivantes), comme le tampon d'un lecteur vidéo en pause.
+      if (this.networkMode === "exclusive") this.setNetworkMode("shared");
     } else {
       if (this.trackState.isPaused) return;
       const offset = this.currentTime;
@@ -1479,6 +1511,16 @@ export class GaplessEngine {
     if (this.trackState.isPaused || !this.trackState.playback) return this.trackState.pauseOffset;
     const { scheduledStartContextTime, startOffsetInTrim } = this.trackState.playback;
     return startOffsetInTrim + (this.context.currentTime - scheduledStartContextTime) * this._playbackRate;
+  }
+
+  /** Position (secondes de piste) jusqu'où la lecture peut avancer sans réseau : fin de la plage
+   *  tampon native contenant la position courante, ou toute la piste en mode buffer (décodée). */
+  get bufferedEnd(): number {
+    if (!this.trackState) return 0;
+    if (this.trackState.mode === "buffer") return this.duration;
+    if (this.nativeAudio.src.startsWith("blob:")) return this.duration;
+    const { ahead } = this.nativeBufferState(this.nativeAudio);
+    return this.currentTime + ahead;
   }
 
   get duration(): number {

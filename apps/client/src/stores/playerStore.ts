@@ -23,6 +23,7 @@ import { getClientForServer } from "../lib/subsonic/getClientForServer";
 import { storage } from "../lib/storage";
 import { useServersStore } from "./serversStore";
 import { useSettingsStore } from "./settingsStore";
+import { ensureWaveform, loadWaveform } from "../lib/audio/waveform/waveform";
 import { linearOrder, reshuffleUpcoming, shuffleIndices } from "../lib/audio/shuffle";
 
 const VOLUME_STORAGE_KEY = "resonia:settings:volume";
@@ -214,6 +215,8 @@ export interface PlayerState {
 
   currentTime: number;
   setCurrentTime: (time: number) => void;
+  /** Position jusqu'où la piste est chargée (secondes) — barre de tampon façon YouTube. */
+  bufferedTime: number;
 
   /** Durée RÉELLE côté moteur (`engine.duration`), pas la métadonnée serveur de
    *  `currentTrack.duration` : les deux peuvent diverger (rognage du silence de bord une
@@ -299,6 +302,9 @@ export interface PlayerState {
 
   showDebugPanel: boolean;
   toggleDebugPanel: () => void;
+  /** Calcule la forme d'onde de la piste en cours si elle est déjà décodée (option activée
+   *  après coup, voir WaveformBar). */
+  ensureCurrentWaveform: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get, api) => {
@@ -399,6 +405,51 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     pendingSeekTime = null;
   }
 
+  /** Forme d'onde calculée depuis le buffer déjà décodé pour le gapless — seulement si l'option
+   *  est active : aucun coût sinon. Mise en cache par lib/audio/waveform (calculée une seule fois). */
+  function prepareWaveform(trackId: string, buffer: AudioBuffer) {
+    if (useSettingsStore.getState().showWaveform) void ensureWaveform(trackId, buffer);
+  }
+
+  // Formes d'onde des pistes suivantes, calculées dès que leur préchargement se termine (la
+  // première est déjà décodée pour le gapless, voir scheduleGaplessNext) : passer à la suivante
+  // l'affiche aussitôt. Une seule à la fois, annulé à chaque changement de file.
+  let waveformPrefetchAbort: AbortController | null = null;
+
+  function prefetchUpcomingWaveforms(tracks: Track[]) {
+    waveformPrefetchAbort?.abort();
+    waveformPrefetchAbort = null;
+    if (!useSettingsStore.getState().showWaveform || tracks.length < 2) return;
+    const abort = new AbortController();
+    waveformPrefetchAbort = abort;
+    const qualityId = getActiveQualityId();
+    void (async () => {
+      for (const track of tracks.slice(1)) {
+        if (abort.signal.aborted || (await loadWaveform(track.id))) continue;
+        const bytes = await waitForTrackBytes(track.id, qualityId, abort.signal);
+        if (!bytes || bytes.byteLength === 0 || abort.signal.aborted) return;
+        try {
+          await ensureWaveform(track.id, await engine.decode(bytes));
+        } catch (err) {
+          console.warn("[player] Forme d'onde anticipée impossible", err);
+        }
+      }
+    })();
+  }
+
+  /** Le plus avancé entre le tampon du lecteur et le téléchargement en cache de la piste (octets
+   *  ≈ temps, à débit constant) — la barre progresse donc aussi pendant la mise en cache. */
+  function currentBufferedTime(track: Track, duration: number): number {
+    let buffered = engine.bufferedEnd;
+    const task = cacheStore.getTask(track.id, getActiveQualityId());
+    if (task && duration > 0) {
+      const { bytesCached, totalBytes, complete } = task.progress;
+      if (complete) buffered = duration;
+      else if (totalBytes > 0) buffered = Math.max(buffered, (bytesCached / totalBytes) * duration);
+    }
+    return Math.min(duration, buffered);
+  }
+
   function resetPlaybackFlags() {
     scheduledNextKey = null;
     nextAbort?.abort();
@@ -420,6 +471,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     prefetchScheduler.setQuality(qualityId);
 
     const upcoming = [];
+    const upcomingTracks: Track[] = [];
     for (let i = 1; i <= PREFETCH_COUNT; i++) {
       const pos = playOrderPosition + i;
       const queueIndex = playOrder[pos];
@@ -427,10 +479,12 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       const track = queue[queueIndex];
       const streamUrl = resolveCacheUrl(track);
       if (streamUrl) upcoming.push({ trackId: track.id, streamUrl });
+      upcomingTracks.push(track);
       prefetchTrackCover(track);
       prefetchLyrics(track);
     }
     prefetchScheduler.setUpcoming(upcoming);
+    prefetchUpcomingWaveforms(upcomingTracks);
   }
 
   /** Met en cache disque la pochette d'une piste en tâche de fond, sans bloquer la
@@ -517,6 +571,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       const decoded = await engine.decodeAndTrim(bytes);
       if (get().currentTrack?.id !== track.id) return;
       decodedCache.set(key, decoded);
+      prepareWaveform(track.id, decoded.buffer);
       engine.attachDecodedActive(decoded);
       // La bascule native→buffer change `engine.duration` (silence de bord rogné) : recaler
       // immédiatement plutôt que d'attendre le prochain tick, sans quoi un seek lancé juste
@@ -572,6 +627,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         queueIndex: nextQueueIndex,
         currentTime: 0,
         duration: engine.duration,
+        // Piste décodée d'avance (gapless) : entièrement en mémoire.
+        bufferedTime: engine.duration,
       });
       updateNowPlayingMetadata(nextTrackData);
       setNowPlayingPlaybackState("playing");
@@ -595,6 +652,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         if (scheduledNextKey !== key) return;
         decodedCache.set(key, decoded);
       }
+      prepareWaveform(nextTrackData.id, decoded.buffer);
 
       engine.scheduleNext(decoded.buffer, decoded.trim, commitSwap);
     } catch (err) {
@@ -766,7 +824,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
           time = seekSettleTarget;
         }
       }
-      if (!document.hidden) set({ currentTime: time, duration });
+      if (!document.hidden) set({ currentTime: time, duration, bufferedTime: currentBufferedTime(track, duration) });
       setNowPlayingPositionState(duration, time, false, engine.playbackRate);
 
       if (!scrobbledNowPlaying && time > 1) {
@@ -782,8 +840,39 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     scheduleTick();
   }
 
+  // Barre de tampon en pause : le chargement continue (voir GaplessEngine.pause), la barre doit le
+  // montrer. Une fois par seconde, uniquement tant que la piste n'est pas entièrement chargée — puis
+  // plus aucun réveil.
+  const BUFFER_POLL_MS = 1000;
+  let bufferPollTimer: number | null = null;
+
+  function scheduleBufferPoll() {
+    if (bufferPollTimer !== null) return;
+    bufferPollTimer = window.setTimeout(pollBuffered, BUFFER_POLL_MS);
+  }
+
+  // Relevés consécutifs sans progression : au-delà, plus rien ne charge (réseau coupé, fond en
+  // attente) — on arrête de se réveiller, relancé au prochain changement d'état du lecteur.
+  const BUFFER_POLL_MAX_IDLE = 15;
+  let bufferPollIdle = 0;
+
+  function pollBuffered() {
+    bufferPollTimer = null;
+    const { currentTrack: track, isPlaying, duration, bufferedTime } = get();
+    // Fenêtre masquée : rien à afficher ; reprise via le `set` de visibilitychange.
+    if (!track || isPlaying || document.hidden || duration <= 0 || bufferedTime >= duration - 0.5) return;
+    const next = currentBufferedTime(track, duration);
+    bufferPollIdle = next > bufferedTime ? 0 : bufferPollIdle + 1;
+    if (next !== bufferedTime) set({ bufferedTime: next });
+    if (bufferPollIdle < BUFFER_POLL_MAX_IDLE) scheduleBufferPoll();
+  }
+
   api.subscribe((state) => {
     if (tickTimer === null && state.isPlaying && state.currentTrack) scheduleTick();
+    if (bufferPollTimer === null && !state.isPlaying && state.currentTrack && state.bufferedTime < state.duration - 0.5) {
+      bufferPollIdle = 0;
+      scheduleBufferPoll();
+    }
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -860,7 +949,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     // En mode buffer (piste déjà décodée), `engine.duration` est connue immédiatement ; en
     // streaming natif, elle vaut encore 0 tant que les métadonnées n'ont pas chargé —
     // `tickProgress` la recale dès qu'elle devient disponible.
-    set({ currentTrack: track, queue, currentTime: offset, duration: engine.duration, isPlaying: true });
+    set({ currentTrack: track, queue, currentTime: offset, duration: engine.duration, bufferedTime: offset, isPlaying: true });
     updateNowPlayingMetadata(track);
     setNowPlayingPlaybackState("playing");
     setNowPlayingPositionState(engine.duration, offset, true, engine.playbackRate);
@@ -952,6 +1041,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
     currentTime: 0,
     duration: 0,
+    bufferedTime: 0,
     setCurrentTime: (time) => {
       // Le swap gapless est désormais planifié à l'avance (horloge exacte), pas déclenché
       // en réaction à un événement : un seek à l'intérieur de la piste courante n'invalide
@@ -1305,6 +1395,12 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
     showDebugPanel: false,
     toggleDebugPanel: () => set((state) => ({ showDebugPanel: !state.showDebugPanel })),
+    ensureCurrentWaveform: () => {
+      const track = get().currentTrack;
+      if (!track) return;
+      const decoded = decodedCache.get(decodedCacheKey(track.id, getActiveQualityId()));
+      if (decoded) void ensureWaveform(track.id, decoded.buffer);
+    },
   };
 });
 

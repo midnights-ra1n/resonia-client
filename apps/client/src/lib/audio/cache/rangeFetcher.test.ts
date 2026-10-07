@@ -192,3 +192,20 @@ describe("streamRange — connexion lente", () => {
   });
 });
 
+
+describe("streamRange — taille totale sans Content-Range lisible (CORS)", () => {
+  it("206 sans Content-Range exposé : taille totale = début de plage + Content-Length", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(streamingResponse(206, [bytes(1, 2, 3)], { "Content-Length": "3" })),
+    );
+    let total: number | null = null;
+    await streamRange("https://x/stream", 997, new AbortController().signal, {
+      onTotal: (t) => {
+        total = t;
+      },
+      onData: async () => true,
+    });
+    expect(total).toBe(1000);
+  });
+});

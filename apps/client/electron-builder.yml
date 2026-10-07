@@ -45,10 +45,10 @@ files:
   - package.json
   # `build/Resonia.icon`/`build/icon.ico` restent hors de l'asar — electron-builder les lit
   # directement depuis `buildResources` (ci-dessus) pour l'icône du BUNDLE lui-même, jamais à
-  # l'exécution. `build/icons/128x128@2x.png`, lui, EST lu à l'exécution par
+  # l'exécution. `build/icons/256x256.png`, lui, EST lu à l'exécution par
   # electron/main/index.ts (icône de fenêtre/barre des tâches Windows/Linux uniquement — macOS
   # n'impose rien et garde l'icône Liquid Glass du bundle).
-  - build/icons/128x128@2x.png
+  - build/icons/256x256.png
   # electron-builder ajoute d'office les `dependencies` de package.json (node_modules) quels que
   # soient les motifs ci-dessus — ~100 Mo d'outils de build (tailwind, lightningcss…) jamais lus
   # à l'exécution. Exclusion explicite pour respecter l'intention décrite plus haut.

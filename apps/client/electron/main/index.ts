@@ -33,7 +33,7 @@ nativeTheme.themeSource = "dark";
 // les effets Liquid Glass (reflets, variantes claire/sombre/teintée). Une image PNG passée à
 // `dock.setIcon`/`iconPath` la remplaçait par une version plate.
 const isMac = process.platform === "darwin";
-const APP_ICON_PNG = isMac ? undefined : join(app.getAppPath(), "build", "icons", "128x128@2x.png");
+const APP_ICON_PNG = isMac ? undefined : join(app.getAppPath(), "build", "icons", "256x256.png");
 
 // Panneau "À propos de Resonia" natif (menu Resonia > À propos, voir `installApplicationMenu` —
 // `role: "appMenu"` le câble automatiquement à cet item). `app.getVersion()` lit la version

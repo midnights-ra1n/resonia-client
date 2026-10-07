@@ -2,6 +2,7 @@ import { storage } from "../../storage";
 import { TrackDownloader } from "./trackDownloader";
 import { cacheKeyFor, type CacheEntryMeta, type DownloadPriority, type ProgressListener } from "./types";
 import { audioCacheBlobStore, opfsDelete, opfsReadAll } from "./opfsStore";
+import { isElectron } from "../../platform";
 
 // Ancien format (un seul tableau sous une seule clé) — encore lu pour migrer les installations
 // existantes vers le format par-entrée ci-dessous, jamais plus écrit (voir `loadMeta`).
@@ -20,6 +21,12 @@ const META_ENTRY_PREFIX = "resonia:cache:meta:entry:";
 function metaEntryKey(key: string): string {
   return `${META_ENTRY_PREFIX}${key}`;
 }
+
+// Purge unique du cache audio de bureau : avant le correctif de reprise (voir
+// TrackDownloader.resumePosition), un téléchargement en plages parallèles interrompu pouvait être
+// repris au mauvais octet et marqué complet avec des trous — fichiers corrompus indiscernables
+// des autres. Le cache n'est qu'une copie : on le vide une fois plutôt que de les garder.
+const SPARSE_RESUME_PURGE_KEY = "resonia:cache:purged:sparse-resume-v1";
 
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 Go
 
@@ -93,6 +100,14 @@ class CacheStore {
             await storage.set(META_INDEX_KEY, legacy.map((e) => e.key));
             await storage.remove(LEGACY_META_KEY);
           }
+        }
+
+        if (isElectron() && !(await storage.get<boolean>(SPARSE_RESUME_PURGE_KEY))) {
+          const keys = Array.from(map.keys());
+          await Promise.all(keys.map((k) => opfsDelete(k).catch(() => {})));
+          await Promise.all([storage.set(META_INDEX_KEY, []), ...keys.map((k) => storage.remove(metaEntryKey(k)))]);
+          await storage.set(SPARSE_RESUME_PURGE_KEY, true);
+          map = new Map();
         }
 
         this.metaCache = map;
@@ -193,7 +208,10 @@ class CacheStore {
     const key = cacheKeyFor(trackId, qualityId);
     let task = this.tasks.get(key);
     if (!task) {
-      task = new TrackDownloader(key, streamUrl, audioCacheBlobStore);
+      // Point de reprise persisté (préfixe contigu), voir TrackDownloader.resumePosition.
+      task = new TrackDownloader(key, streamUrl, audioCacheBlobStore, async () => {
+        return (await this.loadMeta()).get(key)?.bytesCached ?? null;
+      });
       task.onProgress((progress) => {
         // enforceLimit() à chaque chunk (pas seulement en fin de téléchargement) : si le
         // cache est déjà plein pendant qu'on écrit une nouvelle piste, les entrées les plus
@@ -215,9 +233,18 @@ class CacheStore {
    * priority "active"   : bande passante illimitée, protégée de l'éviction par l'appelant.
    * priority "prefetch" : budget en octets, interrompu si non atteint.
    */
-  request(trackId: string, qualityId: string, streamUrl: string, priority: DownloadPriority, budgetBytes?: number): TrackDownloader {
+  request(
+    trackId: string,
+    qualityId: string,
+    streamUrl: string,
+    priority: DownloadPriority,
+    budgetBytes?: number,
+    maxSegments?: number,
+  ): TrackDownloader {
     const task = this.getOrCreateTask(trackId, qualityId, streamUrl);
     task.setPriority(priority, budgetBytes);
+    if (maxSegments !== undefined) task.setMaxSegments(maxSegments);
+    task.setSuspended(false); // demandé = autorisé à utiliser le réseau
     task.run(); // no-op si déjà en cours ou déjà complet
     return task;
   }
@@ -229,6 +256,16 @@ class CacheStore {
 
   getTask(trackId: string, qualityId: string): TrackDownloader | null {
     return this.tasks.get(cacheKeyFor(trackId, qualityId)) ?? null;
+  }
+
+  /** `true` si le téléchargement en cours peut reprendre par plage HTTP (voir TrackDownloader). */
+  isRangeResumable(trackId: string, qualityId: string): boolean {
+    return this.tasks.get(cacheKeyFor(trackId, qualityId))?.isRangeResumable ?? false;
+  }
+
+  /** Pause douce (voir SuspendSignal) : connexion gardée ouverte, reprise instantanée. */
+  setSuspended(trackId: string, qualityId: string, suspended: boolean) {
+    this.tasks.get(cacheKeyFor(trackId, qualityId))?.setSuspended(suspended);
   }
 
   /** Arrête un téléchargement en cours sans supprimer les octets déjà en cache (reprise possible). */

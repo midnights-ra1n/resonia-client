@@ -35,6 +35,10 @@ export interface AlbumSummary {
   genre?: string;
   copyright?: string;
   recordLabels?: RecordLabel[];
+  /** OpenSubsonic : types de parution issus des tags MusicBrainz ("album", "single", "ep",
+   *  "compilation", "live"...), casse variable selon le serveur. */
+  releaseTypes?: string[];
+  isCompilation?: boolean;
 }
 
 export interface ArtistWithAlbumsDTO {
@@ -43,6 +47,21 @@ export interface ArtistWithAlbumsDTO {
   albumCount: number;
   coverArt?: string;
   album?: AlbumSummary[];
+  /** Présent (date ISO) si l'artiste est marqué favori sur le serveur. */
+  starred?: string;
+  musicBrainzId?: string;
+}
+
+/** `getArtistInfo2` : biographie et liens (Navidrome les obtient de Last.fm côté serveur), et
+ *  artistes similaires présents dans la bibliothèque. */
+export interface ArtistInfo2DTO {
+  biography?: string;
+  musicBrainzId?: string;
+  lastFmUrl?: string;
+  smallImageUrl?: string;
+  mediumImageUrl?: string;
+  largeImageUrl?: string;
+  similarArtist?: ArtistSummary[];
 }
 
 export interface ArtistSummary {

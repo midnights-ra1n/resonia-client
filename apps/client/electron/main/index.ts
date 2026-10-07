@@ -522,10 +522,32 @@ function registerIpcHandlers() {
   const DOWNLOAD_STALL_TIMEOUT_MS = 20_000;
   const DOWNLOAD_MAX_RETRIES = 3;
   const DOWNLOAD_PROGRESS_INTERVAL_MS = 250;
+  // Connexion lente : mesuré sur un serveur réel, environ une connexion TCP sur sept à dix tombe à
+  // ~40-50 Ko/s au lieu de 0,4 à 1,4 Mo/s, et le reste. Après SLOW_CHECK_AFTER_MS de réception,
+  // une plage nettement plus lente que le meilleur débit déjà vu sur ce serveur est relancée :
+  // interrompre une réponse HTTP/1.1 en cours ferme sa socket, la reprise part sur une autre.
+  const SLOW_CHECK_AFTER_MS = 3000;
+  const SLOW_MAX_BYTES_PER_SEC = 128 * 1024;
+  const SLOW_RATIO = 4;
+  const MAX_SLOW_RECONNECTS = 2;
+  // Meilleur débit observé par hôte (octets/s) — référence pour juger une connexion lente sans
+  // jamais boucler sur un serveur simplement lent partout.
+  const bestRateByHost = new Map<string, number>();
+
+  class SlowConnectionError extends Error {
+    constructor(rate: number) {
+      super(`Connexion lente (${Math.round(rate / 1024)} Ko/s), relance sur une autre connexion`);
+    }
+  }
 
   let downloadSession: Electron.Session | null = null;
   const getDownloadSession = () => (downloadSession ??= session.fromPartition("resonia-downloads"));
   const activeDownloads = new Map<number, AbortController>();
+  // Pause douce (voir SuspendSignal côté renderer) : les réponses de ces téléchargements ne sont
+  // plus lues — le contrôle de flux TCP fait cesser l'envoi côté serveur — sans fermer les
+  // connexions ni perdre les plages en cours. Peut arriver avant `download:run` (même ordre IPC).
+  const suspendedDownloads = new Set<number>();
+  const resumeWaiters = new Map<number, Set<() => void>>();
 
   class DownloadHttpError extends Error {
     readonly status: number;
@@ -559,7 +581,7 @@ function registerIpcHandlers() {
 
   async function runDownload(
     id: number,
-    opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number },
+    opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number },
     sendProgress: (bytes: number, total: number, received: number) => void,
   ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }> {
     // Même garde que `net:fetch` : ce process est privilégié, jamais de schéma autre que http(s).
@@ -575,6 +597,30 @@ function registerIpcHandlers() {
     const filePath = resolvePath(opts.baseDir, opts.path);
     await mkdir(dirname(filePath), { recursive: true });
     const fh = await openForWrite(filePath);
+    // Plages parallèles d'un run précédent interrompu : tout ce qui suit le point de reprise
+    // (préfixe contigu, voir TrackDownloader.resumePosition) peut contenir des trous — on le jette
+    // pour que la taille du fichier ne soit jamais prise pour une progression réelle.
+    await fh.truncate(opts.from);
+
+    /** Attend la fin d'une pause douce ; rejette si le téléchargement est annulé entre-temps. */
+    function waitWhileSuspended(): Promise<void> {
+      if (!suspendedDownloads.has(id)) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        let waiters = resumeWaiters.get(id);
+        if (!waiters) resumeWaiters.set(id, (waiters = new Set()));
+        const onAbort = () => {
+          waiters!.delete(wake);
+          reject(new Error("aborted"));
+        };
+        const wake = () => {
+          internal.signal.removeEventListener("abort", onAbort);
+          resolve();
+        };
+        waiters.add(wake);
+        if (internal.signal.aborted) onAbort();
+        else internal.signal.addEventListener("abort", onAbort, { once: true });
+      });
+    }
 
     let total = -1;
     let segments: DownloadSegment[] = [{ start: opts.from, end: Infinity, done: 0 }];
@@ -614,14 +660,24 @@ function registerIpcHandlers() {
           ctrl.abort();
         }, DOWNLOAD_STALL_TIMEOUT_MS);
       };
-      const dispose = () => {
+      const disarm = () => {
         if (timer) clearTimeout(timer);
+        timer = null;
+      };
+      const dispose = () => {
+        disarm();
         internal.signal.removeEventListener("abort", onAbort);
       };
+      try {
+        await waitWhileSuspended();
+      } catch (err) {
+        dispose();
+        throw err;
+      }
       arm();
       try {
         const res = await getDownloadSession().fetch(opts.url, { headers: { Range: range }, signal: ctrl.signal });
-        return { res, arm, dispose, stalled: () => stalled };
+        return { res, arm, disarm, dispose, stalled: () => stalled };
       } catch (err) {
         dispose();
         throw stalled ? new Error("Délai réseau dépassé") : err;
@@ -630,19 +686,49 @@ function registerIpcHandlers() {
 
     /** Lit le corps et l'écrit à la position de la plage, jusqu'à sa fin (ou celle du flux).
      *  `skip` : octets à ignorer en tête (serveur qui a ignoré la plage demandée et répond 200). */
-    async function pump(req: Awaited<ReturnType<typeof request>>, seg: DownloadSegment, skip: number): Promise<"eof" | "limit"> {
+    const host = new URL(opts.url).host;
+
+    async function pump(
+      req: Awaited<ReturnType<typeof request>>,
+      seg: DownloadSegment,
+      skip: number,
+      mayReconnect: boolean,
+    ): Promise<"eof" | "limit"> {
       if (!req.res.body) throw new Error("Réponse sans corps");
       const reader = req.res.body.getReader();
+      // Fenêtre de mesure du débit (voir SLOW_CHECK_AFTER_MS), remise à zéro après une pause.
+      let windowStart = Date.now();
+      let windowBytes = 0;
+      let rateChecked = !mayReconnect;
+      // Plage terminée avant la fenêtre de mesure (connexion rapide) : son débit sert quand même de
+      // référence.
+      const recordRate = () => {
+        const elapsed = Date.now() - windowStart;
+        if (elapsed < 500 || windowBytes === 0) return;
+        const rate = (windowBytes * 1000) / elapsed;
+        if (rate > (bestRateByHost.get(host) ?? 0)) bestRateByHost.set(host, rate);
+      };
       try {
         for (;;) {
           let result: Awaited<ReturnType<typeof reader.read>>;
+          if (suspendedDownloads.has(id)) {
+            // Pas de délai d'inactivité pendant une pause volontaire.
+            req.disarm();
+            await waitWhileSuspended();
+            req.arm();
+            windowStart = Date.now();
+            windowBytes = 0;
+          }
           try {
             result = await reader.read();
           } catch (err) {
             throw req.stalled() ? new Error("Délai réseau dépassé") : err;
           }
           req.arm();
-          if (result.done) return "eof";
+          if (result.done) {
+            recordRate();
+            return "eof";
+          }
           let chunk = result.value;
           if (skip > 0) {
             const dropped = Math.min(skip, chunk.byteLength);
@@ -655,9 +741,23 @@ function registerIpcHandlers() {
             await fh.write(chunk, 0, chunk.byteLength, seg.start + seg.done);
             seg.done += chunk.byteLength;
             received += chunk.byteLength;
+            windowBytes += chunk.byteLength;
             report();
           }
+          const elapsed = Date.now() - windowStart;
+          if (!rateChecked && elapsed >= SLOW_CHECK_AFTER_MS && seg.start + seg.done < seg.end) {
+            rateChecked = true;
+            const rate = (windowBytes * 1000) / elapsed;
+            const best = bestRateByHost.get(host) ?? 0;
+            if (rate > best) bestRateByHost.set(host, rate);
+            // Débit de référence inconnu : une seule relance exploratoire (voir runSegment).
+            if (rate < SLOW_MAX_BYTES_PER_SEC && (best === 0 || rate * SLOW_RATIO < best)) {
+              void reader.cancel().catch(() => {});
+              throw new SlowConnectionError(rate);
+            }
+          }
           if (seg.start + seg.done >= seg.end) {
+            recordRate();
             void reader.cancel().catch(() => {});
             return "limit";
           }
@@ -669,6 +769,7 @@ function registerIpcHandlers() {
 
     async function runSegment(seg: DownloadSegment, initial?: Awaited<ReturnType<typeof request>>) {
       let attempt = 0;
+      let slowReconnects = 0;
       let pending = initial;
       while (seg.start + seg.done < seg.end) {
         const doneBefore = seg.done;
@@ -687,13 +788,21 @@ function registerIpcHandlers() {
             req.dispose();
             throw new DownloadHttpError(status);
           }
-          const outcome = await pump(req, seg, status === 200 ? from : 0);
+          // Flux transcodé (200, plages ignorées) : une relance repartirait de l'octet 0 et
+          // relancerait le transcodage — on ne relance que les réponses partielles (206).
+          const mayReconnect =
+            status === 206 && slowReconnects < MAX_SLOW_RECONNECTS && (slowReconnects === 0 || (bestRateByHost.get(host) ?? 0) > 0);
+          const outcome = await pump(req, seg, status === 200 ? from : 0, mayReconnect);
           if (outcome === "eof") {
             if (seg.end === Infinity) seg.end = seg.start + seg.done; // taille révélée par la fin du flux
             else if (seg.start + seg.done < seg.end) throw new Error("Flux interrompu avant la fin de la plage");
           }
         } catch (err) {
           if (internal.signal.aborted) throw err;
+          if (err instanceof SlowConnectionError) {
+            slowReconnects++;
+            continue; // relance immédiate, sur une nouvelle connexion
+          }
           if (seg.done > doneBefore) attempt = 0; // seuls des échecs consécutifs comptent
           if (!isRetryable(err) || attempt >= DOWNLOAD_MAX_RETRIES) throw err;
           attempt++;
@@ -710,7 +819,8 @@ function registerIpcHandlers() {
         // Taille exacte et plages acceptées : découpage en plages parallèles.
         total = announced;
         const remaining = total - opts.from;
-        const count = Math.max(1, Math.min(DOWNLOAD_SEGMENTS, Math.floor(remaining / MIN_SEGMENT_BYTES)));
+        const maxSegments = Math.max(1, Math.min(DOWNLOAD_SEGMENTS, Math.floor(opts.maxSegments ?? DOWNLOAD_SEGMENTS)));
+        const count = Math.max(1, Math.min(maxSegments, Math.floor(remaining / MIN_SEGMENT_BYTES)));
         const size = Math.ceil(remaining / count);
         segments = Array.from({ length: count }, (_, i) => ({
           start: opts.from + i * size,
@@ -736,18 +846,30 @@ function registerIpcHandlers() {
       };
     } finally {
       activeDownloads.delete(id);
+      suspendedDownloads.delete(id);
+      resumeWaiters.delete(id);
       await fh.close().catch(() => {});
     }
   }
 
   ipcMain.handle(
     "download:run",
-    (event, id: number, opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number }) =>
+    (event, id: number, opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number }) =>
       runDownload(id, opts, (bytes, total, received) => {
         if (!event.sender.isDestroyed()) event.sender.send("download:progress", id, bytes, total, received);
       }),
   );
   ipcMain.on("download:abort", (_e, id: number) => activeDownloads.get(id)?.abort());
+  ipcMain.on("download:suspend", (_e, id: number, suspended: boolean) => {
+    if (suspended) {
+      suspendedDownloads.add(id);
+      return;
+    }
+    suspendedDownloads.delete(id);
+    const waiters = resumeWaiters.get(id);
+    resumeWaiters.delete(id);
+    waiters?.forEach((wake) => wake());
+  });
 
   // ---- powerSaveBlocker : n'empêche que la mise en veille de L'APP (pas l'écran), tenu
   // uniquement pendant une lecture active — jamais en idle. Démarré/arrêté par le renderer

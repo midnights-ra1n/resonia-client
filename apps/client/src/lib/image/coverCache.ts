@@ -1,4 +1,5 @@
 import { electronFetch } from "../net/electronFetch";
+import { trackForegroundRequest } from "../network/foregroundActivity";
 import { storage } from "../storage";
 import { createBlobStore } from "../storage/blobStore";
 import { isElectron } from "../platform";
@@ -80,7 +81,8 @@ function runQueuedCoverFetch() {
 }
 
 function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
+  // Attente dans la file comprise : une page n'est complète qu'une fois ses pochettes arrivées.
+  return trackForegroundRequest(new Promise((resolve, reject) => {
     const run = () => {
       task()
         .then(resolve, reject)
@@ -91,7 +93,7 @@ function withCoverFetchLimit<T>(task: () => Promise<T>): Promise<T> {
     };
     coverFetchQueue.push(run);
     runQueuedCoverFetch();
-  });
+  }));
 }
 
 /** `fetch` direct d'abord, en priorité basse (le flux de lecture passe avant) : Navidrome et les CDN

@@ -48,10 +48,11 @@ contextBridge.exposeInMainWorld("resonia", {
   downloads: {
     run: (
       id: number,
-      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number },
+      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number },
     ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }> =>
       ipcRenderer.invoke("download:run", id, opts),
     abort: (id: number): void => ipcRenderer.send("download:abort", id),
+    suspend: (id: number, suspended: boolean): void => ipcRenderer.send("download:suspend", id, suspended),
     onProgress: (cb: (id: number, bytes: number, total: number, received: number) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, id: number, bytes: number, total: number, received: number) =>
         cb(id, bytes, total, received);

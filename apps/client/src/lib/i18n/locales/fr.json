@@ -181,7 +181,22 @@
     "shuffle": "Lecture aléatoire",
     "albumCount": "{{count}} albums",
     "showMore": "Voir plus",
-    "showLess": "Voir moins"
+    "showLess": "Voir moins",
+    "label": "Artiste",
+    "follow": "Suivre",
+    "following": "Abonné",
+    "filterAll": "Tout",
+    "filterAlbums": "Albums",
+    "filterSingles": "Singles et EP",
+    "filterCompilations": "Compilations",
+    "similarArtists": "Les fans aiment aussi",
+    "about": "À propos",
+    "monthlyListeners": "Auditeurs mensuels",
+    "monthlyListenersCount": "{{count}} auditeurs mensuels",
+    "followers": "Abonnés",
+    "worldRank": "Classement mondial",
+    "topCities": "Villes où l'artiste est le plus écouté",
+    "listenersCount": "{{count}} auditeurs"
   },
   "settings": {
     "title": "Paramètres",
@@ -256,7 +271,25 @@
     "lyricsFontDescription": "Utilisée dans la vue des paroles synchronisées.",
     "lyricsFontSame": "Identique à l'interface",
     "lyricsPreviewPrevious": "Et la nuit s'allume",
-    "lyricsPreviewActive": "La musique continue"
+    "lyricsPreviewActive": "La musique continue",
+    "spotify": "Métadonnées Spotify",
+    "spotifyDescription": "Photos de profil, bannières et statistiques des artistes depuis Spotify. Désactivé par défaut : aucune requête n'est envoyée à Spotify tant que vous ne choisissez pas une source.",
+    "spotifyModeOff": "Désactivé",
+    "spotifyModeOffDescription": "Aucune requête vers Spotify. Seules les données de votre serveur sont utilisées.",
+    "spotifyModeOfficial": "API officielle Spotify",
+    "spotifyModeOfficialDescription": "Avec vos propres identifiants développeur. Photo de profil, abonnés et genres (pas de bannière).",
+    "spotifyModeUnofficial": "API non officielle (SpotAPI)",
+    "spotifyModeUnofficialDescription": "Sans compte ni identifiants. Bannière, photo, auditeurs mensuels, biographie et villes principales.",
+    "spotifyDesktopOnly": "Disponible uniquement dans l'application de bureau.",
+    "spotifyCredentialsHelp": "Créez une application (gratuite) sur le tableau de bord développeur Spotify, puis copiez son Client ID et son Client Secret :",
+    "spotifyClientId": "Client ID",
+    "spotifyClientSecret": "Client Secret",
+    "spotifyUnofficialWarning": "API non documentée de Spotify : elle peut cesser de fonctionner à tout moment et son usage n'est pas couvert par les conditions de Spotify. En cas d'échec, les données de votre serveur sont utilisées.",
+    "spotifyPrivacy": "Envoyé à Spotify : le nom des artistes dont vous ouvrez la page, et votre adresse IP. Rien d'autre (ni compte, ni écoutes, ni bibliothèque). Les résultats sont mis en cache une semaine.",
+    "spotifyTest": "Tester la connexion",
+    "spotifyTesting": "Test en cours...",
+    "spotifyTestOk": "Connexion réussie ({{artist}})",
+    "spotifyTestError": "Échec : {{error}}"
   },
   "update": {
     "available": "Resonia {{version}} est disponible",
@@ -363,5 +396,9 @@
     "unitMb": "Mo",
     "unitGb": "Go",
     "topArtists": "Artistes principaux"
+  },
+  "debug": {
+    "copyLog": "Copier le journal (à joindre à un rapport de bug)",
+    "logCopied": "Journal copié"
   }
 }

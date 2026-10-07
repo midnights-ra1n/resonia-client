@@ -32,9 +32,26 @@ const NATIVE_INSTANT_END_THRESHOLD_SECONDS = 2;
 
 // Avance de tampon natif au-delà de laquelle les téléchargements de fond peuvent démarrer sans
 // risquer de faire caler la piste en cours, et seuil bas sous lequel ils se remettent en pause
-// (hystérésis) — voir `updateNativePressure`.
-const NATIVE_SAFE_AHEAD_SECONDS = 20;
-const NATIVE_LOW_AHEAD_SECONDS = 10;
+// (hystérésis) — voir `updateNativePressure`. Marge large : une fois les téléchargements de fond
+// suspendus, les octets déjà en route (tampons du proxy, du système, de Chromium) continuent
+// d'arriver quelques secondes et retardent d'autant le rattrapage du flux lu. 10 s de marge n'y
+// suffisaient pas sur une connexion lente — la piste calait, reprenait, recalait.
+const NATIVE_SAFE_AHEAD_SECONDS = 30;
+const NATIVE_LOW_AHEAD_SECONDS = 15;
+
+/** Usage réseau autorisé aux téléchargements de fond, selon les besoins du flux en cours de lecture :
+ *  - "exclusive" : le flux lu manque d'avance (chargement, seek, attente) — rien d'autre ;
+ *  - "shared" : il a de la marge mais télécharge encore — une seule connexion de fond ;
+ *  - "free" : la lecture ne dépend plus du réseau (fichier local, tampon complet, mode buffer). */
+export type NetworkMode = "exclusive" | "shared" | "free";
+
+// Flux natif bloqué (chargement initial ou attente en cours de piste) depuis ce délai : la requête
+// est relancée sur une connexion neuve. Mesuré sur un serveur réel : environ une connexion TCP sur
+// sept à dix y tombe à ~40-50 Ko/s au lieu de 0,4 à 1,4 Mo/s, quel que soit le protocole — et une
+// connexion lente le reste. En HTTP/1.1, interrompre une réponse en cours ferme sa socket : la
+// relance part sur une autre connexion, rapide dans l'immense majorité des cas.
+const NATIVE_STALL_RECONNECT_MS = 3500;
+const MAX_NATIVE_RECONNECTS = 3;
 
 // WAV silencieux (0,05s, 8-bit/4kHz mono) utilisé uniquement pour ancrer la session Now
 // Playing du système — voir le commentaire sur `sessionAnchor` ci-dessous. Le base64 doit
@@ -234,6 +251,9 @@ export class GaplessEngine {
   // Flux natif relancé à une position (voir `reloadNativeAt`) : position dans la piste de l'instant
   // 0 de l'élément <audio>.
   private nativeTimeBase = 0;
+  // Relance du flux natif bloqué (voir NATIVE_STALL_RECONNECT_MS), par chargement de piste.
+  private nativeStallTimer: number | null = null;
+  private nativeReconnects = 0;
 
   /** Durée de la piste selon ses métadonnées, fournie par l'appelant avant `loadAndPlay`. En
    *  streaming natif d'un flux transcodé (sans Content-Length), l'élément <audio> ne connaît pas
@@ -295,21 +315,21 @@ export class GaplessEngine {
    *  préchargement gapless) en repassant par `loadAndPlay(url, offset, decoded)`. */
   onNativePlaybackUnsupported: ((offset: number) => void) | null = null;
 
-  /** Prévient l'appelant d'une pression réseau (stall/seek en cours) pour qu'il suspende
-   *  son propre préchargement en tâche de fond, et de son relâchement pour le reprendre.
-   *  Délibérément découplé du cache : ce moteur ne connaît aucun module de cache. */
-  onNetworkPressure: ((active: boolean) => void) | null = null;
-  private networkPressure = false;
+  /** Prévient l'appelant de l'usage réseau que le flux en cours laisse aux téléchargements de
+   *  fond (voir NetworkMode). Délibérément découplé du cache : ce moteur ne connaît aucun module
+   *  de cache. */
+  onNetworkMode: ((mode: NetworkMode) => void) | null = null;
+  private networkMode: NetworkMode = "free";
 
-  private setNetworkPressure(active: boolean) {
+  private setNetworkMode(mode: NetworkMode, force = false) {
     // Flux relancé à une position (voir reloadNativeAt) : sans taille annoncée, le lecteur n'y
     // garde que ~2 s d'avance — attendre plus d'avance bloquerait pour toujours la mise en cache,
     // qui est précisément ce qui rendra le positionnement libre (mode buffer).
-    if (active && this.nativeTimeBase > 0) active = false;
-    if (active === this.networkPressure) return;
-    this.networkPressure = active;
-    networkDebugLog("native:pressure", { active });
-    this.onNetworkPressure?.(active);
+    if (mode === "exclusive" && this.nativeTimeBase > 0) mode = "shared";
+    if (mode === this.networkMode && !force) return;
+    this.networkMode = mode;
+    networkDebugLog("native:network-mode", { mode });
+    this.onNetworkMode?.(mode);
   }
 
   // Dernier relevé du tampon natif journalisé (voir `updateNativePressure`) — au plus un par seconde.
@@ -346,15 +366,15 @@ export class GaplessEngine {
       networkDebugLog("native:buffer", { aheadSec: Math.round(ahead), complete, readyState: audio.readyState });
     }
     if (complete) {
-      this.setNetworkPressure(false);
+      this.setNetworkMode("free");
       return;
     }
     // Hystérésis : relâchée à NATIVE_SAFE_AHEAD_SECONDS, reposée si l'avance retombe sous
     // NATIVE_LOW_AHEAD_SECONDS — les téléchargements de fond cèdent alors la bande passante avant
     // que la piste en cours ne cale, au lieu d'attendre l'événement "waiting" (déjà la coupure).
-    if (this.networkPressure && ahead >= NATIVE_SAFE_AHEAD_SECONDS) this.setNetworkPressure(false);
-    else if (!this.networkPressure && ahead < NATIVE_LOW_AHEAD_SECONDS && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
-      this.setNetworkPressure(true);
+    if (this.networkMode === "exclusive" && ahead >= NATIVE_SAFE_AHEAD_SECONDS) this.setNetworkMode("shared");
+    else if (this.networkMode !== "exclusive" && ahead < NATIVE_LOW_AHEAD_SECONDS && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+      this.setNetworkMode("exclusive");
     }
   }
 
@@ -616,11 +636,12 @@ export class GaplessEngine {
       if (this.trackState?.mode === "native") {
         networkDebugLog("native:waiting", { position: Math.round(audio.currentTime) });
         this.setState("buffering");
-        this.setNetworkPressure(true);
+        this.setNetworkMode("exclusive");
+        this.armNativeStallWatchdog();
       }
     });
     audio.addEventListener("seeking", () => {
-      if (this.trackState?.mode === "native") this.setNetworkPressure(true);
+      if (this.trackState?.mode === "native") this.setNetworkMode("exclusive");
     });
     audio.addEventListener("canplay", () => {
       if (this.trackState?.mode === "native") {
@@ -635,6 +656,7 @@ export class GaplessEngine {
     audio.addEventListener("canplaythrough", checkPressure);
     audio.addEventListener("playing", () => {
       if (this.trackState?.mode === "native") {
+        this.clearNativeStallWatchdog();
         checkPressure();
         this.setState("playing");
         this.onNativePlaying?.();
@@ -1124,6 +1146,8 @@ export class GaplessEngine {
     const token = ++this.loadToken;
     this.nativeRangeSeekable = rangeSeekable;
     this.nativeTimeBase = 0;
+    this.nativeReconnects = 0;
+    this.clearNativeStallWatchdog();
     if (this.context.state === "suspended") this.resumeContextWithRetry();
     this.discardPending();
     this.teardownCurrent();
@@ -1132,11 +1156,11 @@ export class GaplessEngine {
     this.nativeInstantEndFallbackAttempted = false;
     this.pendingStreamUrl = url;
     this.pendingMimeType = mimeType ?? null;
-    // Repart d'un état connu : l'appelant (playerStore) vient de remettre son planificateur à
-    // zéro, la pression doit être réémise même si la piste précédente la tenait déjà.
-    this.networkPressure = false;
 
     if (decoded) {
+      // Repart d'un état connu : l'appelant (playerStore) vient de remettre son planificateur à
+      // zéro, le mode doit être réémis même s'il n'a pas changé.
+      this.setNetworkMode("free", true);
       this.startBufferAt(decoded.buffer, decoded.trim, offset);
       return;
     }
@@ -1151,7 +1175,7 @@ export class GaplessEngine {
     // Le flux natif part sur le réseau : les téléchargements de fond attendent qu'il ait fini (ou
     // pris assez d'avance, voir `updateNativePressure`). Un blob local n'utilise pas le réseau.
     networkDebugLog("native:load", { source: url.startsWith("blob:") ? "cache local" : "réseau", offset });
-    this.setNetworkPressure(!url.startsWith("blob:"));
+    this.setNetworkMode(url.startsWith("blob:") ? "free" : "exclusive", true);
     this.nativeAudio.src = url;
     this.nativeAudio.currentTime = offset;
     // Voir le commentaire équivalent dans rebuildAudioGraph : à réappliquer après CHAQUE
@@ -1175,6 +1199,58 @@ export class GaplessEngine {
     });
 
     this.trackState = { mode: "native", contextStartTime: now, pauseOffset: offset, isPaused: false };
+    this.armNativeStallWatchdog();
+  }
+
+  private clearNativeStallWatchdog() {
+    if (this.nativeStallTimer === null) return;
+    window.clearTimeout(this.nativeStallTimer);
+    this.nativeStallTimer = null;
+  }
+
+  /** Relance le flux natif s'il n'a toujours pas (re)démarré au bout de NATIVE_STALL_RECONNECT_MS.
+   *  N'agit que sur un flux réseau déjà muet (chargement ou attente) : jamais de coupure ajoutée. */
+  private armNativeStallWatchdog() {
+    this.clearNativeStallWatchdog();
+    if (typeof window === "undefined" || this.trackState?.mode !== "native") return;
+    if (this.nativeReconnects >= MAX_NATIVE_RECONNECTS || this.nativeAudio.src.startsWith("blob:")) return;
+    const token = this.loadToken;
+    this.nativeStallTimer = window.setTimeout(() => {
+      this.nativeStallTimer = null;
+      if (token !== this.loadToken || this.trackState?.mode !== "native" || this.trackState.isPaused) return;
+      if (this._state !== "loading" && this._state !== "buffering") return;
+      this.reconnectNative();
+    }, NATIVE_STALL_RECONNECT_MS);
+  }
+
+  /** Nouvelle requête pour le flux natif à la position courante. Flux transcodé (sans plages) :
+   *  repart côté serveur à la position voulue (`timeOffset`, voir reloadNativeAt) ; à défaut, même
+   *  URL rendue unique pour qu'aucune réponse en cache ne soit resservie. */
+  private reconnectNative() {
+    if (this.trackState?.mode !== "native") return;
+    this.nativeReconnects++;
+    const target = this.currentTime;
+    const resolved = this.nativeRangeSeekable ? null : this.resolveNativeSeekUrl?.(target);
+    networkDebugLog("native:reconnect", { attempt: this.nativeReconnects, position: Math.round(target) });
+
+    const token = ++this.loadToken;
+    this.nativeAudio.pause();
+    if (resolved) {
+      this.nativeTimeBase = resolved.offset;
+      this.trackState.pauseOffset = resolved.offset;
+      this.trackState.contextStartTime = this.context.currentTime - resolved.offset;
+      this.nativeAudio.src = resolved.url;
+    } else {
+      const url = new URL(this.nativeAudio.src);
+      url.searchParams.set("_r", String(Date.now()));
+      this.nativeAudio.src = url.toString();
+      this.nativeAudio.currentTime = Math.max(0, target - this.nativeTimeBase);
+    }
+    this.applyRateToNativeAudio();
+    this.nativeAudio.play().catch((err) => {
+      if (token === this.loadToken) this.reportError("Lecture impossible après reconnexion", err);
+    });
+    this.armNativeStallWatchdog();
   }
 
   /** Repli quand le streaming natif direct échoue avec MEDIA_ERR_SRC_NOT_SUPPORTED (typ.
@@ -1308,7 +1384,7 @@ export class GaplessEngine {
 
     this.startBufferAt(decoded.buffer, decoded.trim, position, wasPaused);
     // Lecture depuis la mémoire désormais : plus aucun flux réseau à protéger.
-    this.setNetworkPressure(false);
+    this.setNetworkMode("free");
   }
 
   pause() {
@@ -1388,7 +1464,7 @@ export class GaplessEngine {
     this.discardPending();
     this.teardownCurrent();
     this.trackState = null;
-    this.networkPressure = false;
+    this.networkMode = "free";
     this.setState("idle");
     // Voir le commentaire équivalent dans pause() : aucune raison de laisser le graphe de
     // rendu tourner une fois la file vidée.
@@ -1434,7 +1510,7 @@ export class GaplessEngine {
     const wasPaused = this.trackState.isPaused;
     const token = ++this.loadToken;
     this.nativeTimeBase = resolved.offset;
-    this.setNetworkPressure(false);
+    this.setNetworkMode("shared");
     this.trackState.pauseOffset = resolved.offset;
     this.trackState.contextStartTime = this.context.currentTime - resolved.offset;
     networkDebugLog("native:seek-reload", { target: Math.round(target), applied: resolved.offset });
@@ -1727,6 +1803,7 @@ export class GaplessEngine {
   }
 
   private teardownCurrent() {
+    this.clearNativeStallWatchdog();
     this.nativeAudio.pause();
     this.nativeGain.gain.cancelScheduledValues(this.context.currentTime);
     this.nativeGain.gain.setValueAtTime(1, this.context.currentTime);

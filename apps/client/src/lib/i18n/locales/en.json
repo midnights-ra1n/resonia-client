@@ -181,7 +181,22 @@
     "shuffle": "Shuffle play",
     "albumCount": "{{count}} albums",
     "showMore": "Show more",
-    "showLess": "Show less"
+    "showLess": "Show less",
+    "label": "Artist",
+    "follow": "Follow",
+    "following": "Following",
+    "filterAll": "All",
+    "filterAlbums": "Albums",
+    "filterSingles": "Singles and EPs",
+    "filterCompilations": "Compilations",
+    "similarArtists": "Fans also like",
+    "about": "About",
+    "monthlyListeners": "Monthly listeners",
+    "monthlyListenersCount": "{{count}} monthly listeners",
+    "followers": "Followers",
+    "worldRank": "World rank",
+    "topCities": "Top listening cities",
+    "listenersCount": "{{count}} listeners"
   },
   "settings": {
     "title": "Settings",
@@ -256,7 +271,25 @@
     "lyricsFontDescription": "Used in the synced lyrics view.",
     "lyricsFontSame": "Same as interface",
     "lyricsPreviewPrevious": "And the night lights up",
-    "lyricsPreviewActive": "The music plays on"
+    "lyricsPreviewActive": "The music plays on",
+    "spotify": "Spotify metadata",
+    "spotifyDescription": "Artist profile pictures, banners and stats from Spotify. Off by default: no request is sent to Spotify until you choose a source.",
+    "spotifyModeOff": "Off",
+    "spotifyModeOffDescription": "No request to Spotify. Only data from your server is used.",
+    "spotifyModeOfficial": "Official Spotify API",
+    "spotifyModeOfficialDescription": "With your own developer credentials. Profile picture, followers and genres (no banner).",
+    "spotifyModeUnofficial": "Unofficial API (SpotAPI)",
+    "spotifyModeUnofficialDescription": "No account or credentials needed. Banner, picture, monthly listeners, biography and top cities.",
+    "spotifyDesktopOnly": "Only available in the desktop app.",
+    "spotifyCredentialsHelp": "Create a (free) app on the Spotify developer dashboard, then copy its Client ID and Client Secret:",
+    "spotifyClientId": "Client ID",
+    "spotifyClientSecret": "Client Secret",
+    "spotifyUnofficialWarning": "Undocumented Spotify API: it may stop working at any time and its use is not covered by Spotify's terms. If it fails, data from your server is used.",
+    "spotifyPrivacy": "Sent to Spotify: the names of the artists whose page you open, and your IP address. Nothing else (no account, listening history or library). Results are cached for a week.",
+    "spotifyTest": "Test connection",
+    "spotifyTesting": "Testing...",
+    "spotifyTestOk": "Connected ({{artist}})",
+    "spotifyTestError": "Failed: {{error}}"
   },
   "update": {
     "available": "Resonia {{version}} is available",
@@ -363,5 +396,9 @@
     "unitMb": "MB",
     "unitGb": "GB",
     "topArtists": "Top artists"
+  },
+  "debug": {
+    "copyLog": "Copy log (to attach to a bug report)",
+    "logCopied": "Log copied"
   }
 }

@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumDetailsDTO, AlbumSummary, AlbumWithSongsDTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDetailsDTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumDetailsDTO, AlbumSummary, AlbumWithSongsDTO, ArtistInfo2DTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDetailsDTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -10,6 +10,8 @@ export interface SubsonicClientConfig {
   token?: string;
   clientName?: string;
   apiVersion?: string;
+  /** Appelé avec chaque requête API émise (ex: pour suivre l'activité réseau de premier plan). */
+  onRequest?: (request: Promise<unknown>) => void;
 }
 
 export class SubsonicApiError extends Error {
@@ -28,12 +30,14 @@ export class SubsonicClient {
   private token: string;
   private clientName: string;
   private apiVersion: string;
+  private onRequest: ((request: Promise<unknown>) => void) | undefined;
 
   constructor(config: SubsonicClientConfig) {
     this.url = config.url.replace(/\/+$/, "");
     this.username = config.username;
     this.clientName = config.clientName ?? "Resonia";
     this.apiVersion = config.apiVersion ?? "1.16.1";
+    this.onRequest = config.onRequest;
 
     if (config.token && config.salt) {
       this.salt = config.salt;
@@ -67,10 +71,13 @@ export class SubsonicClient {
     return searchParams;
   }
 
-  private async request<T = unknown>(
-    endpoint: string,
-    extraParams: Record<string, string | string[]> = {},
-  ): Promise<T> {
+  private request<T = unknown>(endpoint: string, extraParams: Record<string, string | string[]> = {}): Promise<T> {
+    const promise = this.send<T>(endpoint, extraParams);
+    this.onRequest?.(promise);
+    return promise;
+  }
+
+  private async send<T>(endpoint: string, extraParams: Record<string, string | string[]>): Promise<T> {
     const params = this.buildParams(extraParams);
     const response = await fetch(`${this.url}/rest/${endpoint}?${params.toString()}`);
 
@@ -194,9 +201,29 @@ export class SubsonicClient {
     await this.request("deletePlaylist", { id: playlistId });
   }
 
-async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
+  async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
     const result = await this.request<{ artist: ArtistWithAlbumsDTO }>("getArtist", { id: artistId });
     return result.artist;
+  }
+
+  /** `includeNotPresent=false` : seuls les artistes similaires présents dans la bibliothèque
+   *  (donc avec un id navigable) sont renvoyés. */
+  async getArtistInfo2(artistId: string, count = 12): Promise<ArtistInfo2DTO> {
+    const result = await this.request<{ artistInfo2?: ArtistInfo2DTO }>("getArtistInfo2", {
+      id: artistId,
+      count: String(count),
+      includeNotPresent: "false",
+    });
+    return result.artistInfo2 ?? {};
+  }
+
+  /** Subsonic distingue la cible de `star`/`unstar` par paramètre : `artistId` pour un artiste. */
+  async starArtist(artistId: string): Promise<void> {
+    await this.request("star", { artistId });
+  }
+
+  async unstarArtist(artistId: string): Promise<void> {
+    await this.request("unstar", { artistId });
   }
 
   /** Nécessite le nom de l'artiste (pas son id) : c'est ainsi que l'endpoint Subsonic est défini. */

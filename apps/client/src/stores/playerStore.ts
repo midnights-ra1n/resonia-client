@@ -652,7 +652,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   });
 
   engine.onNativePlaying = onPlaybackStarted;
-  engine.onNetworkPressure = (active) => (active ? prefetchScheduler.pause() : prefetchScheduler.resume());
+  engine.onNetworkMode = (mode) => prefetchScheduler.setNetworkMode(mode);
   engine.resolveNativeSeekUrl = (offset) => {
     const track = get().currentTrack;
     const client = getActiveClient();
@@ -694,7 +694,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         // Même canal que le préchargement (une seule connexion, reprise possible) plutôt qu'un
         // fetch dédié : le flux natif n'a jamais démarré, rien d'autre n'utilise le réseau.
         const signal = playbackAbort.signal;
-        prefetchScheduler.resume();
+        prefetchScheduler.setNetworkMode("free");
         await activateCurrentTrackCaching();
         const arrayBuffer = await waitForTrackBytes(track.id, resolved.qualityId, signal);
         if (!arrayBuffer || get().currentTrack?.id !== track.id) return;

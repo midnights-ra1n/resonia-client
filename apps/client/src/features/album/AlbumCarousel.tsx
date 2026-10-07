@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { CaretLeft, CaretRight } from "../../components/icons";
 import type { AlbumSummary } from "@resonia/api-client";
 import { AlbumCard } from "../home/AlbumCard";
@@ -9,9 +9,11 @@ import { useScrollEdges } from "../../hooks/useScrollEdges";
 interface AlbumCarouselProps {
   title: string;
   albums: AlbumSummary[];
+  /** Contenu affiché sous le titre (ex: filtres de la discographie d'un artiste). */
+  toolbar?: ReactNode;
 }
 
-export function AlbumCarousel({ title, albums }: AlbumCarouselProps) {
+export function AlbumCarousel({ title, albums, toolbar }: AlbumCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Élément suivi aussi en état : useScrollEdges doit le recevoir une fois monté.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -49,6 +51,7 @@ export function AlbumCarousel({ title, albums }: AlbumCarouselProps) {
     </button>
   </div>
 </div>
+      {toolbar && <div className="mb-4">{toolbar}</div>}
 
       <SectionInViewContext.Provider value={sectionInView}>
         {/* Dégradés des côtés : les cartes coupées par le bord s'estompent au lieu d'être tranchées net

@@ -31,6 +31,7 @@ import {
 } from "../../lib/image/coverCache";
 import { clearAnimatedCoverResolutionCache } from "../album/useAnimatedAlbumCover";
 import { AppearanceSection } from "./AppearanceSection";
+import { SpotifySection } from "./SpotifySection";
 
 // Voir useAnimatedAlbumCover.ts : même raison (CORS/robustesse), même fallback web.
 const platformFetch: typeof fetch = async (input, init) => {
@@ -455,6 +456,8 @@ export function SettingsPage() {
                     {t("settings.animatedArtworkForceRefreshDescription")}
                   </p>
                 </div>
+
+                <SpotifySection />
               </div>
             </section>
           )}

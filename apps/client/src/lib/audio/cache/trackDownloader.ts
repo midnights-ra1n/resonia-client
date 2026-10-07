@@ -1,10 +1,12 @@
-import { EndOfStreamError, TruncatedStreamError, isTransientStreamError, streamRange } from "./rangeFetcher";
+import { EndOfStreamError, SlowStreamError, TruncatedStreamError, isTransientStreamError, streamRange } from "./rangeFetcher";
 import type { DownloadPriority, ProgressListener } from "./types";
 import type { BlobStore, BlobWriter } from "../../storage/blobStore";
-import type { BlobDownloadResult } from "../../storage/blobStore/types";
 import { networkDebugLog } from "../debug/audioDebugLogger";
+import { SuspendController } from "./suspendController";
 
 const MAX_RETRIES = 3;
+// Relances sur une autre connexion après une connexion lente (voir SlowStreamError), par run.
+const MAX_SLOW_RECONNECTS = 2;
 const BASE_RETRY_DELAY_MS = 500;
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -51,11 +53,41 @@ export class TrackDownloader {
   // cache. Perçu à la lecture comme un bref retour en arrière (~0,2s) puis une reprise
   // normale — précisément quand du réseau est sollicité en tâche de fond pendant la lecture.
   private closing: Promise<void> | null = null;
+  // Pause douce (voir SuspendSignal) : la connexion reste ouverte, sa position est conservée.
+  private suspension = new SuspendController();
+  // Point de reprise connu de l'appelant (métadonnées persistées du cache), voir `run()`.
+  private knownBytes: (() => Promise<number | null>) | undefined;
 
-  constructor(key: string, streamUrl: string, store: BlobStore) {
+  constructor(key: string, streamUrl: string, store: BlobStore, knownBytes?: () => Promise<number | null>) {
     this.key = key;
     this.streamUrl = streamUrl;
     this.store = store;
+    this.knownBytes = knownBytes;
+  }
+
+  // Plages parallèles autorisées au prochain run (bureau), voir PrefetchScheduler.
+  private maxSegments: number | undefined;
+
+  setMaxSegments(maxSegments: number) {
+    this.maxSegments = maxSegments;
+  }
+
+  /** Taille exacte annoncée par une réponse 206 : une reprise ne coûte qu'une requête par plage.
+   *  Faux pour un flux transcodé à la volée (200, taille inconnue jusqu'à la fin), dont la reprise
+   *  impose de tout retélécharger depuis l'octet 0. */
+  get isRangeResumable(): boolean {
+    return this.totalBytes > 0 && !this.complete;
+  }
+
+  get isSuspended(): boolean {
+    return this.suspension.suspended;
+  }
+
+  /** Suspend (ou reprend) la lecture du flux sans fermer la connexion — voir SuspendSignal. */
+  setSuspended(suspended: boolean) {
+    if (suspended === this.suspension.suspended) return;
+    networkDebugLog(suspended ? "download:suspended" : "download:unsuspended", { key: this.key, bytesCached: this.bytesCached });
+    this.suspension.set(suspended);
   }
 
   get progress(): { bytesCached: number; totalBytes: number; complete: boolean } {
@@ -138,7 +170,7 @@ export class TrackDownloader {
     // n'est jamais mis en cache pour elle (ni retry possible).
     let writer: BlobWriter | null = null;
     try {
-      this.bytesCached = await this.store.fileSize(this.key);
+      this.bytesCached = await this.resumePosition();
       if (runSignal.aborted) return;
       if (this.store.download) {
         await this.runDelegated(this.store.download.bind(this.store), runSignal);
@@ -156,6 +188,7 @@ export class TrackDownloader {
       // à `bytesCached`, avec un backoff exponentiel. Le compteur d'essais est remis à zéro dès
       // qu'un octet arrive : seuls des échecs CONSÉCUTIFS épuisent les tentatives.
       let attempt = 0;
+      let slowReconnects = 0;
       while (this.running && !this.complete) {
         if (this.isBudgetExhausted) {
           networkDebugLog("download:budget-exhausted", { key: this.key, bytesCached: this.bytesCached, budgetBytes: this.budgetBytes });
@@ -164,24 +197,31 @@ export class TrackDownloader {
         const signal = runSignal;
         networkDebugLog("download:start", { key: this.key, from: this.bytesCached, attempt });
         try {
-          const finished = await streamRange(this.streamUrl, this.bytesCached, signal, {
-            onTotal: (total) => {
-              if (this.totalBytes === -1 && total > 0) this.totalBytes = total;
+          const finished = await streamRange(
+            this.streamUrl,
+            this.bytesCached,
+            signal,
+            {
+              onTotal: (total) => {
+                if (this.totalBytes === -1 && total > 0) this.totalBytes = total;
+              },
+              onData: async (data) => {
+                const rangeStart = this.bytesCached;
+                await activeWriter.write(data);
+                this.bytesCached += data.byteLength;
+                attempt = 0;
+                networkDebugLog("chunk:read", { key: this.key, bytes: data.byteLength, rangeStart, bytesCached: this.bytesCached });
+                if (this.totalBytes > 0 && this.bytesCached >= this.totalBytes) {
+                  this.complete = true;
+                  networkDebugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
+                }
+                this.emit();
+                return this.running && !this.complete && !this.isBudgetExhausted;
+              },
             },
-            onData: async (data) => {
-              const rangeStart = this.bytesCached;
-              await activeWriter.write(data);
-              this.bytesCached += data.byteLength;
-              attempt = 0;
-              networkDebugLog("chunk:read", { key: this.key, bytes: data.byteLength, rangeStart, bytesCached: this.bytesCached });
-              if (this.totalBytes > 0 && this.bytesCached >= this.totalBytes) {
-                this.complete = true;
-                networkDebugLog("download:complete", { key: this.key, totalBytes: this.totalBytes });
-              }
-              this.emit();
-              return this.running && !this.complete && !this.isBudgetExhausted;
-            },
-          });
+            this.suspension,
+            slowReconnects < MAX_SLOW_RECONNECTS,
+          );
           if (!finished || this.complete) continue;
           // Flux lu jusqu'au bout : si le serveur annonçait une taille, elle doit être atteinte —
           // sinon c'est une coupure propre en cours de route, à reprendre.
@@ -200,6 +240,11 @@ export class TrackDownloader {
             break;
           }
           if (signal.aborted) break; // pause()/cancel() volontaire
+          if (err instanceof SlowStreamError) {
+            slowReconnects++;
+            networkDebugLog("download:slow-reconnect", { key: this.key, attempt: slowReconnects, error: err.message });
+            continue; // relance immédiate, sur une autre connexion
+          }
           if (!isTransientStreamError(err) || attempt >= MAX_RETRIES) throw err;
           attempt++;
           networkDebugLog("chunk:retry", { key: this.key, attempt, error: String((err as Error)?.message ?? err) });
@@ -223,11 +268,25 @@ export class TrackDownloader {
     }
   }
 
+  /** Octet à partir duquel reprendre. La taille du fichier sur disque ne suffit PAS sur bureau :
+   *  le process principal y écrit plusieurs plages en parallèle (voir runDelegated), si bien qu'un
+   *  fichier interrompu peut être plus long que ses octets réellement contigus — reprendre à sa
+   *  taille laissait des trous remplis de zéros, et une plage finale déjà terminée faisait même
+   *  répondre 416 au serveur : piste marquée « complète » mais corrompue (décodage impossible,
+   *  enchaînement gapless retombant sur un rechargement réseau). On reprend donc au préfixe
+   *  contigu connu (progression en mémoire, sinon métadonnées persistées), borné par le disque. */
+  private async resumePosition(): Promise<number> {
+    const onDisk = await this.store.fileSize(this.key);
+    if (!this.store.download) return onDisk; // web : écriture strictement séquentielle
+    const known = this.bytesCached > 0 ? this.bytesCached : ((await this.knownBytes?.()) ?? 0);
+    return Math.min(onDisk, known);
+  }
+
   /** Bureau : le téléchargement (plusieurs plages en parallèle, écriture directe sur disque,
    *  reprises) est fait par le process principal — voir `BlobStore.download`. Ici, on ne fait que
    *  refléter sa progression. */
   private async runDelegated(
-    download: (key: string, url: string, from: number, signal: AbortSignal, handlers: { onProgress(bytes: number, total: number, received: number): void }) => Promise<BlobDownloadResult>,
+    download: NonNullable<BlobStore["download"]>,
     signal: AbortSignal,
   ) {
     networkDebugLog("download:start", { key: this.key, from: this.bytesCached, via: "process principal" });
@@ -240,7 +299,7 @@ export class TrackDownloader {
         this.bytesCached = bytes;
         this.emit();
       },
-    });
+    }, this.suspension, { maxSegments: this.maxSegments });
     this.bytesCached = result.bytes;
     if (result.total > 0) this.totalBytes = result.total;
     if (result.complete) {

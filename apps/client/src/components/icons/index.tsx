@@ -13,6 +13,7 @@ import IconArrowForward from "@material-symbols/svg-400/rounded/arrow_forward.sv
 import IconArrowUpward from "@material-symbols/svg-400/rounded/arrow_upward.svg?react";
 import IconBarChart from "@material-symbols/svg-400/rounded/bar_chart.svg?react";
 import IconBugReport from "@material-symbols/svg-400/rounded/bug_report.svg?react";
+import IconContentCopy from "@material-symbols/svg-400/rounded/content_copy.svg?react";
 import IconAutorenew from "@material-symbols/svg-400/rounded/autorenew.svg?react";
 import IconCast from "@material-symbols/svg-400/rounded/cast.svg?react";
 import IconCheck from "@material-symbols/svg-400/rounded/check.svg?react";
@@ -83,6 +84,7 @@ export const ArrowRight = wrap(IconArrowForward);
 export const ArrowsClockwise = wrap(IconAutorenew);
 export const Bug = wrap(IconBugReport);
 export const Code = wrap(IconCode);
+export const Copy = wrap(IconContentCopy);
 export const CaretDown = wrap(IconKeyboardArrowDown);
 export const CaretLeft = wrap(IconChevronLeft);
 export const CaretRight = wrap(IconChevronRight);

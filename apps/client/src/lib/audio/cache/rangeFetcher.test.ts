@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EndOfStreamError, HttpStatusError, StreamStallError, isTransientStreamError, streamRange } from "./rangeFetcher";
+import { EndOfStreamError, HttpStatusError, SlowStreamError, StreamStallError, isTransientStreamError, streamRange } from "./rangeFetcher";
 
 function bytes(...values: number[]): Uint8Array {
   return new Uint8Array(values);
@@ -142,3 +142,53 @@ describe("streamRange — une seule requête lue au fil de l'eau", () => {
     expect(isTransientStreamError(err)).toBe(false);
   });
 });
+
+describe("streamRange — connexion lente", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Corps livrant 1 Ko par lecture, l'horloge avançant d'une seconde à chaque fois (~1 Ko/s). */
+  function slowBody(): ReadableStream<Uint8Array> {
+    return new ReadableStream<Uint8Array>({
+      pull(controller) {
+        now += 1000;
+        controller.enqueue(new Uint8Array(1024));
+      },
+    });
+  }
+  let now = 0;
+
+  it("206 très lent : abandonne la connexion (SlowStreamError, transitoire) après avoir transmis les octets reçus", async () => {
+    now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(slowBody(), { status: 206, headers: { "Content-Range": "bytes 0-999999/1000000" } })));
+    let written = 0;
+    const err = await streamRange(
+      "https://slow-host/stream",
+      0,
+      new AbortController().signal,
+      { onTotal: () => {}, onData: async (d) => ((written += d.byteLength), true) },
+      undefined,
+      true,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SlowStreamError);
+    expect(isTransientStreamError(err)).toBe(true);
+    expect(written).toBeGreaterThan(0);
+  });
+
+  it("relance non autorisée (ou flux transcodé 200) : continue sur la même connexion", async () => {
+    now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let reads = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        now += 1000;
+        if (++reads > 6) controller.close();
+        else controller.enqueue(new Uint8Array(1024));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 200 })));
+    const finished = await streamRange("https://slow-host-2/stream", 0, new AbortController().signal, { onTotal: () => {}, onData: async () => true }, undefined, true);
+    expect(finished).toBe(true);
+  });
+});
+

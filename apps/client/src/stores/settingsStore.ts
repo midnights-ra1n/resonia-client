@@ -9,13 +9,21 @@ import { storage } from "../lib/storage";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
 import { setCoverCacheMaxBytes } from "../lib/image/coverCache";
 import { setAudioDebugEnabled } from "../lib/audio/debug/audioDebugLogger";
+import { decryptPassword, encryptPassword, type EncryptedPassword } from "../lib/security/passwordVault";
 
 export type PlaylistSortBy = "default" | "title" | "artist" | "album";
 export type PlaylistSortDirection = "asc" | "desc";
+/** Source des métadonnées Spotify de la page artiste. "off" (défaut) : aucune requête ne part
+ *  vers Spotify. "official" : API Web avec le Client ID/Secret de l'utilisateur. "unofficial" :
+ *  API privée du lecteur web (approche SpotAPI), bureau uniquement. */
+export type SpotifyMetadataMode = "off" | "official" | "unofficial";
 
 interface SettingsState {
   audioQualityId: string;
   lastfmApiKey: string;
+  spotifyMetadataMode: SpotifyMetadataMode;
+  spotifyClientId: string;
+  spotifyClientSecret: string;
   animatedArtworkBaseUrl: string;
   cacheMaxBytes: number;
   playlistSortBy: PlaylistSortBy;
@@ -31,6 +39,8 @@ interface SettingsState {
   hydrate: () => Promise<void>;
   setAudioQuality: (id: string) => Promise<void>;
   setLastfmApiKey: (key: string) => Promise<void>;
+  setSpotifyMetadataMode: (mode: SpotifyMetadataMode) => Promise<void>;
+  setSpotifyCredentials: (clientId: string, clientSecret: string) => Promise<void>;
   setAnimatedArtworkBaseUrl: (url: string) => Promise<void>;
   setCacheMaxBytes: (bytes: number) => Promise<void>;
   setPlaylistSort: (
@@ -45,6 +55,10 @@ interface SettingsState {
 
 const STORAGE_KEY = "resonia:settings:audioQuality";
 const LASTFM_API_KEY_STORAGE_KEY = "resonia:settings:lastfmApiKey";
+const SPOTIFY_MODE_STORAGE_KEY = "resonia:settings:spotifyMetadataMode";
+const SPOTIFY_CLIENT_ID_STORAGE_KEY = "resonia:settings:spotifyClientId";
+// Chiffré (AES-GCM, voir passwordVault) : jamais de secret en clair dans le stockage.
+const SPOTIFY_CLIENT_SECRET_STORAGE_KEY = "resonia:settings:spotifyClientSecret";
 const ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY =
   "resonia:settings:animatedArtworkBaseUrl";
 const CACHE_MAX_BYTES_STORAGE_KEY = "resonia:settings:cacheMaxBytes";
@@ -84,9 +98,16 @@ function applyCacheMaxBytes(totalBytes: number) {
   setCoverCacheMaxBytes(coverBytes);
 }
 
+function isSpotifyMode(value: unknown): value is SpotifyMetadataMode {
+  return value === "off" || value === "official" || value === "unofficial";
+}
+
 export const useSettingsStore = create<SettingsState>((set) => ({
   audioQualityId: DEFAULT_QUALITY_ID,
   lastfmApiKey: "",
+  spotifyMetadataMode: "off",
+  spotifyClientId: "",
+  spotifyClientSecret: "",
   animatedArtworkBaseUrl: "",
   cacheMaxBytes: DEFAULT_CACHE_MAX_BYTES,
   playlistSortBy: "default",
@@ -110,6 +131,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       checkUpdatesOnLaunch,
       betaUpdatesEnabled,
       dismissedUpdateVersion,
+      spotifyMode,
+      spotifyClientId,
+      spotifyClientSecret,
     ] = [
       storage.getSync<string>(STORAGE_KEY),
       storage.getSync<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -121,6 +145,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
       storage.getSync<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
       storage.getSync<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
+      storage.getSync<string>(SPOTIFY_MODE_STORAGE_KEY),
+      storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
+      storage.getSync<EncryptedPassword>(SPOTIFY_CLIENT_SECRET_STORAGE_KEY),
     ] as const;
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -143,8 +170,17 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
       betaUpdatesEnabled: betaUpdatesEnabled ?? false,
       dismissedUpdateVersion: dismissedUpdateVersion ?? null,
+      spotifyMetadataMode: isSpotifyMode(spotifyMode) ? spotifyMode : "off",
+      spotifyClientId: spotifyClientId ?? "",
       hydrated: true,
     });
+
+    // Déchiffrement asynchrone, après le premier rendu : seule la page artiste en a besoin.
+    if (spotifyClientSecret) {
+      decryptPassword(spotifyClientSecret)
+        .then((secret) => set({ spotifyClientSecret: secret }))
+        .catch((err) => console.warn("[settings] Secret Spotify illisible", err));
+    }
   },
 
   setAudioQuality: async (id) => {
@@ -156,6 +192,20 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setLastfmApiKey: async (key) => {
     await storage.set(LASTFM_API_KEY_STORAGE_KEY, key);
     set({ lastfmApiKey: key });
+  },
+
+  setSpotifyMetadataMode: async (mode) => {
+    await storage.set(SPOTIFY_MODE_STORAGE_KEY, mode);
+    set({ spotifyMetadataMode: mode });
+  },
+
+  setSpotifyCredentials: async (clientId, clientSecret) => {
+    const id = clientId.trim();
+    const secret = clientSecret.trim();
+    await storage.set(SPOTIFY_CLIENT_ID_STORAGE_KEY, id);
+    if (secret) await storage.set(SPOTIFY_CLIENT_SECRET_STORAGE_KEY, await encryptPassword(secret));
+    else await storage.remove(SPOTIFY_CLIENT_SECRET_STORAGE_KEY);
+    set({ spotifyClientId: id, spotifyClientSecret: secret });
   },
 
   setAnimatedArtworkBaseUrl: async (url) => {

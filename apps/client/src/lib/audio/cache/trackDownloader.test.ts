@@ -111,3 +111,37 @@ describe("TrackDownloader — flux transcodé à la volée", () => {
     expect(downloader.error).toBeNull();
   });
 });
+
+describe("TrackDownloader — reprise sur bureau (plages parallèles)", () => {
+  function delegatedStore(sizeOnDisk: number) {
+    const download = vi.fn(async (_key: string, _url: string, from: number) => ({
+      complete: true,
+      bytes: 100,
+      total: 100,
+      error: null,
+      from,
+    }));
+    const { store } = memoryStore();
+    return { store: { ...store, fileSize: async () => sizeOnDisk, download } as BlobStore, download };
+  }
+
+  it("reprend au préfixe contigu connu, jamais à la taille d'un fichier troué", async () => {
+    // Fichier de 100 octets sur disque (dernière plage déjà écrite), mais seuls 30 contigus.
+    const { store, download } = delegatedStore(100);
+    const downloader = new TrackDownloader("k", "https://x/stream", store, async () => 30);
+
+    await downloader.run();
+
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(download.mock.calls[0][2]).toBe(30);
+  });
+
+  it("sans point de reprise connu : repart de zéro plutôt que de faire confiance au disque", async () => {
+    const { store, download } = delegatedStore(100);
+    const downloader = new TrackDownloader("k", "https://x/stream", store);
+
+    await downloader.run();
+
+    expect(download.mock.calls[0][2]).toBe(0);
+  });
+});

@@ -35,9 +35,11 @@ export interface ResoniaBridge {
   downloads: {
     run(
       id: number,
-      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number },
+      opts: { baseDir: DesktopBaseDir; path: string; url: string; from: number; maxSegments?: number },
     ): Promise<{ complete: boolean; bytes: number; total: number; error: string | null }>;
     abort(id: number): void;
+    /** Pause douce : la connexion reste ouverte mais n'est plus lue (voir SuspendSignal). */
+    suspend(id: number, suspended: boolean): void;
     onProgress(cb: (id: number, bytes: number, total: number, received: number) => void): () => void;
   };
   /** Preuve de concept AirPlay — voir lib/audio/airplay côté renderer et la section AirPlay de

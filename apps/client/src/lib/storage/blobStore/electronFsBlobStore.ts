@@ -72,7 +72,7 @@ export function createElectronFsBlobStore(rootDir: string, baseDir: DesktopBaseD
       await bridge().blobStore.remove(baseDir, pathFor(key));
     },
 
-    async download(key, url, from, signal, handlers) {
+    async download(key, url, from, signal, handlers, suspension, options) {
       const api = bridge();
       const id = nextDownloadId++;
       const unsubscribe = api.downloads.onProgress((eventId, bytes, total, received) => {
@@ -80,10 +80,15 @@ export function createElectronFsBlobStore(rootDir: string, baseDir: DesktopBaseD
       });
       const onAbort = () => api.downloads.abort(id);
       signal.addEventListener("abort", onAbort, { once: true });
+      // Envoyé AVANT `run` (messages IPC ordonnés) : un téléchargement suspendu dès le départ
+      // n'ouvre aucune connexion.
+      if (suspension?.suspended) api.downloads.suspend(id, true);
+      const unsubscribeSuspension = suspension?.onChange((suspended) => api.downloads.suspend(id, suspended));
       try {
-        return await api.downloads.run(id, { baseDir, path: pathFor(key), url, from });
+        return await api.downloads.run(id, { baseDir, path: pathFor(key), url, from, maxSegments: options?.maxSegments });
       } finally {
         signal.removeEventListener("abort", onAbort);
+        unsubscribeSuspension?.();
         unsubscribe();
       }
     },

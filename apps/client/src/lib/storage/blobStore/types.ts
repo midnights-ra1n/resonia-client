@@ -24,7 +24,29 @@ export interface BlobStore {
   /** Bureau uniquement : télécharge `url` directement dans le fichier de `key` à partir de l'octet
    *  `from`, depuis le process principal (voir `downloads` dans electron/main/index.ts). Absent sur
    *  le web, où `TrackDownloader` lit lui-même le flux et écrit via `createWriter`. */
-  download?(key: string, url: string, from: number, signal: AbortSignal, handlers: BlobDownloadHandlers): Promise<BlobDownloadResult>;
+  download?(
+    key: string,
+    url: string,
+    from: number,
+    signal: AbortSignal,
+    handlers: BlobDownloadHandlers,
+    suspension?: SuspendSignal,
+    options?: BlobDownloadOptions,
+  ): Promise<BlobDownloadResult>;
+}
+
+export interface BlobDownloadOptions {
+  /** Plages HTTP téléchargées en parallèle au plus (1 = une seule connexion). */
+  maxSegments?: number;
+}
+
+/** Pause « douce » d'un téléchargement : la connexion reste ouverte mais son corps n'est plus lu.
+ *  Le contrôle de flux TCP fait alors cesser l'envoi côté serveur, sans perdre la position — à
+ *  l'inverse d'un abandon (`AbortSignal`), qui oblige à rouvrir une connexion et, pour un flux
+ *  transcodé à la volée (plages HTTP ignorées), à tout retélécharger depuis l'octet 0. */
+export interface SuspendSignal {
+  readonly suspended: boolean;
+  onChange(cb: (suspended: boolean) => void): () => void;
 }
 
 export interface BlobDownloadHandlers {

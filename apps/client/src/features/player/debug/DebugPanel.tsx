@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ClockCounterClockwise, Pulse, Radio, X } from "../../../components/icons";
+import { Check, ClockCounterClockwise, Copy, Pulse, Radio, X } from "../../../components/icons";
+import { useTranslation } from "../../../lib/i18n";
 import { usePlayerStore } from "../../../stores/playerStore";
 import { cacheStore } from "../../../lib/audio/cache/cacheStore";
 import {
+  formatDebugLog,
   getBandwidthHistory,
   onDebugReset,
   resetDebugStats,
@@ -319,6 +321,18 @@ export function DebugPanel() {
   const toggleDebugPanel = usePlayerStore((s) => s.toggleDebugPanel);
   const [tab, setTab] = useState<Tab>("network");
   const history = useBandwidthHistory();
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLog = () => {
+    navigator.clipboard
+      .writeText(formatDebugLog())
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch((err) => console.warn("[debug] Copie du journal impossible", err));
+  };
 
   if (!showDebugPanel) return null;
 
@@ -330,6 +344,13 @@ export function DebugPanel() {
           <TabButton icon={<Pulse size={12} />} label="Decode" active={tab === "decode"} onClick={() => setTab("decode")} />
         </div>
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleCopyLog}
+            className="text-neutral-500 transition-colors hover:text-white"
+            title={copied ? t("debug.logCopied") : t("debug.copyLog")}
+          >
+            {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
+          </button>
           <button onClick={resetDebugStats} className="text-neutral-500 transition-colors hover:text-white" title="Reset stats">
             <ClockCounterClockwise size={13} />
           </button>

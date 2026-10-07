@@ -256,7 +256,7 @@
     "checkOnLaunch": "Check for updates automatically",
     "checkOnLaunchDescription": "Looks for a new version on launch, then once a day while the app stays open.",
     "betaUpdates": "Receive beta updates",
-    "betaUpdatesDescription": "Get early access releases before they reach the stable channel. These may be less stable.",
+    "betaUpdatesDescription": "Get early access releases before they reach the stable channel. These may be less stable. Enabled by default on beta versions of Resonia.",
     "appearance": "Appearance",
     "theme": "Theme",
     "themeDescription": "Colors used across the whole app. Changes apply instantly.",

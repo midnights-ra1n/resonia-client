@@ -256,7 +256,7 @@
     "checkOnLaunch": "Vérifier les mises à jour automatiquement",
     "checkOnLaunchDescription": "Recherche une nouvelle version au démarrage, puis une fois par jour tant que l'application reste ouverte.",
     "betaUpdates": "Recevoir les mises à jour bêta",
-    "betaUpdatesDescription": "Accède aux versions en avant-première avant qu'elles n'atteignent le canal stable. Elles peuvent être moins stables.",
+    "betaUpdatesDescription": "Accède aux versions en avant-première avant qu'elles n'atteignent le canal stable. Elles peuvent être moins stables. Activé par défaut sur les versions bêta de Resonia.",
     "appearance": "Apparence",
     "theme": "Thème",
     "themeDescription": "Couleurs de toute l'application. Le changement s'applique immédiatement.",

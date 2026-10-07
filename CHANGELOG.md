@@ -23,6 +23,7 @@ this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 - Fixed the buffer bar following the playback position instead of showing how much of the track is actually loaded
 - Fixed the buffer bar sometimes freezing while playback is paused
 - Fixed shuffle (and repeat) sometimes staying active for the next track after turning it off
+- Beta updates are now enabled by default on beta versions (and stay disabled by default on stable versions)
 
 ## 1.0.0-beta.5
 - Fixed missing app description and infinite loading in KDE Discover / GNOME Software for the .deb and .rpm packages (added AppStream metadata)

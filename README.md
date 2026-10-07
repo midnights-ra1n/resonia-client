@@ -6,13 +6,14 @@
 
 <h2>Project Screenshots:</h2>
 
-<img src="https://github.com/midnights-ra1n/resonia-client/blob/development/README_assets/1.png?raw=true" alt="project-screenshot" width="400" height="400/">
-
-<img src="https://github.com/midnights-ra1n/resonia-client/blob/development/README_assets/2.png?raw=true" alt="project-screenshot" width="400" height="400/">
-
-<img src="https://github.com/midnights-ra1n/resonia-client/blob/development/README_assets/3.png?raw=true" alt="project-screenshot" width="400" height="400/">
-
-<img src="https://github.com/midnights-ra1n/resonia-client/blob/development/README_assets/4.png?raw=true" alt="project-screenshot" width="400" height="400/">
+<p align="center">
+  <img src="README_assets/1.png" alt="Resonia screenshot 1" width="49%">
+  <img src="README_assets/2.png" alt="Resonia screenshot 2" width="49%">
+</p>
+<p align="center">
+  <img src="README_assets/3.png" alt="Resonia screenshot 3" width="49%">
+  <img src="README_assets/4.png" alt="Resonia screenshot 4" width="49%">
+</p>
 
   
   

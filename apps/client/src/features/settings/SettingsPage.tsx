@@ -102,7 +102,7 @@ export function SettingsPage() {
   const updateVersion = useUpdateStore((s) => s.version);
   const updateProgress = useUpdateStore((s) => s.progress);
   const updateErrorMessage = useUpdateStore((s) => s.errorMessage);
-  const checkForUpdates = useUpdateStore((s) => s.check);
+  const checkAndInstallUpdate = useUpdateStore((s) => s.checkAndInstall);
   const installUpdate = useUpdateStore((s) => s.install);
 
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -607,7 +607,9 @@ export function SettingsPage() {
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => void checkForUpdates(betaUpdatesEnabled)}
+                        onClick={() =>
+                          void checkAndInstallUpdate(betaUpdatesEnabled, t("update.adminPrompt"))
+                        }
                         disabled={
                           updateStatus === "checking" ||
                           updateStatus === "downloading" ||
@@ -623,7 +625,7 @@ export function SettingsPage() {
                       {updateStatus === "available" && (
                         <button
                           type="button"
-                          onClick={() => void installUpdate()}
+                          onClick={() => void installUpdate(t("update.adminPrompt"))}
                           className="rounded-full bg-accent px-5 py-2 text-sm font-semibold text-on-accent transition-[color,background-color,border-color,box-shadow] hover:bg-accent-hover"
                         >
                           {t("settings.updatesInstallButton")}

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
+import { cacheKeyFor } from "../lib/audio/cache/types";
 import { downloadStore } from "../lib/downloads/downloadStore";
 import { prefetchScheduler } from "../lib/audio/cache/prefetchScheduler";
 import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
@@ -16,6 +17,7 @@ import {
   updateNowPlayingMetadata,
 } from "../lib/audio/nowPlaying";
 import { getQualityById } from "../lib/audio/qualityOptions";
+import { estimateBufferedTime } from "../lib/audio/bufferedTime";
 import { getCachedCoverUrl, loadAndCacheCover } from "../lib/image/coverCache";
 import { prefetchDominantColor } from "../lib/image/dominantColorCache";
 import { prefetchLyrics } from "../lib/lyrics/lyricsService";
@@ -437,17 +439,17 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     })();
   }
 
-  /** Le plus avancé entre le tampon du lecteur et le téléchargement en cache de la piste (octets
-   *  ≈ temps, à débit constant) — la barre progresse donc aussi pendant la mise en cache. */
+  /** Jusqu'où la piste en cours est chargée (voir estimateBufferedTime) — la barre progresse
+   *  donc aussi pendant la mise en cache, y compris en pause. Le tampon de l'élément <audio> seul
+   *  ne suffit pas : sur un flux transcodé, Chromium n'en rapporte qu'environ 2 s d'avance quel
+   *  que soit le débit réel, et la barre collait alors à la position de lecture. Le serveur
+   *  transcode au débit de la qualité choisie, sans dépasser celui de l'original. */
   function currentBufferedTime(track: Track, duration: number): number {
-    let buffered = engine.bufferedEnd;
-    const task = cacheStore.getTask(track.id, getActiveQualityId());
-    if (task && duration > 0) {
-      const { bytesCached, totalBytes, complete } = task.progress;
-      if (complete) buffered = duration;
-      else if (totalBytes > 0) buffered = Math.max(buffered, (bytesCached / totalBytes) * duration);
-    }
-    return Math.min(duration, buffered);
+    const qualityId = getActiveQualityId();
+    const maxKbps = getQualityById(qualityId)?.maxBitRate ?? 0;
+    const kbps = track.bitRate ? Math.min(maxKbps, track.bitRate) : maxKbps;
+    const progress = cacheStore.getTask(track.id, qualityId)?.progress ?? null;
+    return estimateBufferedTime(engine.bufferedEnd, progress, duration, kbps);
   }
 
   function resetPlaybackFlags() {
@@ -587,23 +589,55 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
    *  l'horloge de l'AudioContext (voir GaplessEngine.scheduleNext) — c'est cette
    *  planification déterministe, pas une réaction à un événement, qui élimine toute
    *  coupure à la transition. */
-  async function scheduleGaplessNext() {
+  /** Piste qui suit la piste en cours d'après la file et les modes actuels (`null` : aucune). */
+  function resolveNextTarget() {
     const { queue, playOrder, playOrderPosition, isRepeat } = get();
-    if (queue.length < 2 || playOrder.length < 2) return;
+    if (queue.length < 2 || playOrder.length < 2) return null;
 
     const nextPos = playOrderPosition + 1;
     const nextQueueIndex = isRepeat ? playOrder[playOrderPosition] : playOrder[nextPos];
-    if (nextQueueIndex === undefined) return;
+    if (nextQueueIndex === undefined) return null;
 
     const nextTrackData = queue[nextQueueIndex];
-    if (!nextTrackData) return;
+    if (!nextTrackData) return null;
 
     const resolved = resolvePlayableTrack(nextTrackData);
-    if (!resolved) return;
+    if (!resolved) return null;
 
-    const key = decodedCacheKey(nextTrackData.id, resolved.qualityId);
+    return { nextPos, nextQueueIndex, nextTrackData, resolved, isRepeat, key: decodedCacheKey(nextTrackData.id, resolved.qualityId) };
+  }
+
+  /** La piste suivante a pu changer (aléatoire ou répétition basculés, file réordonnée, ajout en
+   *  « lire ensuite ») : si celle déjà préparée ou planifiée dans le moteur n'est plus la bonne,
+   *  elle est annulée AVANT de préparer la nouvelle. Sans ça, l'ancienne restait planifiée tant
+   *  que la nouvelle n'était pas décodée — et s'enchaînait quand même : l'aléatoire désactivé
+   *  continuait de jouer la piste tirée au hasard, en désynchronisant au passage la position
+   *  dans la file. Inchangée, elle reste planifiée telle quelle : aucune coupure. */
+  // Emplacement visé par la piste planifiée (position dans l'ordre de lecture, index dans la file,
+  // répétition) : la même piste peut se retrouver ailleurs après un changement d'ordre, et le
+  // passage gapless écrirait alors une position périmée.
+  let scheduledNextSlot: string | null = null;
+  function slotOf(target: { nextPos: number; nextQueueIndex: number; isRepeat: boolean }): string {
+    return `${target.nextPos}:${target.nextQueueIndex}:${target.isRepeat}`;
+  }
+
+  function rescheduleNext() {
+    const target = resolveNextTarget();
+    if (target && target.key === scheduledNextKey && slotOf(target) === scheduledNextSlot) return;
+    nextAbort?.abort();
+    nextAbort = null;
+    scheduledNextKey = null;
+    engine.cancelNext();
+    void scheduleGaplessNext();
+  }
+
+  async function scheduleGaplessNext() {
+    const target = resolveNextTarget();
+    if (!target) return;
+    const { nextPos, nextQueueIndex, nextTrackData, resolved, isRepeat, key } = target;
     if (scheduledNextKey === key) return;
     scheduledNextKey = key;
+    scheduledNextSlot = slotOf(target);
     nextAbort?.abort();
     const abort = new AbortController();
     nextAbort = abort;
@@ -684,8 +718,11 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     if (stored === null) return;
     set({ showTimeRemaining: stored });
   });
+  // Le mode enregistré arrive de façon asynchrone : il ne doit jamais écraser un choix fait
+  // entre-temps par l'utilisateur (aléatoire désactivé au démarrage, puis réactivé par la lecture).
+  let shuffleChangedByUser = false;
   storage.get<boolean>(SHUFFLE_STORAGE_KEY).then((stored) => {
-    if (stored === null) return;
+    if (stored === null || shuffleChangedByUser) return;
     set({ isShuffle: stored });
   });
   storage.get<boolean>(REPEAT_STORAGE_KEY).then((stored) => {
@@ -840,44 +877,41 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     scheduleTick();
   }
 
-  // Barre de tampon en pause : le chargement continue (voir GaplessEngine.pause), la barre doit le
-  // montrer. Une fois par seconde, uniquement tant que la piste n'est pas entièrement chargée — puis
-  // plus aucun réveil.
-  const BUFFER_POLL_MS = 1000;
-  let bufferPollTimer: number | null = null;
+  // Indicateur de tampon, piloté par les événements : progression du téléchargement en cache de la
+  // piste en cours et du tampon de l'élément <audio> — en lecture comme en pause (où le chargement
+  // continue, voir GaplessEngine.pause). Aucun réveil périodique : rien ne tourne une fois la piste
+  // chargée ou le réseau à l'arrêt, et tout reprend dès que des octets arrivent. Regroupé à quatre
+  // rafraîchissements par seconde au plus.
+  const BUFFER_REFRESH_MS = 250;
+  let bufferRefreshTimer: number | null = null;
 
-  function scheduleBufferPoll() {
-    if (bufferPollTimer !== null) return;
-    bufferPollTimer = window.setTimeout(pollBuffered, BUFFER_POLL_MS);
+  function scheduleBufferedRefresh() {
+    if (bufferRefreshTimer !== null) return;
+    bufferRefreshTimer = window.setTimeout(() => {
+      bufferRefreshTimer = null;
+      const { currentTrack: track, duration, bufferedTime } = get();
+      // Fenêtre masquée : rien à afficher ; rattrapé au retour (voir visibilitychange).
+      if (!track || document.hidden || duration <= 0) return;
+      const next = currentBufferedTime(track, duration);
+      if (Math.abs(next - bufferedTime) >= 0.05) set({ bufferedTime: next });
+    }, BUFFER_REFRESH_MS);
   }
 
-  // Relevés consécutifs sans progression : au-delà, plus rien ne charge (réseau coupé, fond en
-  // attente) — on arrête de se réveiller, relancé au prochain changement d'état du lecteur.
-  const BUFFER_POLL_MAX_IDLE = 15;
-  let bufferPollIdle = 0;
-
-  function pollBuffered() {
-    bufferPollTimer = null;
-    const { currentTrack: track, isPlaying, duration, bufferedTime } = get();
-    // Fenêtre masquée : rien à afficher ; reprise via le `set` de visibilitychange.
-    if (!track || isPlaying || document.hidden || duration <= 0 || bufferedTime >= duration - 0.5) return;
-    const next = currentBufferedTime(track, duration);
-    bufferPollIdle = next > bufferedTime ? 0 : bufferPollIdle + 1;
-    if (next !== bufferedTime) set({ bufferedTime: next });
-    if (bufferPollIdle < BUFFER_POLL_MAX_IDLE) scheduleBufferPoll();
-  }
+  engine.onBufferedChange = scheduleBufferedRefresh;
+  cacheStore.onTaskProgress((key) => {
+    const track = get().currentTrack;
+    if (track && key === cacheKeyFor(track.id, getActiveQualityId())) scheduleBufferedRefresh();
+  });
 
   api.subscribe((state) => {
     if (tickTimer === null && state.isPlaying && state.currentTrack) scheduleTick();
-    if (bufferPollTimer === null && !state.isPlaying && state.currentTrack && state.bufferedTime < state.duration - 0.5) {
-      bufferPollIdle = 0;
-      scheduleBufferPoll();
-    }
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden || pendingSeekTime !== null || !get().currentTrack) return;
+    const track = get().currentTrack;
+    if (document.hidden || pendingSeekTime !== null || !track) return;
     set({ currentTime: engine.currentTime, duration: engine.duration });
+    scheduleBufferedRefresh();
   });
 
   initNowPlaying({
@@ -1079,6 +1113,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     toggleShuffle: () => {
       const { isShuffle, queue, playOrder, playOrderPosition } = get();
       const nextShuffleState = !isShuffle;
+      shuffleChangedByUser = true;
 
       if (queue.length === 0) {
         set({ isShuffle: nextShuffleState });
@@ -1090,7 +1125,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         const newPlayOrder = reshuffleUpcoming(playOrder, playOrderPosition);
         set({ isShuffle: true, playOrder: newPlayOrder, queueIndex: newPlayOrder[playOrderPosition] });
       } else {
-        const currentQueueIndex = playOrder[playOrderPosition];
+        // File pas encore démarrée (position -1) : elle le reste, dans l'ordre de la file.
+        const currentQueueIndex = playOrderPosition >= 0 ? (playOrder[playOrderPosition] ?? -1) : -1;
         const newPlayOrder = linearOrder(queue.length);
         set({
           isShuffle: false,
@@ -1101,8 +1137,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       }
       storage.set(SHUFFLE_STORAGE_KEY, nextShuffleState);
       refreshUpcomingPrefetch();
-      scheduledNextKey = null;
-      scheduleGaplessNext();
+      rescheduleNext();
     },
 
     isRepeat: false,
@@ -1112,8 +1147,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       storage.set(REPEAT_STORAGE_KEY, isRepeat);
       // La cible visée par la planification gapless change selon isRepeat (rejoue la
       // même piste vs avance normalement) — il faut refaire la planification.
-      scheduledNextKey = null;
-      scheduleGaplessNext();
+      rescheduleNext();
     },
 
     prevTrack: () => {
@@ -1277,8 +1311,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       // La piste suivante (position+1) a pu changer suite au réordonnancement : la
       // planification gapless précédente, basée sur l'ancien ordre, doit être refaite.
       refreshUpcomingPrefetch();
-      scheduledNextKey = null;
-      scheduleGaplessNext();
+      rescheduleNext();
     },
     addToQueue: (tracks, position = "end") => {
       const list = Array.isArray(tracks) ? tracks : [tracks];
@@ -1302,8 +1335,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       // Insertion en fin de file ou "next" : dans les deux cas la fenêtre de préchargement
       // (les PREFETCH_COUNT prochaines pistes) a pu changer — même traitement que reorderQueue.
       refreshUpcomingPrefetch();
-      scheduledNextKey = null;
-      scheduleGaplessNext();
+      rescheduleNext();
     },
     showLyrics: false,
     toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),

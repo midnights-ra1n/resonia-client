@@ -1,11 +1,22 @@
 import { isElectron } from "../platform";
 
+export interface UpdateProgress {
+  percent: number;
+  /** Octets déjà téléchargés / taille totale du téléchargement. */
+  transferred: number;
+  total: number;
+}
+
 export interface AppUpdate {
   version: string;
   currentVersion: string;
+  /** Notes de version en texte brut (déjà converties depuis le HTML de GitHub par le process
+   *  principal, voir releaseNotesToText). */
   notes: string | null;
-  /** Télécharge puis installe la mise à jour, sans relancer l'app — voir relaunchApp. */
-  downloadAndInstall: (onProgress?: (percent: number) => void) => Promise<void>;
+  /** Télécharge la mise à jour, qui s'installera d'elle-même à la prochaine fermeture de l'app
+   *  — ou tout de suite via relaunchApp. `adminPrompt` : texte de l'invite de mot de passe
+   *  macOS, si l'app est installée dans un dossier que l'utilisateur ne peut pas modifier. */
+  downloadAndInstall: (adminPrompt: string, onProgress?: (progress: UpdateProgress) => void) => Promise<void>;
 }
 
 /** Vérifie s'il existe une mise à jour disponible sur le canal demandé, via `electron-updater`
@@ -26,10 +37,10 @@ export async function checkForUpdate(beta: boolean): Promise<AppUpdate | null> {
     version: info.version,
     currentVersion: info.currentVersion,
     notes: info.notes,
-    downloadAndInstall: async (onProgress) => {
+    downloadAndInstall: async (adminPrompt, onProgress) => {
       const unsubscribe = onProgress ? api.update.onProgress(onProgress) : null;
       try {
-        await api.update.download();
+        await api.update.download(adminPrompt);
       } finally {
         unsubscribe?.();
       }
@@ -37,9 +48,9 @@ export async function checkForUpdate(beta: boolean): Promise<AppUpdate | null> {
   };
 }
 
-/** Redémarre l'app pour appliquer la mise à jour déjà téléchargée sur le disque (`autoUpdater.
- *  quitAndInstall()` côté process principal) — à appeler uniquement après un
- *  downloadAndInstall réussi. */
+/** Redémarre l'app pour appliquer tout de suite la mise à jour déjà téléchargée (installation
+ *  silencieuse puis relance, voir `update:install` côté process principal) — à appeler
+ *  uniquement après un downloadAndInstall réussi. */
 export async function relaunchApp(): Promise<void> {
   if (!isElectron()) return;
   await window.resonia!.update.install();

@@ -242,7 +242,7 @@
     "developerMode": "Developer mode",
     "developerModeDescription": "Adds a network & decode debugger to the player, showing live download speed, cache usage and buffer/decode events.",
     "updates": "Updates",
-    "updatesDescription": "Updates download and install automatically in the background — no manual download from GitHub needed. Once ready, restart the app from the button in the top bar to apply it.",
+    "updatesDescription": "Updates download automatically in the background and install the next time you quit Resonia — no manual download from GitHub needed. To install one right away, use the restart button in the top bar.",
     "updatesCurrentVersion": "Current version: {{version}}",
     "updatesBetaBadge": "beta",
     "updatesCheckButton": "Check for updates",
@@ -250,8 +250,8 @@
     "updatesUpToDate": "You're up to date.",
     "updatesAvailable": "Version {{version}} is available.",
     "updatesInstallButton": "Install update",
-    "updatesInstalling": "Downloading update {{version}}... {{percent}}%",
-    "updatesReady": "Update ready — restart the app to apply it.",
+    "updatesInstalling": "Downloading update {{version}}… {{percent}}%",
+    "updatesReady": "Update ready — it will be installed when you quit Resonia, or restart now to apply it.",
     "updatesCheckError": "Couldn't check for updates. Try again later.",
     "checkOnLaunch": "Check for updates automatically",
     "checkOnLaunchDescription": "Looks for a new version on launch, then once a day while the app stays open.",
@@ -294,14 +294,19 @@
     "waveformDescription": "Shows the track's waveform (lows, mids, highs) like DJ mixing software. Computed once per track, then kept in cache."
   },
   "update": {
-    "available": "Resonia {{version}} is available",
-    "notesTitle": "What's new",
+    "promptTitle": "Software Update",
+    "available": "Resonia {{version}} is ready to install",
+    "notesTitle": "What's new:",
     "noNotes": "No release notes available.",
-    "install": "Install",
+    "installOnQuit": "It will be installed automatically the next time you quit Resonia.",
+    "restartNow": "Restart Now",
     "later": "Later",
+    "downloading": "Downloading update…",
+    "adminPrompt": "Resonia wants to install an update.",
     "restartButton": "Restart to install update",
     "restartTooltip": "Version {{version}} has been downloaded and is ready to install."
   },
+
   "downloads": {
     "title": "Downloads",
     "emptyTitle": "No downloads yet",

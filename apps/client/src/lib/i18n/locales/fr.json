@@ -242,7 +242,7 @@
     "developerMode": "Mode développeur",
     "developerModeDescription": "Ajoute un débogueur réseau et décodage au lecteur, avec le débit de téléchargement en direct, l'usage du cache et les événements de buffer/décodage.",
     "updates": "Mises à jour",
-    "updatesDescription": "Les mises à jour sont téléchargées et installées automatiquement en arrière-plan — aucun téléchargement manuel depuis GitHub n'est nécessaire. Une fois prête, redémarre l'application depuis le bouton en haut de l'écran pour l'appliquer.",
+    "updatesDescription": "Les mises à jour sont téléchargées automatiquement en arrière-plan et installées à la prochaine fermeture de Resonia — aucun téléchargement manuel depuis GitHub n'est nécessaire. Pour en installer une tout de suite, utilise le bouton de redémarrage en haut de l'écran.",
     "updatesCurrentVersion": "Version actuelle : {{version}}",
     "updatesBetaBadge": "bêta",
     "updatesCheckButton": "Vérifier les mises à jour",
@@ -250,8 +250,8 @@
     "updatesUpToDate": "Ton application est à jour.",
     "updatesAvailable": "La version {{version}} est disponible.",
     "updatesInstallButton": "Installer la mise à jour",
-    "updatesInstalling": "Téléchargement de la mise à jour {{version}}... {{percent}}%",
-    "updatesReady": "Mise à jour prête — redémarre l'application pour l'appliquer.",
+    "updatesInstalling": "Téléchargement de la mise à jour {{version}}… {{percent}} %",
+    "updatesReady": "Mise à jour prête — elle sera installée à la fermeture de Resonia, ou redémarre maintenant pour l'appliquer.",
     "updatesCheckError": "Impossible de vérifier les mises à jour. Réessaie plus tard.",
     "checkOnLaunch": "Vérifier les mises à jour automatiquement",
     "checkOnLaunchDescription": "Recherche une nouvelle version au démarrage, puis une fois par jour tant que l'application reste ouverte.",
@@ -294,14 +294,19 @@
     "waveformDescription": "Affiche la forme d'onde du morceau (graves, médiums, aigus) comme dans les logiciels de mixage DJ. Calculée une seule fois par morceau puis gardée en cache."
   },
   "update": {
-    "available": "Resonia {{version}} est disponible",
-    "notesTitle": "Nouveautés",
+    "promptTitle": "Mise à jour",
+    "available": "Resonia {{version}} est prête à être installée",
+    "notesTitle": "Nouveautés :",
     "noNotes": "Aucune note de version disponible.",
-    "install": "Installer",
+    "installOnQuit": "Elle sera installée automatiquement à la prochaine fermeture de Resonia.",
+    "restartNow": "Redémarrer maintenant",
     "later": "Plus tard",
+    "downloading": "Téléchargement de la mise à jour…",
+    "adminPrompt": "Resonia souhaite installer une mise à jour.",
     "restartButton": "Redémarrer pour installer la mise à jour",
     "restartTooltip": "La version {{version}} a été téléchargée et est prête à être installée."
   },
+
   "downloads": {
     "title": "Téléchargements",
     "emptyTitle": "Aucun téléchargement pour le moment",

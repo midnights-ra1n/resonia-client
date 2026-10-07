@@ -7,7 +7,9 @@ import { getCachedLyrics, loadLyrics, type LyricsLine, type ParsedLyrics } from 
 import { DEFAULT_COVER_URL, usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 
-const FALLBACK_BG = "#161412";
+/** Fond sans pochette : panneau du thème actif (les thèmes clairs fournissent un fond foncé,
+ *  la vue paroles restant toujours en texte clair — voir `.on-media` dans index.css). */
+const FALLBACK_BG = "var(--lyrics-fallback-bg, var(--color-surface-1))";
 
 /** Luminance perçue max tolérée avant d'assombrir la couleur dominante : au-delà, du texte
  *  blanc par-dessus n'aurait plus assez de contraste (pochettes très claires : blanc, pastel...). */
@@ -184,7 +186,7 @@ export function LyricsView() {
 
   if (!currentTrack) {
     return (
-      <div className="flex flex-1 min-h-0 items-center justify-center" style={{ backgroundColor: FALLBACK_BG }}>
+      <div className="on-media flex flex-1 min-h-0 items-center justify-center" style={{ backgroundColor: FALLBACK_BG }}>
         <p className="text-sm text-white/60">{t("lyrics.noTrack")}</p>
       </div>
     );
@@ -192,7 +194,7 @@ export function LyricsView() {
 
   return (
     <div
-      className="flex flex-1 min-h-0 flex-col items-center overflow-hidden transition-colors duration-700"
+      className="on-media flex flex-1 min-h-0 flex-col items-center overflow-hidden transition-colors duration-700"
       // Police des paroles (Paramètres → Apparence) : par défaut, celle de l'interface.
       style={{ backgroundColor: bgColor, fontFamily: "var(--font-lyrics, var(--font-sans))" }}
     >

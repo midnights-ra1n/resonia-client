@@ -303,7 +303,8 @@ export function PlaylistPage() {
         style={
           dominantColor
             ? {
-                backgroundImage: `linear-gradient(to bottom, ${dominantColor}, var(--color-neutral-900, #161412))`,
+                // Thèmes clairs : couleur de pochette atténuée vers le fond (`--dominant-strength`).
+                backgroundImage: `linear-gradient(to bottom, color-mix(in srgb, ${dominantColor} var(--dominant-strength, 100%), var(--color-neutral-900)), var(--color-neutral-900))`,
               }
             : undefined
         }

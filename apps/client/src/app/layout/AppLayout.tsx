@@ -44,7 +44,8 @@ export function AppLayout() {
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const showLyrics = usePlayerStore((s) => s.showLyrics);
   const showQueue = usePlayerStore((s) => s.showQueue);
-  const queueOpen = showQueue && !showLyrics;
+  // La file d'attente reste affichable par-dessus la vue paroles (seule la sidebar se replie).
+  const queueOpen = showQueue;
   // Paroles : fondu d'entrée à l'ouverture, fondu de sortie à la fermeture (la vue reste montée
   // jusqu'à la fin du fondu, pendant que sidebar et file d'attente se redéploient).
   const [lyricsMounted, setLyricsMounted] = useState(showLyrics);
@@ -93,6 +94,16 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [togglePlay]);
 
+  // Changement de page (lien du lecteur, menu du compte, précédent/suivant...) : la vue paroles
+  // se ferme pour laisser voir la page demandée. `location.key` change à chaque navigation,
+  // même vers la même URL ; le premier passage (montage) est ignoré.
+  const lastLocationKey = useRef(location.key);
+  useEffect(() => {
+    if (lastLocationKey.current === location.key) return;
+    lastLocationKey.current = location.key;
+    if (usePlayerStore.getState().showLyrics) usePlayerStore.setState({ showLyrics: false });
+  }, [location.key]);
+
   // Synchronise le champ avec le paramètre "q" quand l'utilisateur arrive sur /search
   // par un autre chemin que la saisie (lien, navigation retour...).
   useEffect(() => {
@@ -111,10 +122,20 @@ export function AppLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery]);
 
+  // Saisie dans la recherche : on quitte la vue paroles pour laisser place aux résultats. Le
+  // champ reste monté (en-tête commun), le focus et la frappe ne sont donc pas interrompus.
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    if (value.trim().length > 0 && usePlayerStore.getState().showLyrics) {
+      usePlayerStore.setState({ showLyrics: false });
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = query.trim();
     if (trimmed.length > 0) {
+      if (usePlayerStore.getState().showLyrics) usePlayerStore.setState({ showLyrics: false });
       navigate(`/search?q=${encodeURIComponent(trimmed)}`);
     }
   };
@@ -183,7 +204,7 @@ export function AppLayout() {
                 <input
                   type="text"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => handleQueryChange(e.target.value)}
                   placeholder={t("search.placeholder")}
                   spellCheck={false}
                   autoCorrect="off"

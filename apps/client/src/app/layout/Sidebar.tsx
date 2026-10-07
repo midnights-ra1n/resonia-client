@@ -38,7 +38,7 @@ export function Sidebar() {
             intégré au bundle (svgr) : aucune requête, net à toute densité d'écran, et aucun
             chemin à résoudre sous Electron (`file://`). */}
         <div className="flex items-center px-2 pt-2 pb-3">
-          <LogoFull role="img" aria-label="Resonia" className="h-8 w-auto" />
+          <LogoFull role="img" aria-label="Resonia" className="h-8 w-auto text-text-1" />
         </div>
 
         {/* Navigation links */}

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { initTheme } from "./themes";
 
 /** Polices d'interface proposées dans Paramètres → Apparence. TOUTES sont embarquées dans
  *  l'application (paquets Fontsource, empaquetés par Vite comme n'importe quel asset) : aucune
@@ -142,6 +143,7 @@ export const useAppearanceStore = create<AppearanceState>((set) => ({
 
 /** À appeler une fois au démarrage, avant le premier rendu (voir main.tsx). */
 export function initAppearance() {
+  initTheme();
   const { uiFont, lyricsFont } = useAppearanceStore.getState();
   if (uiFont !== DEFAULT_FONT) void applyFont("--font-ui", uiFont);
   applyLyricsFont(lyricsFont);

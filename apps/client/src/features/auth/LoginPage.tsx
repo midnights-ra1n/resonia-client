@@ -42,7 +42,7 @@ export function LoginPage() {
 
         <div className="flex justify-center items-center pb-2">
           {/* Même logo complet que la sidebar (SVG intégré au bundle, voir Sidebar.tsx). */}
-          <LogoFull role="img" aria-label="Resonia" className="h-12 w-auto" />
+          <LogoFull role="img" aria-label="Resonia" className="h-12 w-auto text-text-1" />
         </div>
 
         <h1 className="text-2xl font-bold text-white text-center">{t("auth.login.title")}</h1>

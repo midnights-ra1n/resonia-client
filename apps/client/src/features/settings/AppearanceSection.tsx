@@ -6,11 +6,12 @@ import {
   type FontId,
   type LyricsFontId,
 } from "../../lib/appearance/fonts";
+import { DEFAULT_THEME, THEMES, useThemeStore } from "../../lib/appearance/themes";
 
 const SELECT_CLASS =
   "select-pill mt-2 w-full rounded-full bg-neutral-900 border border-neutral-700 pl-4 pr-10 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]";
 
-/** Paramètres → Apparence : police de l'interface et police des paroles. Le choix s'applique
+/** Paramètres → Apparence : thème de couleurs, police de l'interface et police des paroles. Le choix s'applique
  *  en direct à toute l'app (variables CSS), les aperçus ci-dessous le reflètent donc sans
  *  logique propre. */
 export function AppearanceSection() {
@@ -19,6 +20,8 @@ export function AppearanceSection() {
   const lyricsFont = useAppearanceStore((s) => s.lyricsFont);
   const setUiFont = useAppearanceStore((s) => s.setUiFont);
   const setLyricsFont = useAppearanceStore((s) => s.setLyricsFont);
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
 
   const fontLabel = (id: FontId, label: string) =>
     id === DEFAULT_FONT ? `${label} ${t("settings.fontDefaultSuffix")}` : label;
@@ -29,6 +32,48 @@ export function AppearanceSection() {
       <p className="mt-1 text-xs text-neutral-500">{t("settings.fontsLocalNote")}</p>
 
       <div className="mt-6 flex flex-col gap-8">
+        <div>
+          <p id="theme-picker-label" className="block text-sm font-medium text-white">
+            {t("settings.theme")}
+          </p>
+          <p className="mt-1 text-xs text-neutral-500">{t("settings.themeDescription")}</p>
+          <div
+            role="radiogroup"
+            aria-labelledby="theme-picker-label"
+            className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3"
+          >
+            {THEMES.map((th) => {
+              const selected = th.id === theme;
+              // Aperçu en couleurs fixes (celles du thème représenté, pas du thème actif).
+              const [bg, surface, text, accent] = th.swatch;
+              return (
+                <button
+                  key={th.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setTheme(th.id)}
+                  className={`rounded-panel border p-2 text-left transition-[border-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                    selected ? "border-accent shadow-e1" : "border-white/5 hover:border-neutral-600"
+                  }`}
+                >
+                  <div className="flex h-14 gap-1.5 rounded-cover p-1.5" style={{ backgroundColor: bg }} aria-hidden="true">
+                    <div className="w-1/4 rounded-md" style={{ backgroundColor: surface }} />
+                    <div className="flex flex-1 flex-col justify-between rounded-md p-1.5" style={{ backgroundColor: surface }}>
+                      <div className="h-1.5 w-3/4 rounded-full" style={{ backgroundColor: text }} />
+                      <div className="h-1.5 w-1/2 rounded-full opacity-50" style={{ backgroundColor: text }} />
+                      <div className="h-3 w-3 self-end rounded-full" style={{ backgroundColor: accent }} />
+                    </div>
+                  </div>
+                  <p className="mt-2 truncate px-0.5 text-xs font-medium text-white">
+                    {th.id === DEFAULT_THEME ? `${th.label} ${t("settings.themeDefaultSuffix")}` : th.label}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div>
           <label htmlFor="ui-font-select" className="block text-sm font-medium text-white">
             {t("settings.interfaceFont")}

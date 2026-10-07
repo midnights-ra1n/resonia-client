@@ -2,7 +2,9 @@
 @import "./assets/fonts/fonts.css";
 
 /*
- * Palette "Carotte" — thème sombre chaud, accent carotte #FFA343.
+ * Palette "Resonia Orange" (thème par défaut) — thème sombre chaud, accent carotte #FFA343.
+ * Les autres thèmes (Catppuccin, Nord, Monokai, Tokyo Night, Everforest) surchargent ces mêmes
+ * variables en style inline sur <html> : voir lib/appearance/themes.ts.
  *
  * Tous les gris tirent vers le brun (teinte ~28°) : un gris neutre à côté du carotte paraît
  * bleu et sale. Plutôt que de réécrire chaque classe `neutral-*` du code, on redéfinit ici
@@ -45,7 +47,8 @@
   --color-accent: #ffa343;
   --color-accent-hover: #ffbb74;
   --color-accent-pressed: #e0821f;
-  --color-accent-soft: rgb(255 163 67 / 0.14);
+  /* Dérivés de l'accent : suivent automatiquement le thème actif. */
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 14%, transparent);
   --color-on-accent: #1a0f03;
 
   /* Contre-accent & états */
@@ -61,11 +64,16 @@
 
   /* Élévation : le « flottant » vient de l'ombre et du rayon, pas des marges. Ombres
    * STATIQUES uniquement (jamais animées) : rasterisées une fois puis composées, aucun coût
-   * par frame — contrairement à un backdrop-filter, banni de l'app. */
-  --shadow-e1: 0 4px 14px rgb(0 0 0 / 0.45);
-  --shadow-e2: 0 14px 36px rgb(0 0 0 / 0.6);
-  --shadow-e3: 0 14px 36px rgb(0 0 0 / 0.6), 0 0 32px -12px rgb(255 163 67 / 0.22);
-  --shadow-play: 0 6px 20px -6px rgb(255 163 67 / 0.55);
+   * par frame — contrairement à un backdrop-filter, banni de l'app.
+   * Tailwind recopie ces valeurs telles quelles dans les classes `shadow-*` : la teinte passe
+   * donc par des variables `--shadow-ink-*` (voir `:root` plus bas), seul moyen pour un thème
+   * de la changer. Ombre de contact (1re couche) invisible sur les thèmes sombres. */
+  --shadow-e1: 0 1px 2px var(--shadow-ink-contact), 0 4px 14px var(--shadow-ink-1);
+  --shadow-e2: 0 2px 6px var(--shadow-ink-contact), 0 14px 36px var(--shadow-ink-2);
+  --shadow-e3:
+    0 2px 6px var(--shadow-ink-contact), 0 14px 36px var(--shadow-ink-2),
+    0 0 32px -12px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  --shadow-play: 0 6px 20px -6px color-mix(in srgb, var(--color-accent) 55%, transparent);
 
   /* Mouvement : une seule courbe douce (décélération longue, sans rebond) pour toute l'app.
    * Redéfinir les valeurs PAR DÉFAUT de Tailwind suffit à adoucir chaque `transition-*` déjà
@@ -128,6 +136,19 @@
   --color-red-500: #e5675a;
 }
 
+/* Teinte des ombres `shadow-e*` (voir @theme). Les thèmes clairs la remplacent par une ombre
+ * légère teintée (themes.ts) : du noir à 45-60 % y fait des halos gris sales. */
+:root {
+  --shadow-ink-contact: transparent;
+  --shadow-ink-1: rgb(0 0 0 / 0.45);
+  --shadow-ink-2: rgb(0 0 0 / 0.6);
+}
+
+/* Thèmes clairs : ombres Tailwind par défaut (pochettes, menus) adoucies et teintées. */
+:root[data-scheme="light"] :is(.shadow-lg, .shadow-xl, .shadow-2xl) {
+  --tw-shadow-color: var(--shadow-ink-2);
+}
+
 /*
  * html/body doivent rester non-scrollables et de la couleur du thème : sans ça, dès que le
  * contenu interne (déjà scrollable via overflow-y-auto) dépasse d'un pixel la fenêtre, ou lors
@@ -151,6 +172,31 @@ body {
   -moz-user-select: none;
   -ms-user-select: none;
   color: var(--color-text-1);
+}
+
+/* Curseur « main » sur tout ce qui est cliquable : le preflight de Tailwind v4 remet les boutons
+ * en curseur par défaut. Dans `@layer base` pour que les utilitaires (`cursor-grab`,
+ * `cursor-not-allowed`...) posés sur un élément gardent la priorité. */
+@layer base {
+  :is(button, [role="button"], [role="radio"], [role="menuitem"], [role="tab"], [role="option"], select, summary):not(
+      :disabled,
+      [aria-disabled="true"]
+    ) {
+    cursor: pointer;
+  }
+}
+
+/* Changement de thème en direct (themes.ts) : aucune transition de couleur pendant la bascule. */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
+}
+
+/* Thèmes clairs : les zones posées sur une couleur de pochette foncée (vue paroles) gardent un
+ * texte clair — `text-white` y redevient clair. */
+:root[data-scheme="light"] .on-media {
+  --color-white: var(--on-media-text);
 }
 
 ::selection {

@@ -15,6 +15,8 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 <!-- Add changes here as they occur. When publishing a version, rename
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
+
+## 1.0.0-beta.6
 - Updates now download in the background and install automatically the next time you quit Resonia
 - New download indicator for updates in the top bar, with progress and size
 - The update pop-up now uses your system's native dialogs (Windows, macOS, GNOME, KDE Plasma)

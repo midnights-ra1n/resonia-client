@@ -32,9 +32,11 @@ interface TrackResultRowProps {
   onEnsureSelected: (index: number) => void;
   registerRow: (index: number, el: HTMLDivElement | null) => void;
   selectedSongIds: string[];
+  /** Colonne album (listes longues type « Morceaux ») ; masquée sur fenêtre étroite. */
+  showAlbum?: boolean;
 }
 
-export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, onEnsureSelected, registerRow, selectedSongIds }: TrackResultRowProps) {
+export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, onEnsureSelected, registerRow, selectedSongIds, showAlbum }: TrackResultRowProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const servers = useServersStore((s) => s.servers);
@@ -113,15 +115,26 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
           text={song.title}
           to={song.albumId ? `/albums/${song.albumId}` : undefined}
           onClick={(e) => e.stopPropagation()}
-          className={`text-sm font-medium hover:underline ${isCurrent && isPlaying ? "text-accent" : "text-white"}`}
+          className={`text-item font-medium hover:underline ${isCurrent && isPlaying ? "text-accent" : "text-white"}`}
         />
         <MarqueeText
           text={song.artist}
           to={song.artistId ? `/artists/${song.artistId}` : undefined}
           onClick={(e) => e.stopPropagation()}
-          className="text-xs text-neutral-400 hover:text-white hover:underline"
+          className="text-item-sub text-neutral-400 hover:text-white hover:underline"
         />
       </div>
+
+      {showAlbum && (
+        <div className="hidden w-1/4 min-w-0 md:block">
+          <MarqueeText
+            text={song.album}
+            to={song.albumId ? `/albums/${song.albumId}` : undefined}
+            onClick={(e) => e.stopPropagation()}
+            className="text-item-sub text-neutral-400 hover:text-white hover:underline"
+          />
+        </div>
+      )}
 
       <span className="shrink-0 text-xs text-neutral-500">{formatDuration(song.duration)}</span>
 

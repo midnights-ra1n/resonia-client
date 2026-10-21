@@ -19,19 +19,9 @@ import { useServersStore } from "../../stores/serversStore";
 import { PageTransition } from "./PageTransition";
 import { useScrollEdges } from "../../hooks/useScrollEdges";
 import { Sidebar } from "./Sidebar";
+import { isTypingTarget } from "../../lib/dom/isTypingTarget";
 
 const MIN_QUERY_LENGTH = 2;
-
-// Champs/éléments dans lesquels la barre d'espace doit garder son sens normal (saisir un
-// espace) plutôt que de basculer play/pause : la recherche, mais aussi tout champ texte ou
-// élément interactif natif (inputs des modales, textarea, boutons focus, éléments édition).
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  if (target.isContentEditable) return true;
-  return false;
-}
 
 export function AppLayout() {
   const { t } = useTranslation();

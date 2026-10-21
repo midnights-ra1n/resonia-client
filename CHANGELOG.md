@@ -24,6 +24,12 @@ this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 - Fixed the buffer bar sometimes freezing while playback is paused
 - Fixed shuffle (and repeat) sometimes staying active for the next track after turning it off
 - Beta updates are now enabled by default on beta versions (and stay disabled by default on stable versions)
+- New Artists page: every artist in your library, with a quick filter
+- New Tracks page: your whole library, sortable (title, artist, album, year, recently added, most played) and searchable
+- New Genres page, and a page for each genre with its albums
+- New Folders page to browse your library folder by folder, with breadcrumbs, parent folder (Backspace) and playable files
+- Artist pages open instantly when you come back to them
+- Slightly larger text for song, artist and album names and in menus
 
 ## 1.0.0-beta.5
 - Fixed missing app description and infinite loading in KDE Discover / GNOME Software for the .deb and .rpm packages (added AppStream metadata)

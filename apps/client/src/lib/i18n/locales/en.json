@@ -171,6 +171,44 @@
     "playlistLabel": "Playlist",
     "albumLabel": "Album"
   },
+  "genres": {
+    "label": "Genre",
+    "count": "{{count}} genres",
+    "filterPlaceholder": "Filter genres",
+    "empty": "No genres in the library",
+    "albumsAndSongs": "{{albums}} albums · {{songs}} songs",
+    "noAlbums": "No albums for this genre"
+  },
+  "folders": {
+    "breadcrumb": "Folder path",
+    "up": "Parent folder (Backspace)",
+    "playFiles": "Play the files in this folder",
+    "folderCount": "{{count}} folders",
+    "fileCount": "{{count}} files",
+    "files": "Files",
+    "filterPlaceholder": "Filter this folder",
+    "libraries": "Libraries",
+    "empty": "This folder is empty",
+    "notFound": "Folder not found"
+  },
+  "tracks": {
+    "sortBy": "Sort by",
+    "sortTitle": "Title",
+    "sortArtist": "Artist",
+    "sortAlbum": "Album",
+    "sortYear": "Year",
+    "sortRecent": "Recently added",
+    "sortPlayCount": "Most played",
+    "searchPlaceholder": "Search titles, artists, albums",
+    "unavailable": "The track list needs Navidrome's native API: reconnect this server from the account menu to enable it.",
+    "loadFailed": "Couldn't load tracks.",
+    "retry": "Retry"
+  },
+  "artists": {
+    "count": "{{count}} artists",
+    "filterPlaceholder": "Filter artists",
+    "empty": "No artists in the library"
+  },
   "artist": {
     "notFound": "Artist not found",
     "popularSongs": "Popular",

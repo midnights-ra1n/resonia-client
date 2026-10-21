@@ -16,6 +16,13 @@
  * Le carotte signale ce qui joue, jamais la décoration.
  */
 @theme {
+  /* Noms affichés (titres, artistes, albums) et entrées de menu : un cran au-dessus de
+   * text-sm / text-xs pour la lisibilité. Ajuster ici change toute l'app d'un coup. */
+  --text-item: 0.9375rem;
+  --text-item--line-height: 1.375rem;
+  --text-item-sub: 0.8125rem;
+  --text-item-sub--line-height: 1.125rem;
+
   /* Neutres chauds — la base */
   --color-neutral-50: #faf7f3;
   --color-neutral-100: #f4efe8; /* text-1 */

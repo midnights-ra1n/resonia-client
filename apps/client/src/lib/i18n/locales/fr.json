@@ -171,6 +171,44 @@
     "playlistLabel": "Playlist",
     "albumLabel": "Album"
   },
+  "genres": {
+    "label": "Genre",
+    "count": "{{count}} genres",
+    "filterPlaceholder": "Filtrer les genres",
+    "empty": "Aucun genre dans la bibliothèque",
+    "albumsAndSongs": "{{albums}} albums · {{songs}} titres",
+    "noAlbums": "Aucun album pour ce genre"
+  },
+  "folders": {
+    "breadcrumb": "Chemin du dossier",
+    "up": "Dossier parent (Retour arrière)",
+    "playFiles": "Lire les fichiers de ce dossier",
+    "folderCount": "{{count}} dossiers",
+    "fileCount": "{{count}} fichiers",
+    "files": "Fichiers",
+    "filterPlaceholder": "Filtrer ce dossier",
+    "libraries": "Bibliothèques",
+    "empty": "Ce dossier est vide",
+    "notFound": "Dossier introuvable"
+  },
+  "tracks": {
+    "sortBy": "Trier par",
+    "sortTitle": "Titre",
+    "sortArtist": "Artiste",
+    "sortAlbum": "Album",
+    "sortYear": "Année",
+    "sortRecent": "Ajouts récents",
+    "sortPlayCount": "Plus écoutés",
+    "searchPlaceholder": "Rechercher un titre, artiste, album",
+    "unavailable": "La liste des morceaux nécessite l'API native de Navidrome : reconnecte ce serveur depuis le menu du compte pour l'activer.",
+    "loadFailed": "Impossible de charger les morceaux.",
+    "retry": "Réessayer"
+  },
+  "artists": {
+    "count": "{{count}} artistes",
+    "filterPlaceholder": "Filtrer les artistes",
+    "empty": "Aucun artiste dans la bibliothèque"
+  },
   "artist": {
     "notFound": "Artiste introuvable",
     "popularSongs": "Titres populaires",

@@ -197,14 +197,14 @@ function QueueItem({
             to={track.albumId ? `/albums/${track.albumId}` : undefined}
             onClick={(e) => e.stopPropagation()}
             draggable={false}
-            className="text-sm text-white hover:underline"
+            className="text-item text-white hover:underline"
           />
           <MarqueeText
             text={track.artist}
             to={track.artistId ? `/artists/${track.artistId}` : undefined}
             onClick={(e) => e.stopPropagation()}
             draggable={false}
-            className="text-xs text-neutral-400 hover:text-white hover:underline"
+            className="text-item-sub text-neutral-400 hover:text-white hover:underline"
           />
         </div>
 

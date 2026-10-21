@@ -98,10 +98,10 @@ export function PlayerSectionLeft() {
         {/* Éléments invisibles servant uniquement à mesurer la largeur naturelle (non
             tronquée) du titre et de l'artiste, pour positionner le bouton like. N'affecte
             en rien la mesure de débordement propre à MarqueeText. */}
-        <span ref={titleMeasureRef} className="invisible absolute whitespace-nowrap text-sm">
+        <span ref={titleMeasureRef} className="invisible absolute whitespace-nowrap text-item">
           {title}
         </span>
-        <span ref={artistMeasureRef} className="invisible absolute whitespace-nowrap text-xs">
+        <span ref={artistMeasureRef} className="invisible absolute whitespace-nowrap text-item-sub">
           {artist}
         </span>
 
@@ -112,13 +112,13 @@ export function PlayerSectionLeft() {
             auto
             text={title}
             to={currentTrack?.albumId ? `/albums/${currentTrack.albumId}` : undefined}
-            className="text-sm text-white hover:underline"
+            className="text-item text-white hover:underline"
           />
           <MarqueeText
             auto
             text={artist}
             to={currentTrack?.artistId ? `/artists/${currentTrack.artistId}` : undefined}
-            className="text-xs text-neutral-400 hover:text-white hover:underline"
+            className="text-item-sub text-neutral-400 hover:text-white hover:underline"
           />
         </div>
 

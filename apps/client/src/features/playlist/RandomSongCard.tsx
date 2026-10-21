@@ -66,19 +66,19 @@ export function RandomSongCard({ song, client }: RandomSongCardProps) {
           </div>
         </div>
 
-        <p className="truncate text-sm font-medium text-white">{song.title}</p>
+        <p className="truncate text-item font-medium text-white">{song.title}</p>
       </button>
 
       {song.artistId ? (
         <Link
           to={`/artists/${song.artistId}`}
           onClick={(e) => e.stopPropagation()}
-          className="inline-block max-w-full truncate align-top text-xs text-neutral-400 hover:text-white hover:underline"
+          className="inline-block max-w-full truncate align-top text-item-sub text-neutral-400 hover:text-white hover:underline"
         >
           {song.artist}
         </Link>
       ) : (
-        <p className="truncate text-xs text-neutral-400">{song.artist}</p>
+        <p className="truncate text-item-sub text-neutral-400">{song.artist}</p>
       )}
 
       {menu.open && (

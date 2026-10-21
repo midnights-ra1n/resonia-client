@@ -536,7 +536,7 @@ export function PlaylistPage() {
                       <MarqueeText
                         text={song.title}
                         draggable={false}
-                        className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
+                        className={`text-item ${isCurrent ? "text-accent" : "text-white"}`}
                       />
                       <MarqueeText
                         text={song.artist}
@@ -547,7 +547,7 @@ export function PlaylistPage() {
                         }
                         onClick={(e) => e.stopPropagation()}
                         draggable={false}
-                        className="text-xs text-neutral-400 hover:text-white hover:underline"
+                        className="text-item-sub text-neutral-400 hover:text-white hover:underline"
                       />
                     </div>
 
@@ -557,12 +557,12 @@ export function PlaylistPage() {
                           to={`/albums/${song.albumId}`}
                           onClick={(e) => e.stopPropagation()}
                           draggable={false}
-                          className="block truncate text-xs text-neutral-400 hover:text-white hover:underline"
+                          className="block truncate text-item-sub text-neutral-400 hover:text-white hover:underline"
                         >
                           {song.album}
                         </Link>
                       ) : (
-                        <span className="block truncate text-xs text-neutral-400">
+                        <span className="block truncate text-item-sub text-neutral-400">
                           {song.album}
                         </span>
                       )}

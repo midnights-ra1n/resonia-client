@@ -365,7 +365,7 @@ export function AlbumPage() {
                 <div className="min-w-0">
                   <MarqueeText
                     text={song.title}
-                    className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
+                    className={`text-item ${isCurrent ? "text-accent" : "text-white"}`}
                   />
                   {song.artist !== album.artist && (
                     <MarqueeText
@@ -374,7 +374,7 @@ export function AlbumPage() {
                         song.artistId ? `/artists/${song.artistId}` : undefined
                       }
                       onClick={(e) => e.stopPropagation()}
-                      className="text-xs text-neutral-400 hover:text-white hover:underline"
+                      className="text-item-sub text-neutral-400 hover:text-white hover:underline"
                     />
                   )}
                 </div>

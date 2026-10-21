@@ -11,6 +11,11 @@ const loadSearch = () => import("../features/search/SearchPage").then((m) => ({ 
 const loadFavorites = () => import("../features/favorites/FavoritesPage").then((m) => ({ default: m.FavoritesPage }));
 const loadAlbum = () => import("../features/album/AlbumPage").then((m) => ({ default: m.AlbumPage }));
 const loadArtist = () => import("../features/artist/ArtistPage").then((m) => ({ default: m.ArtistPage }));
+const loadArtists = () => import("../features/artist/ArtistsPage").then((m) => ({ default: m.ArtistsPage }));
+const loadTracks = () => import("../features/tracks/TracksPage").then((m) => ({ default: m.TracksPage }));
+const loadGenres = () => import("../features/genres/GenresPage").then((m) => ({ default: m.GenresPage }));
+const loadGenre = () => import("../features/genres/GenrePage").then((m) => ({ default: m.GenrePage }));
+const loadFolders = () => import("../features/folders/FoldersPage").then((m) => ({ default: m.FoldersPage }));
 const loadPlaylist = () => import("../features/playlist/PlaylistPage").then((m) => ({ default: m.PlaylistPage }));
 
 const HomePage = lazy(loadHome);
@@ -21,6 +26,11 @@ const SearchPage = lazy(loadSearch);
 const FavoritesPage = lazy(loadFavorites);
 const AlbumPage = lazy(loadAlbum);
 const ArtistPage = lazy(loadArtist);
+const ArtistsPage = lazy(loadArtists);
+const TracksPage = lazy(loadTracks);
+const GenresPage = lazy(loadGenres);
+const GenrePage = lazy(loadGenre);
+const FoldersPage = lazy(loadFolders);
 const PlaylistPage = lazy(loadPlaylist);
 
 /** Charge en arrière-plan le code de toutes les pages, une fois l'app affichée et le navigateur
@@ -28,7 +38,7 @@ const PlaylistPage = lazy(loadPlaylist);
  *  réseau ou disque au clic). Quelques centaines de Ko, une seule fois par lancement. */
 export function preloadRoutes(): void {
   const run = () => {
-    for (const load of [loadAlbum, loadPlaylist, loadArtist, loadSearch, loadFavorites, loadSettings, loadDownloads, loadStats]) {
+    for (const load of [loadAlbum, loadPlaylist, loadArtist, loadArtists, loadTracks, loadGenres, loadGenre, loadFolders, loadSearch, loadFavorites, loadSettings, loadDownloads, loadStats]) {
       load().catch(() => {});
     }
   };
@@ -55,6 +65,12 @@ const routes = [
       { path: "search", element: withSuspense(<SearchPage />) },
       { path: "favorites", element: withSuspense(<FavoritesPage />) },
       { path: "albums/:id", element: withSuspense(<AlbumPage />) },
+      { path: "genres", element: withSuspense(<GenresPage />) },
+      { path: "genres/:name", element: withSuspense(<GenrePage />) },
+      { path: "folders", element: withSuspense(<FoldersPage />) },
+      { path: "folders/:id", element: withSuspense(<FoldersPage />) },
+      { path: "tracks", element: withSuspense(<TracksPage />) },
+      { path: "artists", element: withSuspense(<ArtistsPage />) },
       { path: "artists/:id", element: withSuspense(<ArtistPage />) },
       { path: "playlists/:id", element: withSuspense(<PlaylistPage />) },
     ],

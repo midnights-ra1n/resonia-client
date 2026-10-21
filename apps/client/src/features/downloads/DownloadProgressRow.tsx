@@ -51,8 +51,8 @@ export function DownloadProgressRow({ item }: { item: PendingDownloadItem }) {
         {status === "downloading" ? <CircleNotch size={14} className="animate-spin" /> : <Download size={14} />}
       </div>
       <div className="min-w-0">
-        <MarqueeText text={item.track.title} className="text-sm text-white" />
-        <MarqueeText text={item.track.artist} className="text-xs text-neutral-400" />
+        <MarqueeText text={item.track.title} className="text-item text-white" />
+        <MarqueeText text={item.track.artist} className="text-item-sub text-neutral-400" />
         {status === "downloading" && progress.totalBytes > 0 && (
           <div className="mt-1.5 h-1 w-full max-w-xs overflow-hidden rounded-full bg-neutral-800">
             <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${percent}%` }} />

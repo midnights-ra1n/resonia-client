@@ -1,5 +1,4 @@
 import { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, powerSaveBlocker, screen, session, shell } from "electron";
-import { autoUpdater } from "electron-updater";
 import { Bonjour } from "bonjour-service";
 import type { Service as BonjourService } from "bonjour-service";
 import { start as startAirplaySender } from "@lox-audioserver/node-airplay-sender";
@@ -9,6 +8,7 @@ import { networkInterfaces } from "node:os";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
+import { registerUpdater } from "./updater.js";
 
 // Doit être appelé avant TOUT accès à `app.getPath(...)` (utilisé plus bas pour l'état de
 // fenêtre, le store, le blob store) : sans ça, Electron dérive le nom par défaut du champ
@@ -885,57 +885,8 @@ function registerIpcHandlers() {
     }
   });
 
-  // ---- electron-updater : vérifie/télécharge/installe les mises à jour depuis les releases
-  // GitHub — remplace l'ancien mécanisme Tauri (commande Rust check_for_update + minisign).
-  // `autoDownload`/`autoInstallOnAppQuit` à false : le téléchargement et l'installation
-  // restent entièrement pilotés par l'utilisateur via l'UI (voir UpdateNotifier.tsx), jamais
-  // en arrière-plan silencieux — même comportement observable qu'avant (vérif au lancement si
-  // le réglage est activé, installation seulement après téléchargement complet confirmé). ----
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-
-  autoUpdater.on("download-progress", (progress) => {
-    mainWindow?.webContents.send("update:progress", Math.round(progress.percent));
-  });
-  autoUpdater.on("error", (err) => {
-    console.error("[updater] Erreur electron-updater", err);
-  });
-
-  ipcMain.handle(
-    "update:check",
-    async (_e, beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null> => {
-      // Canal choisi à l'exécution (réglage utilisateur) — même intention que le double
-      // endpoint stable/beta de l'ancien tauri.conf.json/tauri.beta.conf.json, mais un seul
-      // mécanisme ici : le canal change simplement quelle release GitHub est ciblée (voir
-      // electron-builder.yml — les releases beta y sont marquées prerelease).
-      autoUpdater.channel = beta ? "beta" : "latest";
-      autoUpdater.allowPrerelease = beta;
-      try {
-        const result = await autoUpdater.checkForUpdates();
-        if (!result || result.updateInfo.version === app.getVersion()) return null;
-        const notes = result.updateInfo.releaseNotes;
-        return {
-          version: result.updateInfo.version,
-          currentVersion: app.getVersion(),
-          // `notes` provient du corps de la release GitHub, comme côté Tauri — string dans le
-          // cas usuel (provider GitHub), tableau seulement pour un provider générique multi-
-          // versions que ce projet n'utilise pas.
-          notes: typeof notes === "string" ? notes : (notes?.[0]?.note ?? null),
-        };
-      } catch (err) {
-        console.error("[updater] Vérification de mise à jour impossible", err);
-        return null;
-      }
-    },
-  );
-
-  ipcMain.handle("update:download", async () => {
-    await autoUpdater.downloadUpdate();
-  });
-
-  ipcMain.handle("update:install", () => {
-    autoUpdater.quitAndInstall();
-  });
+  // ---- Mises à jour (voir electron/main/updater.ts). ----
+  registerUpdater(() => mainWindow);
 
   // ---- AirPlay (preuve de concept — voir src/lib/audio/airplay côté renderer pour le
   // prélèvement audio Web Audio -> PCM -> IPC). Découverte mDNS (_raop._tcp, le service que

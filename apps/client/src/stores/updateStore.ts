@@ -3,6 +3,7 @@ import {
   checkForUpdate,
   relaunchApp,
   type AppUpdate,
+  type UpdateProgress,
 } from "../lib/update/updateService";
 
 function formatUpdateError(err: unknown): string {
@@ -24,6 +25,9 @@ interface UpdateState {
   version: string | null;
   notes: string | null;
   progress: number;
+  /** Octets téléchargés / taille totale, pour l'indicateur de la barre supérieure. */
+  downloadedBytes: number;
+  totalBytes: number;
   pendingUpdate: AppUpdate | null;
   /** Détail brut de la dernière erreur (message d'exception côté Rust ou JS) — jamais affiché
    *  tel quel dans l'interface générale (message traduit générique à la place), mais exposé en
@@ -34,14 +38,14 @@ interface UpdateState {
    *  l'appel si une vérification ou une installation est déjà en cours, pour ne jamais
    *  chevaucher deux téléchargements ou perdre une mise à jour déjà prête à redémarrer. */
   check: (beta: boolean) => Promise<boolean>;
-  /** Télécharge et installe sur disque la mise à jour trouvée par check(), sans relancer l'app —
-   *  voir relaunch(). Passe le store en "ready" une fois l'installation terminée : c'est ce
-   *  statut que la barre supérieure surveille pour afficher le bouton de redémarrage. */
-  install: () => Promise<void>;
-  /** Enchaîne check() puis install() si une mise à jour est trouvée — utilisé par le
-   *  vérificateur en arrière-plan (lancement + vérification quotidienne), où tout doit se
-   *  dérouler silencieusement sans action de l'utilisateur. */
-  checkAndInstall: (beta: boolean) => Promise<void>;
+  /** Télécharge la mise à jour trouvée par check(), sans relancer l'app : elle s'installera à la
+   *  prochaine fermeture, ou tout de suite via relaunch(). Passe le store en "ready" une fois le
+   *  téléchargement terminé : c'est ce statut que la barre supérieure surveille pour afficher le
+   *  bouton de redémarrage. `adminPrompt` : voir AppUpdate.downloadAndInstall. */
+  install: (adminPrompt: string) => Promise<void>;
+  /** Enchaîne check() puis install() si une mise à jour est trouvée — dès qu'une mise à jour est
+   *  détectée (vérification au lancement, quotidienne ou manuelle), elle est téléchargée. */
+  checkAndInstall: (beta: boolean, adminPrompt: string) => Promise<void>;
   relaunch: () => Promise<void>;
 }
 
@@ -50,6 +54,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   version: null,
   notes: null,
   progress: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
   pendingUpdate: null,
   errorMessage: null,
 
@@ -88,13 +94,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
 
-  install: async () => {
+  install: async (adminPrompt) => {
     const { pendingUpdate } = get();
     if (!pendingUpdate) return;
-    set({ status: "downloading", progress: 0, errorMessage: null });
+    set({ status: "downloading", progress: 0, downloadedBytes: 0, totalBytes: 0, errorMessage: null });
     try {
-      await pendingUpdate.downloadAndInstall((percent) =>
-        set({ progress: percent }),
+      await pendingUpdate.downloadAndInstall(adminPrompt, (p: UpdateProgress) =>
+        set({ progress: p.percent, downloadedBytes: p.transferred, totalBytes: p.total }),
       );
       set({ status: "ready", progress: 100 });
     } catch (err) {
@@ -103,9 +109,9 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
 
-  checkAndInstall: async (beta) => {
+  checkAndInstall: async (beta, adminPrompt) => {
     const available = await get().check(beta);
-    if (available) await get().install();
+    if (available && get().status === "available") await get().install(adminPrompt);
   },
 
   relaunch: async () => {

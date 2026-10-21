@@ -100,12 +100,12 @@ export function AlbumResultRow({ album }: AlbumResultRowProps) {
       </div>
 
       <div className="min-w-0 flex-1">
-        <MarqueeText text={album.name} className="text-sm font-medium text-white" />
+        <MarqueeText text={album.name} className="text-item font-medium text-white" />
         <MarqueeText
           text={album.artist}
           to={album.artistId ? `/artists/${album.artistId}` : undefined}
           onClick={(e) => e.stopPropagation()}
-          className="text-xs text-neutral-400 hover:text-white hover:underline"
+          className="text-item-sub text-neutral-400 hover:text-white hover:underline"
         />
       </div>
 

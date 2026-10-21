@@ -4,6 +4,7 @@ import {
   getAvailableQualities,
   getQualityById,
 } from "../lib/audio/qualityOptions";
+import { currentReleaseChannel, resolveBetaUpdatesEnabled, type BetaUpdatesChoice } from "../lib/app/appVersion";
 import { getPlatform } from "../lib/platform";
 import { storage } from "../lib/storage";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
@@ -72,7 +73,20 @@ const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
 const SHOW_WAVEFORM_STORAGE_KEY = "resonia:settings:showWaveform";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
   "resonia:settings:checkUpdatesOnLaunch";
-const BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
+// Ancien format (booléen seul, sans le canal sur lequel le choix a été fait) : repris une fois,
+// comme un choix fait sur le canal actuel, puis remplacé par BETA_UPDATES_CHOICE_STORAGE_KEY.
+const LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
+const BETA_UPDATES_CHOICE_STORAGE_KEY = "resonia:settings:betaUpdatesChoice";
+
+/** Choix bêta enregistré, en migrant l'ancien booléen (voir LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY). */
+function readBetaUpdatesChoice(stored: BetaUpdatesChoice | null): BetaUpdatesChoice | null {
+  if (stored) return stored;
+  const legacy = storage.getSync<boolean>(LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY);
+  if (legacy === null) return null;
+  const migrated: BetaUpdatesChoice = { enabled: legacy, channel: currentReleaseChannel() };
+  void storage.set(BETA_UPDATES_CHOICE_STORAGE_KEY, migrated).then(() => storage.remove(LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY));
+  return migrated;
+}
 const DISMISSED_UPDATE_VERSION_STORAGE_KEY = "resonia:settings:dismissedUpdateVersion";
 
 export const GIGABYTE = 1024 * 1024 * 1024;
@@ -134,7 +148,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortDirection,
       devModeEnabled,
       checkUpdatesOnLaunch,
-      betaUpdatesEnabled,
+      betaUpdatesChoice,
       dismissedUpdateVersion,
       spotifyMode,
       spotifyClientId,
@@ -149,7 +163,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
       storage.getSync<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
       storage.getSync<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
-      storage.getSync<boolean>(BETA_UPDATES_ENABLED_STORAGE_KEY),
+      storage.getSync<BetaUpdatesChoice>(BETA_UPDATES_CHOICE_STORAGE_KEY),
       storage.getSync<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
       storage.getSync<string>(SPOTIFY_MODE_STORAGE_KEY),
       storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
@@ -176,7 +190,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       devModeEnabled: devModeEnabled ?? false,
       showWaveform: showWaveform ?? false,
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
-      betaUpdatesEnabled: betaUpdatesEnabled ?? false,
+      betaUpdatesEnabled: resolveBetaUpdatesEnabled(readBetaUpdatesChoice(betaUpdatesChoice), currentReleaseChannel()),
       dismissedUpdateVersion: dismissedUpdateVersion ?? null,
       spotifyMetadataMode: isSpotifyMode(spotifyMode) ? spotifyMode : "off",
       spotifyClientId: spotifyClientId ?? "",
@@ -254,7 +268,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   setBetaUpdatesEnabled: async (enabled) => {
-    await storage.set(BETA_UPDATES_ENABLED_STORAGE_KEY, enabled);
+    const choice: BetaUpdatesChoice = { enabled, channel: currentReleaseChannel() };
+    await storage.set(BETA_UPDATES_CHOICE_STORAGE_KEY, choice);
     set({ betaUpdatesEnabled: enabled });
   },
   setDismissedUpdateVersion: async (version) => {

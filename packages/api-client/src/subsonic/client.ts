@@ -1,6 +1,6 @@
 import { generateSalt, generateToken } from "./auth";
 import { buildStreamUrl, type StreamUrlOptions } from "./stream";
-import type { AlbumDetailsDTO, AlbumSummary, AlbumWithSongsDTO, ArtistInfo2DTO, ArtistSummary, ArtistWithAlbumsDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDetailsDTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
+import type { AlbumDetailsDTO, AlbumSummary, AlbumWithSongsDTO, ArtistInfo2DTO, ArtistSummary, ArtistWithAlbumsDTO, DirectoryChildDTO, GenreDTO, MusicDirectoryDTO, MusicFolderDTO, PlaylistSummary, PlaylistWithSongsDTO, SearchResult3DTO, SongDetailsDTO, SongDTO, StructuredLyricsDTO, SubsonicAuthParams, SubsonicResponseEnvelope } from "./types";
 
 export interface SubsonicClientConfig {
   url: string;
@@ -201,6 +201,12 @@ export class SubsonicClient {
     await this.request("deletePlaylist", { id: playlistId });
   }
 
+  /** Tous les artistes de la bibliothèque, à plat, dans l'ordre alphabétique des index serveur. */
+  async getArtists(): Promise<ArtistSummary[]> {
+    const result = await this.request<{ artists: { index?: { artist?: ArtistSummary[] }[] } }>("getArtists");
+    return (result.artists.index ?? []).flatMap((index) => index.artist ?? []);
+  }
+
   async getArtist(artistId: string): Promise<ArtistWithAlbumsDTO> {
     const result = await this.request<{ artist: ArtistWithAlbumsDTO }>("getArtist", { id: artistId });
     return result.artist;
@@ -235,13 +241,41 @@ export class SubsonicClient {
     return result.topSongs.song ?? [];
   }
 
-  async getAlbumsByGenre(genre: string, size = 20): Promise<AlbumSummary[]> {
+  async getAlbumsByGenre(genre: string, size = 20, offset = 0): Promise<AlbumSummary[]> {
     const result = await this.request<{ albumList2: { album?: AlbumSummary[] } }>("getAlbumList2", {
       type: "byGenre",
       genre,
       size: String(size),
+      offset: String(offset),
     });
     return result.albumList2.album ?? [];
+  }
+
+  async getGenres(): Promise<GenreDTO[]> {
+    const result = await this.request<{ genres: { genre?: GenreDTO[] } }>("getGenres");
+    return result.genres.genre ?? [];
+  }
+
+  async getMusicFolders(): Promise<MusicFolderDTO[]> {
+    const result = await this.request<{ musicFolders: { musicFolder?: MusicFolderDTO[] } }>("getMusicFolders");
+    return result.musicFolders.musicFolder ?? [];
+  }
+
+  /** Racine d'un dossier musical, au même format qu'un dossier ordinaire : les entrées d'index
+   *  (regroupées par lettre côté serveur) deviennent des sous-dossiers, suivies des fichiers. */
+  async getIndexes(musicFolderId: string): Promise<DirectoryChildDTO[]> {
+    const result = await this.request<{
+      indexes: { index?: { artist?: { id: string; name: string; coverArt?: string }[] }[]; child?: DirectoryChildDTO[] };
+    }>("getIndexes", { musicFolderId });
+    const folders = (result.indexes.index ?? []).flatMap((index) =>
+      (index.artist ?? []).map((a): DirectoryChildDTO => ({ id: a.id, title: a.name, coverArt: a.coverArt, isDir: true, artist: "", album: "", duration: 0 })),
+    );
+    return [...folders, ...(result.indexes.child ?? [])];
+  }
+
+  async getMusicDirectory(id: string): Promise<MusicDirectoryDTO> {
+    const result = await this.request<{ directory: Omit<MusicDirectoryDTO, "child"> & { child?: DirectoryChildDTO[] } }>("getMusicDirectory", { id });
+    return { ...result.directory, child: result.directory.child ?? [] };
   }
 
   async getAlbumList2(

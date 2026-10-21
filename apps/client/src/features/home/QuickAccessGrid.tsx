@@ -103,7 +103,7 @@ function QuickAccessTile({
         )}
       </div>
 
-      <span className={`min-w-0 flex-1 truncate text-sm font-medium ${isPlaying ? "text-accent" : "text-white"}`}>
+      <span className={`min-w-0 flex-1 truncate text-item font-medium ${isPlaying ? "text-accent" : "text-white"}`}>
         {name}
       </span>
 

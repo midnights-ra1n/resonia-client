@@ -210,14 +210,14 @@ export function FavoritesPage() {
                       <MarqueeText
                         text={song.title}
                         draggable={false}
-                        className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`}
+                        className={`text-item ${isCurrent ? "text-accent" : "text-white"}`}
                       />
                       <MarqueeText
                         text={song.artist}
                         to={song.artistId ? `/artists/${song.artistId}` : undefined}
                         onClick={(e) => e.stopPropagation()}
                         draggable={false}
-                        className="text-xs text-neutral-400 hover:text-white hover:underline"
+                        className="text-item-sub text-neutral-400 hover:text-white hover:underline"
                       />
                     </div>
 
@@ -228,12 +228,12 @@ export function FavoritesPage() {
                             e.stopPropagation();
                             navigate(`/albums/${song.albumId}`);
                           }}
-                          className="block truncate text-left text-xs text-neutral-400 hover:text-white hover:underline"
+                          className="block truncate text-left text-item-sub text-neutral-400 hover:text-white hover:underline"
                         >
                           {song.album}
                         </button>
                       ) : (
-                        <span className="block truncate text-xs text-neutral-400">
+                        <span className="block truncate text-item-sub text-neutral-400">
                           {song.album}
                         </span>
                       )}

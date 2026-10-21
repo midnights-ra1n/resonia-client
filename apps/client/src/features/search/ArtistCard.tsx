@@ -41,8 +41,8 @@ export function ArtistCard({ artist }: ArtistCardProps) {
         )}
       </div>
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-white">{artist.name}</p>
-        <p className="truncate text-xs text-neutral-400">{t("search.artistLabel")}</p>
+        <p className="truncate text-item font-medium text-white">{artist.name}</p>
+        <p className="truncate text-item-sub text-neutral-400">{t("search.artistLabel")}</p>
       </div>
     </Link>
   );

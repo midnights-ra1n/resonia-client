@@ -92,8 +92,8 @@ export function PlaylistCard({ playlist, onDeleted }: PlaylistCardProps) {
       </div>
 
       <Link to={`/playlists/${playlist.id}`} className="block cursor-pointer">
-        <MarqueeText text={name} className="text-sm font-medium text-white" />
-        <p className="truncate text-xs text-neutral-400">{t("search.playlistLabel")}</p>
+        <MarqueeText text={name} className="text-item font-medium text-white" />
+        <p className="truncate text-item-sub text-neutral-400">{t("search.playlistLabel")}</p>
       </Link>
 
       {menu.open && client && (

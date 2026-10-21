@@ -118,10 +118,10 @@ function AlbumCard({ album, onPlay, onOpen }: AlbumCardProps) {
       </div>
 
       <div className="mt-3 min-w-0">
-        <p className="truncate text-sm font-semibold text-neutral-100 font-roboto">
+        <p className="truncate text-item font-semibold text-neutral-100 font-roboto">
           {album.name}
         </p>
-        <p className="truncate text-xs text-neutral-400 font-roboto mt-0.5">
+        <p className="truncate text-item-sub text-neutral-400 font-roboto mt-0.5">
           {album.artist}
         </p>
       </div>

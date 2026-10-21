@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "../../lib/i18n";
 import { isElectron } from "../../lib/platform";
 import { storage } from "../../lib/storage";
@@ -11,20 +11,28 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // vérification, y compris après une mise en veille prolongée de la machine, sans pour autant
 // solliciter GitHub en continu.
 const POLL_INTERVAL_MS = 60 * 60 * 1000;
+// Au-delà, les notes de version sont tronquées : une boîte de dialogue native ne défile pas.
+const MAX_NOTES_LENGTH = 1200;
 
-/** Vérifie et télécharge/installe les mises à jour EN SILENCE en arrière-plan — au lancement,
- *  puis une fois par heure tant que l'app reste ouverte (utilisateurs qui la laissent tourner en
- *  fond de tâche) — quand le réglage correspondant est activé. Aucune boîte de dialogue pendant
- *  le téléchargement, aucun redémarrage forcé : voir `useUpdateStore.checkAndInstall`.
+function truncateNotes(notes: string): string {
+  if (notes.length <= MAX_NOTES_LENGTH) return notes;
+  const cut = notes.lastIndexOf("\n", MAX_NOTES_LENGTH);
+  return `${notes.slice(0, cut > 0 ? cut : MAX_NOTES_LENGTH).trimEnd()}\n…`;
+}
+
+/** Vérifie et télécharge les mises à jour en arrière-plan — au lancement, puis une fois par
+ *  heure tant que l'app reste ouverte (utilisateurs qui la laissent tourner en fond de tâche) —
+ *  quand le réglage correspondant est activé. Le téléchargement est signalé discrètement dans la
+ *  barre supérieure (UpdateIndicator), sans jamais interrompre l'écoute ; la mise à jour
+ *  s'installe ensuite d'elle-même à la prochaine fermeture de l'app.
  *
- *  Une fois l'installation terminée sur disque (statut "ready"), affiche une pop-up avec la
- *  version proposée et ses notes (le corps de la release GitHub, voir `update:check` côté
- *  electron/main/index.ts) pour laisser choisir "Installer" (redémarre tout de suite) ou
- *  "Plus tard" — qui referme juste la pop-up sans rien perdre : le bouton discret de la barre
- *  supérieure (UpdateRestartButton) reste disponible pour redémarrer quand l'utilisateur le
- *  souhaite. "Plus tard" mémorise la version reportée (settingsStore.dismissedUpdateVersion)
- *  pour ne pas rouvrir la pop-up à chaque re-render tant qu'aucune version plus récente n'est
- *  sortie. Ne rend rien côté web. */
+ *  Une fois le téléchargement terminé (statut "ready"), ouvre une pop-up NATIVE du système
+ *  (voir `update:prompt` côté electron/main/updater.ts) avec la version et ses notes, pour
+ *  laisser choisir "Redémarrer maintenant" ou "Plus tard" — qui ne perd rien : le bouton de la
+ *  barre supérieure reste disponible, et l'installation se fera de toute façon à la fermeture.
+ *  "Plus tard" mémorise la version reportée (settingsStore.dismissedUpdateVersion) pour ne pas
+ *  rouvrir la pop-up à chaque lancement tant qu'aucune version plus récente n'est sortie. Ne
+ *  rend rien. */
 export function UpdateNotifier() {
   const { t } = useTranslation();
   const hydrated = useSettingsStore((s) => s.hydrated);
@@ -42,10 +50,9 @@ export function UpdateNotifier() {
   // se déclencherait une première fois avec les valeurs par défaut avant que le réglage persisté
   // n'ait eu le temps d'être chargé.
   const startedOnLaunch = useRef(false);
-  // Distinct de `dismissedUpdateVersion` (persisté, survit à un redémarrage) : referme la
-  // pop-up pour la session en cours dès le clic, avant même que l'écriture asynchrone dans
-  // settingsStore n'ait eu le temps de se terminer.
-  const [dismissedThisSession, setDismissedThisSession] = useState<string | null>(null);
+  // Version pour laquelle la pop-up a déjà été ouverte pendant cette session : une seule
+  // ouverture par version, même si le composant se ré-affiche pendant qu'elle est à l'écran.
+  const promptedVersion = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isElectron() || !hydrated || !checkUpdatesOnLaunch) return;
@@ -66,7 +73,7 @@ export function UpdateNotifier() {
       if (cancelled) return;
 
       await storage.set(LAST_CHECK_STORAGE_KEY, Date.now());
-      await useUpdateStore.getState().checkAndInstall(betaUpdatesEnabled);
+      await useUpdateStore.getState().checkAndInstall(betaUpdatesEnabled, t("update.adminPrompt"));
     }
 
     if (!startedOnLaunch.current) {
@@ -79,57 +86,27 @@ export function UpdateNotifier() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [hydrated, checkUpdatesOnLaunch, betaUpdatesEnabled]);
+  }, [hydrated, checkUpdatesOnLaunch, betaUpdatesEnabled, t]);
 
-  const showPopup =
-    status === "ready" &&
-    version !== null &&
-    version !== dismissedUpdateVersion &&
-    version !== dismissedThisSession;
+  useEffect(() => {
+    if (status !== "ready" || !version || version === dismissedUpdateVersion) return;
+    if (promptedVersion.current === version) return;
+    promptedVersion.current = version;
 
-  if (!showPopup) return null;
+    const body = notes?.trim() ? `${t("update.notesTitle")}\n${truncateNotes(notes.trim())}` : t("update.noNotes");
+    void window
+      .resonia!.update.prompt({
+        title: t("update.promptTitle"),
+        message: t("update.available", { version }),
+        detail: `${body}\n\n${t("update.installOnQuit")}`,
+        restart: t("update.restartNow"),
+        later: t("update.later"),
+      })
+      .then((restart) => {
+        if (restart) void relaunch();
+        else void setDismissedUpdateVersion(version);
+      });
+  }, [status, version, notes, dismissedUpdateVersion, relaunch, setDismissedUpdateVersion, t]);
 
-  function later() {
-    if (version) {
-      setDismissedThisSession(version);
-      void setDismissedUpdateVersion(version);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 animate-fade-in">
-      <div className="w-full max-w-sm rounded-panel border border-white/5 bg-surface-2 p-6 shadow-e2 animate-pop-in">
-        <h2 className="mb-3 text-center text-sm font-semibold text-white">
-          {t("update.available", { version: version ?? "" })}
-        </h2>
-        <div className="mb-4 max-h-64 overflow-y-auto rounded-lg bg-neutral-800/60 p-3">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-            {t("update.notesTitle")}
-          </p>
-          {/* Texte brut, jamais interprété comme HTML : les notes proviennent du corps de la
-              release GitHub (voir CHANGELOG.md racine + workflows de release), pas de raison de
-              faire confiance à ce contenu plus qu'à n'importe quel texte externe. */}
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-300">
-            {notes?.trim() || t("update.noNotes")}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={later}
-            className="flex-1 rounded-full bg-neutral-800 py-2.5 font-semibold text-white transition hover:bg-neutral-700"
-          >
-            {t("update.later")}
-          </button>
-          <button
-            type="button"
-            onClick={() => void relaunch()}
-            className="flex-1 rounded-full bg-accent py-2.5 font-semibold text-on-accent transition hover:bg-accent-hover active:bg-accent-pressed"
-          >
-            {t("update.install")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }

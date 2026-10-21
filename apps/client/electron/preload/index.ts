@@ -85,13 +85,23 @@ contextBridge.exposeInMainWorld("resonia", {
       beta: boolean,
     ): Promise<{ version: string; currentVersion: string; notes: string | null } | null> =>
       ipcRenderer.invoke("update:check", beta),
-    download: (): Promise<void> => ipcRenderer.invoke("update:download"),
+    download: (adminPrompt: string): Promise<void> => ipcRenderer.invoke("update:download", adminPrompt),
     install: (): Promise<void> => ipcRenderer.invoke("update:install"),
+    // Pop-up native (boîte de dialogue du système) ; résout à true si l'utilisateur choisit de
+    // redémarrer tout de suite.
+    prompt: (strings: {
+      title: string;
+      message: string;
+      detail: string;
+      restart: string;
+      later: string;
+    }): Promise<boolean> => ipcRenderer.invoke("update:prompt", strings),
     // Contrairement au reste (requête/réponse via invoke), la progression est poussée par le
     // process principal au fil du téléchargement (événement `download-progress` d'electron-
     // updater) — un abonnement `ipcRenderer.on` est le seul moyen de la recevoir en continu.
-    onProgress: (cb: (percent: number) => void): (() => void) => {
-      const listener = (_event: IpcRendererEvent, percent: number) => cb(percent);
+    onProgress: (cb: (progress: { percent: number; transferred: number; total: number }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, progress: { percent: number; transferred: number; total: number }) =>
+        cb(progress);
       ipcRenderer.on("update:progress", listener);
       return () => ipcRenderer.removeListener("update:progress", listener);
     },

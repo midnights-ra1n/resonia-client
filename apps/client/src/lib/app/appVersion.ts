@@ -25,3 +25,27 @@ export async function getAppVersion(): Promise<string> {
 export function isBetaVersion(version: string): boolean {
   return version.includes("-beta");
 }
+
+export type ReleaseChannel = "beta" | "stable";
+
+/** Canal de la version en cours d'exécution, connu dès le chargement (version injectée au build,
+ *  identique à `app.getVersion()` sous Electron : même package.json). */
+export function currentReleaseChannel(): ReleaseChannel {
+  return isBetaVersion(__APP_VERSION__) ? "beta" : "stable";
+}
+
+/** Choix explicite de l'utilisateur pour les mises à jour bêta, mémorisé avec le canal de la
+ *  version sur laquelle il a été fait. */
+export interface BetaUpdatesChoice {
+  enabled: boolean;
+  channel: ReleaseChannel;
+}
+
+/** Réception des mises à jour bêta : activée par défaut sur une version bêta (installée ou
+ *  obtenue par mise à jour), désactivée par défaut sur une version stable. Un choix explicite
+ *  n'est respecté que sur le canal où il a été fait : passer d'une stable à une bêta (ou
+ *  l'inverse) revient au défaut du nouveau canal. */
+export function resolveBetaUpdatesEnabled(choice: BetaUpdatesChoice | null, channel: ReleaseChannel): boolean {
+  if (choice && choice.channel === channel) return choice.enabled;
+  return channel === "beta";
+}

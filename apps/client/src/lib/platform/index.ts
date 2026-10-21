@@ -56,9 +56,10 @@ export interface ResoniaBridge {
   };
   update: {
     check(beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null>;
-    download(): Promise<void>;
+    download(adminPrompt: string): Promise<void>;
     install(): Promise<void>;
-    onProgress(cb: (percent: number) => void): () => void;
+    prompt(strings: { title: string; message: string; detail: string; restart: string; later: string }): Promise<boolean>;
+    onProgress(cb: (progress: { percent: number; transferred: number; total: number }) => void): () => void;
   };
 }
 

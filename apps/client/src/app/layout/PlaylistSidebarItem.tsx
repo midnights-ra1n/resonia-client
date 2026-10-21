@@ -90,7 +90,7 @@ export function PlaylistSidebarItem({ playlist, onChanged }: PlaylistSidebarItem
       <Link
         to={`/playlists/${playlist.id}`}
         onContextMenu={menu.handleContextMenu}
-        className="group flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition hover:bg-neutral-900"
+        className="group flex items-center gap-3 rounded-lg px-2 py-2 text-item font-medium transition hover:bg-neutral-900"
       >
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
           {cachedCoverUrl ? (

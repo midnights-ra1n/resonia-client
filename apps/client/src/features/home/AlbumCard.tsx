@@ -77,18 +77,18 @@ export function AlbumCard({ album }: AlbumCardProps) {
       </div>
 
       <Link to={`/albums/${album.id}`} className="block cursor-pointer">
-        <p className="truncate text-sm font-medium text-white">{album.name}</p>
+        <p className="truncate text-item font-medium text-white">{album.name}</p>
       </Link>
 
       {album.artistId ? (
         <Link
           to={`/artists/${album.artistId}`}
-          className="inline-block max-w-full truncate align-top text-xs text-neutral-400 hover:text-white hover:underline"
+          className="inline-block max-w-full truncate align-top text-item-sub text-neutral-400 hover:text-white hover:underline"
         >
           {album.artist}
         </Link>
       ) : (
-        <p className="truncate text-xs text-neutral-400">{album.artist}</p>
+        <p className="truncate text-item-sub text-neutral-400">{album.artist}</p>
       )}
 
       {menuElement}

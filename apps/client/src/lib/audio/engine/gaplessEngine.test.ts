@@ -122,6 +122,26 @@ describe("GaplessEngine — planification gapless déterministe", () => {
     expect(rescheduledB.startCall).toEqual({ when: 3 - SWAP_FADE_SECONDS, offset: 0 });
   });
 
+  it("cancelNext() retire la piste suivante planifiée : la fin de piste retombe sur onEnded, sans swap", () => {
+    const trackA = decodedTrack(10);
+    const trackB = decodedTrack(8);
+    ctx.currentTime = 0;
+    engine.loadAndPlay("blob:a", 0, trackA);
+
+    const onSwap = vi.fn();
+    const onEnded = vi.fn();
+    engine.onEnded(onEnded);
+    engine.scheduleNext(trackB.buffer, trackB.trim, onSwap);
+    const [sourceA, sourceB] = ctx.createdSources;
+
+    engine.cancelNext();
+    expect(sourceB.onended).toBeNull();
+
+    sourceA.onended?.();
+    expect(onSwap).not.toHaveBeenCalled();
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
   it("replie gracieusement sur l'état 'ended' + le callback de secours si rien n'est prêt à temps", () => {
     const trackA = decodedTrack(2);
     ctx.currentTime = 0;

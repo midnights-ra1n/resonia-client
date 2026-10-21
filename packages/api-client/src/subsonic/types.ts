@@ -96,6 +96,31 @@ export interface SongDTO {
   starred?: string;
 }
 
+export interface GenreDTO {
+  value: string;
+  songCount: number;
+  albumCount: number;
+}
+
+export interface MusicFolderDTO {
+  id: string;
+  name: string;
+}
+
+/** Entrée d'un dossier (`getMusicDirectory`, `getIndexes`) : sous-dossier (`isDir`) ou fichier
+ *  audio, dont les champs sont alors ceux d'un titre. */
+export interface DirectoryChildDTO extends SongDTO {
+  isDir: boolean;
+  parent?: string;
+}
+
+export interface MusicDirectoryDTO {
+  id: string;
+  name: string;
+  parent?: string;
+  child: DirectoryChildDTO[];
+}
+
 export interface AlbumWithSongsDTO extends AlbumSummary {
   song: SongDTO[];
 }

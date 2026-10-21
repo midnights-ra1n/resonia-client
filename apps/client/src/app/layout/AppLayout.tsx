@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AccountMenu } from "../../features/account/AccountMenu";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
-import { UpdateRestartButton } from "./UpdateRestartButton";
+import { UpdateIndicator } from "./UpdateIndicator";
 import { LyricsView } from "../../features/lyrics/LyricsView";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
@@ -19,19 +19,9 @@ import { useServersStore } from "../../stores/serversStore";
 import { PageTransition } from "./PageTransition";
 import { useScrollEdges } from "../../hooks/useScrollEdges";
 import { Sidebar } from "./Sidebar";
+import { isTypingTarget } from "../../lib/dom/isTypingTarget";
 
 const MIN_QUERY_LENGTH = 2;
-
-// Champs/éléments dans lesquels la barre d'espace doit garder son sens normal (saisir un
-// espace) plutôt que de basculer play/pause : la recherche, mais aussi tout champ texte ou
-// élément interactif natif (inputs des modales, textarea, boutons focus, éléments édition).
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  if (target.isContentEditable) return true;
-  return false;
-}
 
 export function AppLayout() {
   const { t } = useTranslation();
@@ -216,11 +206,11 @@ export function AppLayout() {
                 />
               </div>
 
-              {/* Indicateur de téléchargements en cours, bouton de redémarrage (si une mise à
-                  jour installée en arrière-plan attend d'être appliquée) et bulle du compte
+              {/* Indicateur de téléchargements en cours, mise à jour (téléchargement en cours ou bouton de
+                  redémarrage une fois prête) et bulle du compte
                   (serveurs, paramètres, déconnexion), à droite */}
               <div className="flex items-center justify-end gap-2 pl-2">
-                <UpdateRestartButton />
+                <UpdateIndicator />
                 <DownloadsIndicator />
                 <AccountMenu />
               </div>

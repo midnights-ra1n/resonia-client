@@ -141,10 +141,10 @@ export function DownloadsPage() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <MarqueeText text={meta.track.title} className={`text-sm ${isCurrent ? "text-accent" : "text-white"}`} />
-                    <MarqueeText text={meta.track.artist} className="text-xs text-neutral-400" />
+                    <MarqueeText text={meta.track.title} className={`text-item ${isCurrent ? "text-accent" : "text-white"}`} />
+                    <MarqueeText text={meta.track.artist} className="text-item-sub text-neutral-400" />
                   </div>
-                  <div className="min-w-0 truncate text-xs text-neutral-400">{meta.track.album}</div>
+                  <div className="min-w-0 truncate text-item-sub text-neutral-400">{meta.track.album}</div>
                   <span className="text-right text-xs text-neutral-400 tabular-nums">{formatTrackDuration(meta.track.duration)}</span>
                 </div>
               );

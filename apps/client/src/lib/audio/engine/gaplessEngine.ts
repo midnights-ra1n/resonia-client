@@ -331,6 +331,9 @@ export class GaplessEngine {
    *  fond (voir NetworkMode). Délibérément découplé du cache : ce moteur ne connaît aucun module
    *  de cache. */
   onNetworkMode: ((mode: NetworkMode) => void) | null = null;
+  /** Le tampon de l'élément <audio> de la piste en cours a progressé (événement "progress") —
+   *  pour rafraîchir l'indicateur de tampon, y compris en pause. */
+  onBufferedChange: (() => void) | null = null;
   private networkMode: NetworkMode = "free";
 
   private setNetworkMode(mode: NetworkMode, force = false) {
@@ -670,7 +673,10 @@ export class GaplessEngine {
     // Voir `updateNativePressure`. "progress" est émis ~3 fois/s pendant le téléchargement
     // seulement — aucun coût une fois le fichier entièrement chargé.
     const checkPressure = () => this.updateNativePressure(audio);
-    audio.addEventListener("progress", checkPressure);
+    audio.addEventListener("progress", () => {
+      checkPressure();
+      if (audio === this.nativeAudio) this.onBufferedChange?.();
+    });
     audio.addEventListener("suspend", checkPressure);
     audio.addEventListener("canplaythrough", checkPressure);
     audio.addEventListener("playing", () => {
@@ -1486,6 +1492,13 @@ export class GaplessEngine {
    *  programme immédiatement le démarrage exact du prochain AudioBufferSourceNode sur
    *  l'horloge — sinon, reste en attente jusqu'à ce que la piste active bascule en mode
    *  buffer (voir attachDecodedActive) ou reprenne après une pause/un seek. */
+  /** Annule la piste suivante planifiée (voir scheduleNext) : elle n'est plus la bonne — ordre
+   *  aléatoire désactivé, file réordonnée… Sans nouvelle planification, la fin de la piste en
+   *  cours retombe sur `onEnded`, qui enchaîne d'après la file à jour. */
+  cancelNext() {
+    this.discardPending();
+  }
+
   scheduleNext(buffer: AudioBuffer, trim: SilenceTrim, onSwap: () => void) {
     this.discardPending();
     this.pendingNext = { buffer, trim, onSwap, scheduled: false };

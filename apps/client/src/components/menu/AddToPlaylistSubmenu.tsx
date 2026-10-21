@@ -157,7 +157,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
+            className="flex w-full items-center gap-2.5 rounded-full px-3 py-2 text-left text-item text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white"
           >
             <Plus size={16} className="shrink-0 text-neutral-400" />
             {t("contextMenu.newPlaylist")}
@@ -182,7 +182,7 @@ export function AddToPlaylistSubmenu({ client, getSongIds }: AddToPlaylistSubmen
                 type="button"
                 disabled={pending || songIds === null}
                 onClick={() => toggle(playlist.id)}
-                className="flex w-full items-center gap-2.5 truncate rounded-full px-3 py-2 text-left text-sm text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:cursor-default disabled:hover:bg-transparent"
+                className="flex w-full items-center gap-2.5 truncate rounded-full px-3 py-2 text-left text-item text-neutral-200 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white disabled:cursor-default disabled:hover:bg-transparent"
               >
                 <span
                   className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors ${

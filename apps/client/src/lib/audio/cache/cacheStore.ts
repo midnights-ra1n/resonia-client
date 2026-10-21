@@ -42,6 +42,7 @@ class CacheStore {
   private protectedKeys = new Set<string>();
   private maxBytes = DEFAULT_MAX_BYTES;
   private sizeListeners = new Set<(bytes: number) => void>();
+  private taskProgressListeners = new Set<(key: string) => void>();
   private sizeNotifyTimer: number | null = null;
   private metaWriteTimer: number | null = null;
   // Entrées modifiées depuis le dernier flush (voir persistMeta/flushMetaToDisk) — seules
@@ -65,6 +66,13 @@ class CacheStore {
   onSizeChange(cb: (bytes: number) => void): () => void {
     this.sizeListeners.add(cb);
     return () => this.sizeListeners.delete(cb);
+  }
+
+  /** S'abonne à la progression de TOUS les téléchargements (clé de cache en argument), y compris
+   *  ceux qui démarreront plus tard — contrairement à `onProgress`, qui exige une tâche existante. */
+  onTaskProgress(cb: (key: string) => void): () => void {
+    this.taskProgressListeners.add(cb);
+    return () => this.taskProgressListeners.delete(cb);
   }
 
   private scheduleSizeNotify() {
@@ -213,6 +221,7 @@ class CacheStore {
         return (await this.loadMeta()).get(key)?.bytesCached ?? null;
       });
       task.onProgress((progress) => {
+        this.taskProgressListeners.forEach((cb) => cb(key));
         // enforceLimit() à chaque chunk (pas seulement en fin de téléchargement) : si le
         // cache est déjà plein pendant qu'on écrit une nouvelle piste, les entrées les plus
         // anciennes (non protégées) sont évincées au fil de l'eau plutôt qu'en une seule

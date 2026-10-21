@@ -12,7 +12,8 @@ import { formatAlbumDuration } from "../../lib/format/duration";
 import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { usePlayerStore, type Track } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
-import { useArtist } from "./useArtist";
+import { artistQueryKey, useArtist } from "./useArtist";
+import { invalidateQueries } from "../../lib/cache/queryCache";
 import { useArtistPopularSongs } from "./useArtistPopularSongs";
 import { biographyToText, useArtistInfo } from "./useArtistInfo";
 import { releaseCategory, sortByYearDesc, type ReleaseCategory } from "./discography";
@@ -52,7 +53,7 @@ export function ArtistPage() {
 function ArtistPageContent({ id }: { id: string | undefined }) {
   const { t, locale } = useTranslation();
 
-  const { artist, loading, error } = useArtist(id);
+  const { artist, loading } = useArtist(id);
   const info = useArtistInfo(artist?.id);
   // undefined tant que l'option est désactivée (réglage par défaut) : aucune requête vers Spotify.
   const spotify = useSpotifyArtist(artist?.name);
@@ -78,7 +79,7 @@ function ArtistPageContent({ id }: { id: string | undefined }) {
   const [showAllPopular, setShowAllPopular] = useState(false);
   const [discographyFilter, setDiscographyFilter] = useState<DiscographyFilter>("all");
   const [bioExpanded, setBioExpanded] = useState(false);
-  // Suivi optimiste : `starred` n'est relu qu'au prochain chargement de l'artiste.
+  // Suivi optimiste : `starred` n'est relu qu'au prochain chargement (cache invalidé après succès).
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const following = followOverride ?? Boolean(artist?.starred);
 
@@ -129,8 +130,8 @@ function ArtistPageContent({ id }: { id: string | undefined }) {
     return <PageSkeleton />;
   }
 
-  if (error || !artist) {
-    return <div className="p-8 text-neutral-400">{error ?? t("artist.notFound")}</div>;
+  if (!artist) {
+    return <div className="p-8 text-neutral-400">{t("artist.notFound")}</div>;
   }
 
   const totalSongs = albums.reduce((sum, a) => sum + (a.songCount ?? 0), 0);
@@ -195,10 +196,15 @@ function ArtistPageContent({ id }: { id: string | undefined }) {
     if (!client) return;
     const next = !following;
     setFollowOverride(next);
-    (next ? client.starArtist(artist!.id) : client.unstarArtist(artist!.id)).catch((err) => {
-      console.error("[artist] Échec de la mise à jour du suivi", err);
-      setFollowOverride(!next);
-    });
+    (next ? client.starArtist(artist!.id) : client.unstarArtist(artist!.id))
+      .then(() => {
+        const key = artistQueryKey(activeServerId!, artist!.id);
+        invalidateQueries((k) => k === key);
+      })
+      .catch((err) => {
+        console.error("[artist] Échec de la mise à jour du suivi", err);
+        setFollowOverride(!next);
+      });
   }
 
   return (

@@ -60,7 +60,7 @@ export function UpdateIndicator() {
   return (
     <button
       type="button"
-      onClick={() => void relaunch()}
+      onClick={() => void relaunch(t("update.installing"))}
       title={version ? t("update.restartTooltip", { version }) : undefined}
       className="flex h-9 items-center gap-1.5 rounded-full bg-accent px-3 text-xs font-semibold text-on-accent transition hover:bg-accent-hover animate-fade-in"
     >

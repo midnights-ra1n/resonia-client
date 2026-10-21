@@ -103,7 +103,7 @@ export function UpdateNotifier() {
         later: t("update.later"),
       })
       .then((restart) => {
-        if (restart) void relaunch();
+        if (restart) void relaunch(t("update.installing"));
         else void setDismissedUpdateVersion(version);
       });
   }, [status, version, notes, dismissedUpdateVersion, relaunch, setDismissedUpdateVersion, t]);

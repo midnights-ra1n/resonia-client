@@ -15,6 +15,7 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 <!-- Add changes here as they occur. When publishing a version, rename
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
+- Restarting to install an update is faster: Resonia closes right away and a small system window with a progress bar shows until the new version opens (macOS, Windows and Linux)
 
 ## 1.0.0-beta.6
 - Updates now download in the background and install automatically the next time you quit Resonia

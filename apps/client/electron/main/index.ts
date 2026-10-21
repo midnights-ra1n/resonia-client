@@ -8,7 +8,7 @@ import { networkInterfaces } from "node:os";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, open as fsOpen, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
-import { registerUpdater } from "./updater.js";
+import { closeInstallProgress, registerUpdater } from "./updater.js";
 
 // Doit être appelé avant TOUT accès à `app.getPath(...)` (utilisé plus bas pour l'état de
 // fenêtre, le store, le blob store) : sans ça, Electron dérive le nom par défaut du champ
@@ -199,7 +199,11 @@ async function createWindow() {
     console.error("[preload] échec de chargement :", preloadPath, error);
   });
 
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+    // Première fenêtre après une mise à jour : ferme la fenêtre « Installation… » du système.
+    closeInstallProgress();
+  });
   mainWindow.on("resize", scheduleSaveWindowState);
   mainWindow.on("move", scheduleSaveWindowState);
 

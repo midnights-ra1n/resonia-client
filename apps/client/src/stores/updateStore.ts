@@ -46,7 +46,7 @@ interface UpdateState {
   /** Enchaîne check() puis install() si une mise à jour est trouvée — dès qu'une mise à jour est
    *  détectée (vérification au lancement, quotidienne ou manuelle), elle est téléchargée. */
   checkAndInstall: (beta: boolean, adminPrompt: string) => Promise<void>;
-  relaunch: () => Promise<void>;
+  relaunch: (installingText: string) => Promise<void>;
 }
 
 export const useUpdateStore = create<UpdateState>((set, get) => ({
@@ -114,7 +114,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     if (available && get().status === "available") await get().install(adminPrompt);
   },
 
-  relaunch: async () => {
-    await relaunchApp();
+  relaunch: async (installingText) => {
+    await relaunchApp(installingText);
   },
 }));

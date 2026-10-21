@@ -50,8 +50,9 @@ export async function checkForUpdate(beta: boolean): Promise<AppUpdate | null> {
 
 /** Redémarre l'app pour appliquer tout de suite la mise à jour déjà téléchargée (installation
  *  silencieuse puis relance, voir `update:install` côté process principal) — à appeler
- *  uniquement après un downloadAndInstall réussi. */
-export async function relaunchApp(): Promise<void> {
+ *  uniquement après un downloadAndInstall réussi. `installingText` : texte de la fenêtre de
+ *  progression affichée par le système pendant l'installation (macOS). */
+export async function relaunchApp(installingText: string): Promise<void> {
   if (!isElectron()) return;
-  await window.resonia!.update.install();
+  await window.resonia!.update.install(installingText);
 }

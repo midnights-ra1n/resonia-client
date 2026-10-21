@@ -86,7 +86,7 @@ contextBridge.exposeInMainWorld("resonia", {
     ): Promise<{ version: string; currentVersion: string; notes: string | null } | null> =>
       ipcRenderer.invoke("update:check", beta),
     download: (adminPrompt: string): Promise<void> => ipcRenderer.invoke("update:download", adminPrompt),
-    install: (): Promise<void> => ipcRenderer.invoke("update:install"),
+    install: (installingText: string): Promise<void> => ipcRenderer.invoke("update:install", installingText),
     // Pop-up native (boîte de dialogue du système) ; résout à true si l'utilisateur choisit de
     // redémarrer tout de suite.
     prompt: (strings: {

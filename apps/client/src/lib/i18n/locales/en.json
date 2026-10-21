@@ -341,6 +341,7 @@
     "later": "Later",
     "downloading": "Downloading update…",
     "adminPrompt": "Resonia wants to install an update.",
+    "installing": "Updating…",
     "restartButton": "Restart to install update",
     "restartTooltip": "Version {{version}} has been downloaded and is ready to install."
   },

@@ -341,6 +341,7 @@
     "later": "Plus tard",
     "downloading": "Téléchargement de la mise à jour…",
     "adminPrompt": "Resonia souhaite installer une mise à jour.",
+    "installing": "Installation de la mise à jour…",
     "restartButton": "Redémarrer pour installer la mise à jour",
     "restartTooltip": "La version {{version}} a été téléchargée et est prête à être installée."
   },

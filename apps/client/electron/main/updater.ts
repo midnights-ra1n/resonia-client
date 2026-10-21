@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { accessSync, constants, existsSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, rmSync, writeFileSync } from "node:fs";
 import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -36,6 +36,8 @@ class MacBundleUpdater extends AppUpdater {
   private installStarted = false;
   /** Texte de l'invite de mot de passe macOS, traduit par le renderer (voir `update:download`). */
   adminPrompt = "Resonia wants to install an update.";
+  /** Texte de la fenêtre de progression affichée pendant l'installation (voir `update:install`). */
+  installingText = "Updating…";
 
   constructor() {
     super(undefined);
@@ -102,12 +104,25 @@ class MacBundleUpdater extends AppUpdater {
       return false;
     }
 
-    const script = join(dirname(dirname(this.stagedApp)), "install-update.sh");
+    const cacheDir = dirname(dirname(this.stagedApp));
+    const script = join(cacheDir, "install-update.sh");
     writeFileSync(script, MAC_INSTALL_SCRIPT, { mode: 0o755 });
-    spawn("/bin/sh", [script, String(process.pid), target, this.stagedApp, relaunch ? "1" : "0", this.adminPrompt], {
-      detached: true,
-      stdio: "ignore",
-    }).unref();
+    writeFileSync(join(cacheDir, "install-progress.js"), MAC_PROGRESS_WINDOW);
+    spawn(
+      "/bin/sh",
+      [
+        script,
+        String(process.pid),
+        target,
+        this.stagedApp,
+        relaunch ? "1" : "0",
+        this.adminPrompt,
+        this.installingText,
+        app.name,
+        progressFiles().done,
+      ],
+      { detached: true, stdio: "ignore" },
+    ).unref();
     this.installStarted = true;
     return true;
   }
@@ -136,11 +151,28 @@ async function stageAppBundle(zipFile: string, stagingDir: string): Promise<stri
 }
 
 // Arguments : pid de l'app, bundle à remplacer, bundle de la mise à jour, relancer (1/0), texte de
-// l'invite administrateur. Le bundle est copié à côté de la cible puis échangé par deux `mv`
-// (renommages atomiques sur le même volume) : en cas d'échec, l'ancienne version est remise.
+// l'invite administrateur, texte et titre de la fenêtre de progression, fichier signalant que la
+// nouvelle version est affichée (voir closeInstallProgress).
+//
+// Au redémarrage demandé, la fenêtre de progression est lancée tout de suite, PENDANT la fermeture
+// de l'app : au premier lancement d'osascript (toujours le cas ici), elle met jusqu'à ~2,5 s à
+// s'afficher (mesuré), alors que la copie est instantanée (clone APFS sur le même volume). La
+// relance attend qu'elle soit affichée (fichier `progress-ready`, 5 s max) puis 0,5 s — l'ordre
+// reste « l'app se ferme, la progression s'affiche, la nouvelle version s'ouvre » — et la fenêtre
+// se ferme dès que la nouvelle version affiche la sienne (15 s max).
+//
+// Le bundle est copié à côté de la cible puis échangé par deux `mv` (renommages atomiques sur le
+// même volume) : en cas d'échec, l'ancienne version est remise.
 const MAC_INSTALL_SCRIPT = `#!/bin/sh
-pid="$1"; target="$2"; staged="$3"; relaunch="$4"; prompt="$5"
-while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+pid="$1"; target="$2"; staged="$3"; relaunch="$4"; prompt="$5"; progress_text="$6"; app_name="$7"; done_file="$8"
+ui=""
+ready="$(dirname "$0")/progress-ready"
+if [ "$relaunch" = 1 ]; then
+  rm -f "$ready"
+  /usr/bin/osascript -l JavaScript "$(dirname "$0")/install-progress.js" "$progress_text" "$app_name" "$ready" >/dev/null 2>&1 &
+  ui=$!
+fi
+while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done
 
 swap='t="$1"; s="$2"
 rm -rf "$t.updating" "$t.old"
@@ -160,8 +192,147 @@ fi
 status=$?
 
 [ "$status" -eq 0 ] && rm -rf "$(dirname "$staged")"
-[ "$relaunch" = 1 ] && /usr/bin/open "$target"
+if [ "$relaunch" = 1 ]; then
+  i=0; while [ ! -f "$ready" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  sleep 0.5
+  /usr/bin/open "$target"
+  i=0; while [ ! -f "$done_file" ] && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
+  kill "$ui" 2>/dev/null
+  rm -f "$ready" "$done_file"
+fi
 exit "$status"
+`;
+
+// Fenêtre de progression native (NSPanel + NSProgressIndicator indéterminé) en JavaScript for
+// Automation : aucun binaire à embarquer, osascript est présent sur tout macOS. Arguments : texte,
+// titre, fichier créé une fois la fenêtre affichée (signal pour le script d'installation). Tourne jusqu'à ce que le script d'installation la termine (kill). Politique « accessory » :
+// pas d'icône dans le Dock pour cette fenêtre de quelques secondes. macOS refuse souvent d'activer
+// un process lancé en arrière-plan : `setHidesOnDeactivate(false)` est indispensable, un NSPanel
+// d'une app inactive restant sinon masqué.
+const MAC_PROGRESS_WINDOW = `ObjC.import("Cocoa");
+function run(argv) {
+  var app = $.NSApplication.sharedApplication;
+  app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
+  var panel = $.NSPanel.alloc.initWithContentRectStyleMaskBackingDefer(
+    $.NSMakeRect(0, 0, 340, 92), $.NSWindowStyleMaskTitled, $.NSBackingStoreBuffered, false);
+  panel.setTitle(argv[1]);
+  panel.setHidesOnDeactivate(false);
+  var label = $.NSTextField.labelWithString(argv[0]);
+  label.setFrame($.NSMakeRect(20, 50, 300, 20));
+  var bar = $.NSProgressIndicator.alloc.initWithFrame($.NSMakeRect(20, 22, 300, 20));
+  bar.setStyle($.NSProgressIndicatorStyleBar);
+  bar.setIndeterminate(true);
+  bar.startAnimation($());
+  panel.contentView.addSubview(label);
+  panel.contentView.addSubview(bar);
+  panel.center;
+  panel.setLevel($.NSFloatingWindowLevel);
+  panel.makeKeyAndOrderFront($());
+  app.activateIgnoringOtherApps(true);
+  $("").writeToFileAtomicallyEncodingError(argv[2], true, $.NSUTF8StringEncoding, $());
+  app.run;
+}
+`;
+
+// ---- Fenêtre « Installation de la mise à jour… », toutes plateformes ----
+//
+// Au clic sur « Redémarrer », la fenêtre de l'app disparaît aussitôt et une fenêtre native du
+// système (barre de progression indéterminée) prend le relais jusqu'à ce que la nouvelle version
+// affiche la sienne : elle crée alors `update-progress.done` (closeInstallProgress), que la fenêtre
+// de progression attend pour se fermer — sans délai fixe, ni trop tôt ni trop tard. macOS : voir
+// MAC_INSTALL_SCRIPT ; Windows : WinForms via PowerShell ; Linux : kdialog (KDE) ou zenity.
+
+function progressFiles(): { pending: string; done: string } {
+  const dir = app.getPath("userData");
+  return { pending: join(dir, "update-progress.pending"), done: join(dir, "update-progress.done") };
+}
+
+/** Ferme la fenêtre de progression : appelé quand la fenêtre de la nouvelle version s'affiche, ou
+ *  quand l'installation n'a finalement pas eu lieu. Sans installation en cours, ne fait rien. */
+export function closeInstallProgress(): void {
+  const { pending, done } = progressFiles();
+  if (!existsSync(pending)) return;
+  rmSync(pending, { force: true });
+  writeFileSync(done, "");
+}
+
+function showInstallProgress(text: string): void {
+  const { pending, done } = progressFiles();
+  rmSync(done, { force: true });
+  writeFileSync(pending, "");
+  // macOS : lancée par le script d'installation lui-même (voir MacBundleUpdater).
+  if (process.platform === "win32") {
+    const script = join(app.getPath("userData"), "update-progress.ps1");
+    writeFileSync(script, WIN_PROGRESS_SCRIPT);
+    spawn(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script, "-Text", text, "-Title", app.name, "-Done", done],
+      { detached: true, stdio: "ignore", windowsHide: true },
+    ).unref();
+  } else if (process.platform === "linux") {
+    const script = join(app.getPath("userData"), "update-progress.sh");
+    writeFileSync(script, LINUX_PROGRESS_SCRIPT, { mode: 0o755 });
+    // Hors AppImage : ses bibliothèques embarquées casseraient zenity/kdialog du système.
+    const env = { ...process.env };
+    delete env["LD_LIBRARY_PATH"];
+    delete env["LD_PRELOAD"];
+    spawn("/bin/sh", [script, done, text, app.name], { detached: true, stdio: "ignore", env }).unref();
+  }
+}
+
+// Fenêtre WinForms (contrôles Win32 natifs, style visuel du système) : texte + barre « marquee »
+// animée en continu. Se ferme à l'apparition du fichier -Done, ou au bout de 3 min (relance ratée).
+// Script en ASCII : les textes traduits arrivent en arguments (ligne de commande Unicode).
+const WIN_PROGRESS_SCRIPT = `param([string]$Text, [string]$Title, [string]$Done)
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$form = New-Object System.Windows.Forms.Form
+$form.Text = $Title
+$form.Font = [System.Drawing.SystemFonts]::MessageBoxFont
+$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+$form.ControlBox = $false
+$form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+$form.TopMost = $true
+$form.ClientSize = New-Object System.Drawing.Size(340, 92)
+$label = New-Object System.Windows.Forms.Label
+$label.Text = $Text
+$label.AutoSize = $true
+$label.Location = New-Object System.Drawing.Point(20, 20)
+$bar = New-Object System.Windows.Forms.ProgressBar
+$bar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+$bar.MarqueeAnimationSpeed = 30
+$bar.Location = New-Object System.Drawing.Point(20, 52)
+$bar.Size = New-Object System.Drawing.Size(300, 20)
+$form.Controls.Add($label)
+$form.Controls.Add($bar)
+$start = Get-Date
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 150
+$timer.Add_Tick({
+  if ((Test-Path -LiteralPath $Done) -or ((Get-Date) - $start).TotalMinutes -gt 3) { $timer.Stop(); $form.Close() }
+})
+$timer.Start()
+[void]$form.ShowDialog()
+Remove-Item -LiteralPath $Done -ErrorAction SilentlyContinue
+`;
+
+// Arguments : fichier -done, texte, titre. kdialog sous KDE Plasma (Qt, barre « occupée » quand le
+// total vaut 0), zenity ailleurs (GTK, --pulsate) ; ni l'un ni l'autre : pas de fenêtre, la mise à
+// jour se fait quand même. Lancé détaché (groupe de process à lui) : \`kill 0\` ferme tout à la fin.
+const LINUX_PROGRESS_SCRIPT = `#!/bin/sh
+done_file="$1"; text="$2"; title="$3"; ref=""
+case "$XDG_CURRENT_DESKTOP" in
+  *KDE*|*kde*) command -v kdialog >/dev/null 2>&1 && ref=$(kdialog --title "$title" --progressbar "$text" 0 2>/dev/null) ;;
+esac
+if [ -z "$ref" ] && command -v zenity >/dev/null 2>&1; then
+  sleep 600 | zenity --progress --pulsate --no-cancel --title="$title" --text="$text" >/dev/null 2>&1 &
+fi
+i=0; while [ ! -f "$done_file" ] && [ "$i" -lt 1800 ]; do sleep 0.1; i=$((i + 1)); done
+rm -f "$done_file"
+[ -n "$ref" ] && dbus-send --session --type=method_call --dest="\${ref%% *}" "\${ref#* }" org.kde.kdialog.ProgressDialog.close 2>/dev/null
+kill 0
 `;
 
 /** Notes de version en texte brut. Le provider GitHub les fournit en HTML (corps de la release,
@@ -301,8 +472,26 @@ export function registerUpdater(getWindow: () => BrowserWindow | null): void {
     await updater.downloadUpdate();
   });
 
-  // Silencieux (pas d'assistant NSIS) puis relance de l'app.
-  ipcMain.handle("update:install", () => updater.quitAndInstall(true, true));
+  // Silencieux (pas d'assistant NSIS) puis relance de l'app. La fenêtre disparaît tout de suite :
+  // l'installation .deb/.rpm (pkexec + dpkg/rpm) se fait de façon SYNCHRONE avant la fermeture,
+  // l'app resterait sinon figée à l'écran. Le court délai laisse la fenêtre se masquer et la
+  // fenêtre de progression démarrer avant ce blocage.
+  ipcMain.handle("update:install", (_e, installingText = "Updating…") => {
+    if (macUpdater) macUpdater.installingText = installingText;
+    let quitting = false;
+    app.once("before-quit", () => (quitting = true));
+    getWindow()?.hide();
+    showInstallProgress(installingText);
+    setTimeout(() => {
+      updater.quitAndInstall(true, true);
+      // Installation refusée ou impossible (erreur signalée par electron-updater) : on revient.
+      setTimeout(() => {
+        if (quitting) return;
+        closeInstallProgress();
+        getWindow()?.show();
+      }, 1500);
+    }, 100);
+  });
 
   ipcMain.handle("update:prompt", (_e, strings: UpdatePromptStrings) => showUpdatePrompt(getWindow(), strings));
 }

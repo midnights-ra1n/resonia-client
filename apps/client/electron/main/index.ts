@@ -815,8 +815,21 @@ function registerIpcHandlers() {
       }
     }
 
+    /** Première requête, retentée comme une plage (voir runSegment) : un échec réseau ici
+     *  abandonnait tout le téléchargement sans aucune relance. */
+    async function firstRequest() {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await request(`bytes=${opts.from}-`);
+        } catch (err) {
+          if (internal.signal.aborted || !isRetryable(err) || attempt >= DOWNLOAD_MAX_RETRIES) throw err;
+          await sleepUnlessAborted(500 * 2 ** attempt, internal.signal);
+        }
+      }
+    }
+
     try {
-      const first = await request(`bytes=${opts.from}-`);
+      const first = await firstRequest();
       const contentRange = first.res.headers.get("content-range");
       const announced = first.res.status === 206 && contentRange ? Number(contentRange.split("/")[1]) : NaN;
       if (Number.isFinite(announced) && announced > opts.from) {

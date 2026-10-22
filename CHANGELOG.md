@@ -16,6 +16,13 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.0.0-beta.8
+- New Statistics page: plays, listening time, top songs, artists and albums, genres, decades and formats, synced with your Navidrome server
+- Detailed listening history on each device: listening time per day, month, hour and weekday, listening streaks and skipped songs, for the last 7 days, 30 days or all time
+- The Folders page now shows folders and files as a list, like a file explorer
+- Songs that aren't cached yet load faster when they start playing
+- Fixed the buffer bar sometimes following the playback position on transcoded streams
+
 ## 1.0.0-beta.7
 - Restarting to install an update is faster: Resonia closes right away and a small system window with a progress bar shows until the new version opens (macOS, Windows and Linux)
 

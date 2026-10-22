@@ -25,7 +25,7 @@ export function dayIndex(ts: number): number {
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS;
 }
 
-function rank<T>(items: T[], key: (item: T) => Ranked | null, weight: (item: T) => { plays: number; seconds: number }): Ranked[] {
+function rank<T>(items: T[], key: (item: T) => Omit<Ranked, "plays" | "seconds"> | null, weight: (item: T) => { plays: number; seconds: number }): Ranked[] {
   const byId = new Map<string, Ranked>();
   for (const item of items) {
     const base = key(item);

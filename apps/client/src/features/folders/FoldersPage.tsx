@@ -214,24 +214,32 @@ function FolderView({ id }: { id: string | undefined }) {
         <p className="text-neutral-400">{t(entries.length === 0 ? "folders.empty" : "search.noResults")}</p>
       )}
 
+      {(folders.length > 0 || files.length > 0) && (
+        // Vue liste façon explorateur : dossiers puis fichiers, colonnes alignées sur TrackResultRow.
+        <div className="mb-2 flex items-center gap-3 border-b border-neutral-800 px-3 pb-2 text-xs uppercase tracking-wider text-neutral-500">
+          <span className="w-10 shrink-0" />
+          <span className="flex-1">{t("folders.columnName")}</span>
+          {files.length > 0 && <span className="hidden w-1/4 md:block">{t("playlist.columnAlbum")}</span>}
+          {files.length > 0 && <span className="shrink-0 text-right">{t("playlist.columnDuration")}</span>}
+        </div>
+      )}
+
       {folders.length > 0 && (
-        <section className="mb-8">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
-            {folders.slice(0, limit).map((folder) => (
-              <FolderTile
-                key={folder.id}
-                folder={folder}
-                onOpen={() => trails.set(folder.id, [...crumbs, currentCrumb])}
-              />
-            ))}
-          </div>
+        <div className="flex flex-col gap-1">
+          {folders.slice(0, limit).map((folder) => (
+            <FolderRow
+              key={folder.id}
+              folder={folder}
+              showAlbum={files.length > 0}
+              onOpen={() => trails.set(folder.id, [...crumbs, currentCrumb])}
+            />
+          ))}
           {limit < folders.length && <LoadMore key={limit} onVisible={() => setLimit(limit + RENDER_BATCH)} />}
-        </section>
+        </div>
       )}
 
       {files.length > 0 && (
-        <section>
-          {folders.length > 0 && <h2 className="mb-3 text-[22px] font-bold text-white">{t("folders.files")}</h2>}
+        <section className={folders.length > 0 ? "mt-1" : undefined}>
           <div
             ref={trackSelection.containerRef}
             tabIndex={0}
@@ -259,7 +267,7 @@ function FolderView({ id }: { id: string | undefined }) {
   );
 }
 
-function FolderTile({ folder, onOpen }: { folder: DirectoryChildDTO; onOpen: () => void }) {
+function FolderRow({ folder, showAlbum, onOpen }: { folder: DirectoryChildDTO; showAlbum: boolean; onOpen: () => void }) {
   const server = useServersStore((s) => s.servers.find((x) => x.id === s.activeServerId));
   const coverUrl = server && folder.coverArt ? getClientForServer(server).getCoverArtUrl(folder.coverArt, 80) : undefined;
   const [coverRef, coverInView] = useInViewport<HTMLDivElement>();
@@ -269,16 +277,18 @@ function FolderTile({ folder, onOpen }: { folder: DirectoryChildDTO; onOpen: () 
     <Link
       to={`/folders/${folder.id}`}
       onClick={onOpen}
-      className="flex min-w-0 items-center gap-3 rounded-lg bg-surface-2/60 p-2 transition-colors hover:bg-surface-3 focus-visible:bg-surface-3 focus-visible:outline-none"
+      className="track-row-cv flex min-w-0 items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-neutral-800/80 focus-visible:bg-neutral-800/80 focus-visible:outline-none"
     >
-      <div ref={coverRef} className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded bg-surface-3">
+      <div ref={coverRef} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-800">
         {cachedCoverUrl ? (
           <CoverImage src={cachedCoverUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
         ) : (
-          <Folder size={24} className="text-neutral-400" />
+          <Folder size={22} className="text-neutral-400" />
         )}
       </div>
-      <span className="truncate text-item font-medium text-white">{folder.title}</span>
+      <span className="min-w-0 flex-1 truncate text-item font-medium text-white">{folder.title}</span>
+      {showAlbum && <span className="hidden w-1/4 md:block" />}
+      <CaretRight size={16} className="shrink-0 text-neutral-500" />
     </Link>
   );
 }

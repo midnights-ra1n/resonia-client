@@ -12,6 +12,7 @@ import { requestPersistentStorage } from "./lib/audio/cache/opfsStore";
 import { initAppearance } from "./lib/appearance/fonts";
 import { registerServiceWorker } from "./lib/app/serviceWorker";
 import { initDocumentTitle } from "./lib/app/documentTitle";
+import { initListeningHistory } from "./lib/stats/listeningHistory";
 import { preloadRoutes } from "./app/router";
 
 if (import.meta.env.DEV) {
@@ -27,6 +28,8 @@ void useSettingsStore.getState().hydrate();
 requestPersistentStorage();
 // Titre de l'onglet / de la fenêtre : piste en cours (voir documentTitle.ts).
 initDocumentTitle();
+// Historique d'écoute local (page Statistiques).
+initListeningHistory();
 // Avant le premier rendu : la police choisie s'applique sans bascule visible au lancement.
 initAppearance();
 

@@ -45,7 +45,8 @@ const NATIVE_LOW_AHEAD_SECONDS = 8;
 // jamais NATIVE_SAFE_AHEAD_SECONDS et AUCUN téléchargement de fond ne démarrait de toute la piste
 // (ni original en cache, ni forme d'onde, ni piste suivante prête pour le gapless). Pour ces flux,
 // le fond est autorisé après ce délai de lecture sans interruption, et retiré au moindre "waiting".
-const NATIVE_HEALTHY_PLAYBACK_MS = 3000;
+// Court : pendant ce délai, seul le flux transcodé charge (3 s bridaient visiblement le démarrage).
+const NATIVE_HEALTHY_PLAYBACK_MS = 1000;
 
 /** Usage réseau autorisé aux téléchargements de fond, selon les besoins du flux en cours de lecture :
  *  - "exclusive" : le flux lu manque d'avance (chargement, seek, attente) — rien d'autre ;
@@ -1532,6 +1533,9 @@ export class GaplessEngine {
     if (!this.trackState) return 0;
     if (this.trackState.mode === "buffer") return this.duration;
     if (this.nativeAudio.src.startsWith("blob:")) return this.duration;
+    // Taille inconnue : `buffered` ne suit que la position (~2 s, voir NATIVE_HEALTHY_PLAYBACK_MS),
+    // seul le cache renseigne alors l'avance réelle.
+    if (!Number.isFinite(this.nativeAudio.duration)) return this.currentTime;
     const { ahead } = this.nativeBufferState(this.nativeAudio);
     return this.currentTime + ahead;
   }

@@ -24,6 +24,9 @@ export interface NavidromeSong {
   suffix?: string;
   bitRate?: number;
   playCount?: number;
+  /** Dernière écoute (date ISO), absente si jamais écouté. */
+  playDate?: string;
+  genre?: string;
   starred?: boolean;
   starredAt?: string;
   tags?: NavidromeSongTags;

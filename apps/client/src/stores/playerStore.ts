@@ -447,7 +447,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   function currentBufferedTime(track: Track, duration: number): number {
     const qualityId = getActiveQualityId();
     const maxKbps = getQualityById(qualityId)?.maxBitRate ?? 0;
-    const kbps = track.bitRate ? Math.min(maxKbps, track.bitRate) : maxKbps;
+    // maxKbps = 0 : sans limite (lossless), le débit de l'original fait foi.
+    const kbps = track.bitRate && maxKbps > 0 ? Math.min(maxKbps, track.bitRate) : track.bitRate || maxKbps;
     const progress = cacheStore.getTask(track.id, qualityId)?.progress ?? null;
     return estimateBufferedTime(engine.bufferedEnd, progress, duration, kbps);
   }

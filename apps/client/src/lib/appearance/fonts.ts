@@ -17,6 +17,8 @@ export const FONTS = [
   { id: "geist", label: "Geist", family: '"Geist Variable"', load: () => Promise.resolve() },
   // Roboto : déjà servie localement par public/fonts (voir assets/fonts/fonts.css).
   { id: "roboto", label: "Roboto", family: '"Roboto"', load: () => Promise.resolve() },
+  // Spotify Mix : déclarée dans assets/fonts/fonts.css (police système ou public/fonts/spotify-mix).
+  { id: "spotify-mix", label: "Spotify Mix", family: '"Spotify Mix"', load: () => Promise.resolve() },
   { id: "inter", label: "Inter", family: '"Inter Variable"', load: () => import("@fontsource-variable/inter") },
   {
     id: "fira-sans",

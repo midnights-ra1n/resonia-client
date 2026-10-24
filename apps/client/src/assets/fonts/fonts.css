@@ -5,3 +5,34 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* Spotify Mix : police propriétaire, non redistribuée avec le code. Utilisée si installée sur
+   le système (local()), sinon depuis public/fonts/spotify-mix/ si les fichiers y sont déposés. */
+@font-face {
+  font-family: "Spotify Mix";
+  src: local("Spotify Mix"), local("SpotifyMix-Regular"), url("/fonts/spotify-mix/SpotifyMix-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spotify Mix";
+  src: local("Spotify Mix Medium"), local("SpotifyMix-Medium"), url("/fonts/spotify-mix/SpotifyMix-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spotify Mix";
+  src: local("Spotify Mix Bold"), local("SpotifyMix-Bold"), url("/fonts/spotify-mix/SpotifyMix-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spotify Mix";
+  src: local("Spotify Mix Black"), local("SpotifyMix-Black"), url("/fonts/spotify-mix/SpotifyMix-Black.woff2") format("woff2");
+  font-weight: 800 900;
+  font-style: normal;
+  font-display: swap;
+}

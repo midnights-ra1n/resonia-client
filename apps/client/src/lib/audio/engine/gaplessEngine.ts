@@ -120,6 +120,10 @@ function createSilentLoopUrl(seconds = 10, sampleRate = 4000): string {
  *  principal. Ce réglage n'affecte AUCUNE des échéances sample-accurate de la planification
  *  gapless ci-dessous (toutes exprimées en `context.currentTime`, indépendant de la taille du
  *  tampon de sortie) — seule la marge de sécurité au rendu change. */
+/** Safari, WKWebView et WebKitGTK annoncent tous ce vendor ; Chromium (Electron, WebView2, CEF)
+ *  et Gecko non. Sert uniquement aux contournements propres à l'intégration Now Playing de WebKit. */
+const IS_WEBKIT = typeof navigator !== "undefined" && navigator.vendor.startsWith("Apple");
+
 function createAudioContext(): AudioContext {
   return new AudioContext({ latencyHint: "playback" });
 }
@@ -554,6 +558,14 @@ export class GaplessEngine {
     this.installAutoplayUnlock();
     this.installOutputDeviceChangeHandler();
     this.installContextStateWatcher();
+    this.suspendContextIfIdle();
+  }
+
+  /** Un AudioContext "running" garde un flux de sortie ouvert et actif côté système, même muet :
+   *  KDE/GNOME affichent alors l'app comme émettant du son, et le thread audio consomme du CPU.
+   *  Les chemins de lecture (loadAndPlay, resume) relancent déjà le contexte au besoin. */
+  private suspendContextIfIdle() {
+    if (!this.trackState || this.isTrackStatePaused(this.trackState)) this.context.suspend().catch(() => {});
   }
 
   /** `AudioContext.onstatechange` couvre le cas où WebKit suspend le contexte de son propre
@@ -886,6 +898,7 @@ export class GaplessEngine {
       this.pendingNext = { ...savedPending, scheduled: false };
       this.trySchedulePending();
     }
+    this.suspendContextIfIdle();
 
     oldNativeAudio.removeAttribute("src");
     oldNativeAudio.load();
@@ -935,6 +948,8 @@ export class GaplessEngine {
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
     const handler = () => {
       unlock();
+      // WebKit lie le déverrouillage à un resume() dans le geste : on l'y laisse tourner.
+      if (!IS_WEBKIT) this.suspendContextIfIdle();
       events.forEach((e) => window.removeEventListener(e, handler));
     };
     events.forEach((e) => window.addEventListener(e, handler, { once: true, passive: true }));
@@ -959,13 +974,15 @@ export class GaplessEngine {
     debugLog("engine:setState", { from: this._state, to: state });
     this._state = state;
     this._error = error;
-    // L'ancre reste active tant qu'une piste est chargée, pause comprise : la couper en
-    // pause fait perdre à l'app son statut de cible valide pour les commandes distantes
-    // système (macOS/Windows/Linux), et le bouton play du widget Now Playing cesse alors de
-    // répondre — seul un retour à `idle` (rien de chargé) doit vraiment l'arrêter.
+    // Sous WebKit, l'ancre reste active pause comprise : la couper fait perdre à l'app son
+    // statut de cible des commandes distantes, et le bouton play du widget Now Playing cesse de
+    // répondre. Sous Chromium (Electron, WebView2, CEF), c'est l'inverse : un élément qui joue
+    // l'emporte sur `playbackState = "paused"`, le système affiche « lecture » pendant la pause
+    // et son bouton envoie « pause » au lieu de « play » ; un élément en pause garde la session
+    // contrôlable (état suspendu), et libère le flux audio (icône haut-parleur KDE/GNOME).
     if (state === "playing") this.startPlaybackWatchdog();
-    if (state === "playing" || state === "paused") this.startSessionAnchor();
-    else if (state === "idle") this.stopSessionAnchor();
+    if (state === "playing" || (state === "paused" && IS_WEBKIT)) this.startSessionAnchor();
+    else if (state === "idle" || state === "paused") this.stopSessionAnchor();
     this.stateListeners.forEach((cb) => cb(state, error));
   }
 

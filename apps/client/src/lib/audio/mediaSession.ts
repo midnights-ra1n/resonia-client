@@ -147,7 +147,9 @@ export function resetMediaSession() {
 
   navigator.mediaSession.metadata = null;
   navigator.mediaSession.playbackState = "none";
-  _lastHandlers = null;
+  // `_lastHandlers` est conservé : la prochaine piste (updateMediaSessionMetadata) les
+  // réapplique. Le remettre à null coupait les commandes système jusqu'au redémarrage de
+  // l'app après la première fin de file.
 
   try {
     navigator.mediaSession.setActionHandler("play", null);

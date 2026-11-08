@@ -134,7 +134,9 @@ export class TrackDownloader {
 
   /** Arrête le téléchargement en cours sans perdre les octets déjà écrits (reprise possible). */
   pause() {
-    if (!this.running) return;
+    // Pas de garde sur `running` : une reprise qui attend encore la fermeture du run précédent
+    // (voir `closing`) n'est pas encore "en cours" mais doit être annulée aussi — sinon elle
+    // repartait en fantôme, hors de portée du planificateur (changements de piste rapides).
     this.controller.abort();
     this.controller = new AbortController();
     this.running = false;
@@ -147,17 +149,18 @@ export class TrackDownloader {
 
   async run(): Promise<void> {
     if (this.running || this.complete) return;
-    // Attend la fermeture d'un éventuel writer encore en cours de fermeture (pause() très
-    // récent) avant d'en ouvrir un nouveau — voir le commentaire sur `closing`.
-    if (this.closing) await this.closing;
-    if (this.running || this.complete) return; // état ayant pu changer pendant l'attente
-
-    this.running = true;
-    this.lastError = null;
     // Capturé MAINTENANT : un pause() pendant l'une des attentes ci-dessous remplace
     // `this.controller` par un neuf — relire `this.controller.signal` après coup donnait un signal
     // jamais annulé, et le téléchargement continuait en fantôme malgré la pause.
     const runSignal = this.controller.signal;
+    // Attend la fermeture d'un éventuel writer encore en cours de fermeture (pause() très
+    // récent) avant d'en ouvrir un nouveau — voir le commentaire sur `closing`.
+    if (this.closing) await this.closing;
+    // État ayant pu changer pendant l'attente (autre run() démarré, ou pause()).
+    if (this.running || this.complete || runSignal.aborted) return;
+
+    this.running = true;
+    this.lastError = null;
 
     let resolveClosing: () => void = () => {};
     this.closing = new Promise((resolve) => {

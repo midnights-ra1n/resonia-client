@@ -110,6 +110,29 @@ describe("TrackDownloader — flux transcodé à la volée", () => {
     expect(downloader.isComplete).toBe(false);
     expect(downloader.error).toBeNull();
   });
+
+  it("pause() pendant qu'une reprise attend la fermeture du run précédent : la reprise n'a pas lieu", async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { store } = memoryStore();
+    const downloader = new TrackDownloader("k", "https://x/stream", store);
+
+    void downloader.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    downloader.pause();
+    const resumed = downloader.run(); // attend la fermeture du premier run
+    downloader.pause();
+    await resumed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(downloader.isRunning).toBe(false);
+  });
 });
 
 describe("TrackDownloader — reprise sur bureau (plages parallèles)", () => {

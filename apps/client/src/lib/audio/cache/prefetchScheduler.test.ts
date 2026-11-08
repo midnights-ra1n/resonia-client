@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 interface FakeTask {
   isBudgetExhausted: boolean;
   isRunning: boolean;
+  error: Error | null;
   complete: () => void;
+  /** Simule un téléchargement abandonné après épuisement des relances du téléchargeur. */
+  fail: () => void;
   /** Simule un téléchargement qui s'arrête sans finir (pause externe, erreur réseau). */
   stop: () => void;
   whenIdle: () => Promise<void>;
@@ -27,6 +30,7 @@ function makeFakeTask(trackId: string): FakeTask {
   const task: FakeTask = {
     isBudgetExhausted: false,
     isRunning: true,
+    error: null,
     onProgress(cb) {
       listeners.add(cb);
       return () => listeners.delete(cb);
@@ -41,6 +45,10 @@ function makeFakeTask(trackId: string): FakeTask {
     stop() {
       task.isRunning = false;
       resolveIdle();
+    },
+    fail() {
+      task.error = new Error("network");
+      task.stop();
     },
   };
   return task;
@@ -319,6 +327,36 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
     await flush();
     expect(requestedOrder.filter((r) => r.trackId === "next1")).toHaveLength(2);
     expect(requestedOrder.filter((r) => r.trackId === "active")).toHaveLength(1);
+  });
+});
+
+describe("prefetchScheduler — relance après échec", () => {
+  beforeEach(() => {
+    requestedOrder.length = 0;
+    requestedSegments.length = 0;
+    rangeResumable.clear();
+    completed.clear();
+    tasks.clear();
+    protectedKeysHistory = [];
+    vi.resetModules();
+  });
+
+  it("redemande une piste dont le téléchargement a échoué, après un délai", async () => {
+    vi.useFakeTimers();
+    try {
+      const { prefetchScheduler } = await import("./prefetchScheduler");
+      prefetchScheduler.setQuality("aac-256");
+      prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
+      await vi.advanceTimersByTimeAsync(0);
+      tasks.get("active")?.fail();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requestedOrder.filter((r) => r.trackId === "active")).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(requestedOrder.filter((r) => r.trackId === "active")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

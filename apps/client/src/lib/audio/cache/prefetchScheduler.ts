@@ -16,6 +16,9 @@ const PREFETCH_COUNT = 3;
 const MAX_CONCURRENT = 2;
 // Plages parallèles par fichier (bureau, voir `downloads` dans electron/main/index.ts).
 const MAX_SEGMENTS = 3;
+// Relances d'une piste dont le téléchargement a échoué, espacées (5 s, 10 s, 20 s, 40 s, 80 s).
+const SLOT_MAX_RETRIES = 5;
+const SLOT_RETRY_DELAY_MS = 5000;
 
 // Tant que le flux lu télécharge encore ("shared") : une seule connexion de fond, sans découpage —
 // à plusieurs (jusqu'à 2 pistes × 3 plages), elles prenaient l'essentiel du débit au flux lu.
@@ -213,22 +216,31 @@ class PrefetchScheduler {
       }
 
       this.inFlight.add(slot.trackId);
-      networkDebugLog("prefetch:request", { trackId: slot.trackId, priority: slot.priority });
-      const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority, undefined, this.limits.segments);
-      // Re-vérifie après chaque réveil : une reprise peut attendre la fermeture du run précédent
-      // (voir TrackDownloader.closing) avant de redémarrer.
-      do {
-        await task.whenIdle();
-      } while (task.isRunning && generation === this.generation);
-      if (generation !== this.generation) return;
-      networkDebugLog("prefetch:settled", {
-        trackId: slot.trackId,
-        complete: task.isComplete,
-        error: task.error?.message ?? null,
-      });
-      // Fini, budget atteint ou échec (déjà journalisé par le téléchargeur) : on passe à la
-      // suivante plutôt que de retenter la même en boucle — elle sera redemandée au prochain
-      // changement de piste.
+      for (let retry = 0; ; retry++) {
+        networkDebugLog("prefetch:request", { trackId: slot.trackId, priority: slot.priority, retry });
+        const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority, undefined, this.limits.segments);
+        // Re-vérifie après chaque réveil : une reprise peut attendre la fermeture du run précédent
+        // (voir TrackDownloader.closing) avant de redémarrer.
+        do {
+          await task.whenIdle();
+        } while (task.isRunning && generation === this.generation);
+        if (generation !== this.generation) return;
+        networkDebugLog("prefetch:settled", {
+          trackId: slot.trackId,
+          complete: task.isComplete,
+          error: task.error?.message ?? null,
+        });
+        // Échec (le téléchargeur a déjà épuisé ses relances rapides) : retenté plus tard, sinon la
+        // piste restait partielle jusqu'au prochain changement de piste — barre de chargement
+        // figée, forme d'onde et enchaînement gapless jamais prêts.
+        if (!task.error || task.isComplete || retry >= SLOT_MAX_RETRIES) break;
+        await new Promise((resolve) => setTimeout(resolve, SLOT_RETRY_DELAY_MS * 2 ** retry));
+        if (generation !== this.generation) return;
+        await this.waitUntilResumed();
+        if (generation !== this.generation) return;
+      }
+      // Fini, budget atteint ou échecs répétés : on passe à la suivante — elle sera redemandée au
+      // prochain changement de piste.
       this.inFlight.delete(slot.trackId);
     }
   }

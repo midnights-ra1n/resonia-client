@@ -16,6 +16,14 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.0.0-beta.9
+- Media controls now work from the macOS Now Playing menu and the keyboard media keys (play/pause, next, previous)
+- Media controls no longer stop working after the queue ends
+- When playback is paused or stopped, Resonia no longer shows up as playing sound (speaker icon in the KDE/GNOME taskbar) and uses less CPU
+- New color themes: Spotify and GitHub Dark
+- New font: Spotify Mix (uses the font installed on your system)
+- Fixed downloads not restarting after a download error
+
 ## 1.0.0-beta.8
 - New Statistics page: plays, listening time, top songs, artists and albums, genres, decades and formats, synced with your Navidrome server
 - Detailed listening history on each device: listening time per day, month, hour and weekday, listening streaks and skipped songs, for the last 7 days, 30 days or all time

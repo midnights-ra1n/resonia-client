@@ -11,8 +11,9 @@
  * l'échelle `neutral` de Tailwind avec ces gris chauds (mêmes luminances que l'échelle d'origine,
  * donc mêmes contrastes partout) : zéro coût runtime, tout est résolu en variables CSS.
  *
- * Règle d'usage de l'orange : un seul élément orange PLEIN par écran (le bouton Lecture). Le
- * reste de l'accent passe en texte, contour, barre de progression ou halo 14 % (`accent-soft`).
+ * Règle d'usage de l'orange : un seul élément orange PLEIN par écran (le bouton Lecture des pages ;
+ * celui de la barre de lecture est blanc, comme Spotify). Le reste de l'accent passe en texte,
+ * contour, survol de la barre de progression ou halo 14 % (`accent-soft`).
  * Le carotte signale ce qui joue, jamais la décoration.
  */
 @theme {
@@ -37,9 +38,10 @@
   --color-neutral-950: #0c0b0a; /* bg-base */
 
   --color-white: #f4efe8;
-  --color-black: #090807;
+  /* Fond derrière les panneaux : noir pur, comme Spotify — les panneaux s'en détachent mieux. */
+  --color-black: #000000;
 
-  --color-bg-sunken: #090807;
+  --color-bg-sunken: #000000;
   --color-bg-base: #0c0b0a;
   --color-surface-1: #161412;
   --color-surface-2: #1e1b18;
@@ -64,10 +66,11 @@
   --color-warning: #f2c14e;
   --color-danger: #e5675a;
 
-  /* Formes : 12 pochettes, 18 panneaux, 24 barre de lecture (`rounded-cover/panel/bar`). */
-  --radius-cover: 12px;
-  --radius-panel: 18px;
-  --radius-bar: 24px;
+  /* Formes, proches de Spotify : 6 pochettes, 8 panneaux et barre de lecture
+   * (`rounded-cover/panel/bar`). */
+  --radius-cover: 6px;
+  --radius-panel: 8px;
+  --radius-bar: 8px;
 
   /* Élévation : le « flottant » vient de l'ombre et du rayon, pas des marges. Ombres
    * STATIQUES uniquement (jamais animées) : rasterisées une fois puis composées, aucun coût

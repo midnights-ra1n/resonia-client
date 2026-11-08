@@ -174,7 +174,7 @@ function QueueItem({
         onDragStart={() => onDragStart(localIndex)}
         onDragOver={(e) => onDragOverItem(e, localIndex)}
         onDragEnd={onDragEnd}
-        className={`group mx-2 flex cursor-grab items-center gap-3 rounded-xl px-2 py-2 transition-colors active:cursor-grabbing ${
+        className={`group mx-2 flex cursor-grab items-center gap-3 rounded-md px-2 py-2 transition-colors active:cursor-grabbing ${
           isDragging ? "opacity-40" : "hover:bg-neutral-800/60"
         }`}
       >

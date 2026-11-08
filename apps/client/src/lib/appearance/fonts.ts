@@ -15,6 +15,8 @@ export const FONTS = [
   // Geist : police par défaut, importée statiquement dans main.tsx (bundle principal) pour
   // être disponible dès le premier rendu — rien à charger ici.
   { id: "geist", label: "Geist", family: '"Geist Variable"', load: () => Promise.resolve() },
+  // Fichiers locaux (assets/fonts/spotify-mix), pas de paquet Fontsource.
+  { id: "spotify-mix", label: "Spotify Mix", family: '"Spotify Mix"', load: () => import("../../assets/fonts/spotify-mix.css") },
   // Roboto : déjà servie localement par public/fonts (voir assets/fonts/fonts.css).
   { id: "roboto", label: "Roboto", family: '"Roboto"', load: () => Promise.resolve() },
   { id: "inter", label: "Inter", family: '"Inter Variable"', load: () => import("@fontsource-variable/inter") },

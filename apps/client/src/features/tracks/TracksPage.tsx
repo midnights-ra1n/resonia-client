@@ -96,7 +96,7 @@ export function TracksPage() {
   return (
     <div>
       <div className="flex items-end gap-6 bg-gradient-to-b from-neutral-700 to-neutral-900 px-8 pb-6 pt-16">
-        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded-xl bg-surface-2 shadow-2xl">
+        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded-md bg-surface-2 shadow-2xl">
           <MusicNotes size={80} className="text-neutral-400" />
         </div>
         <div className="min-w-0 flex-1">

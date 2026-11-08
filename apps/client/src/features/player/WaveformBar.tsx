@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { Waveform } from "../../lib/audio/waveform/waveform";
 
 // Largeur d'une colonne et espace entre deux, en pixels CSS : rendu « barres » des vues
@@ -6,21 +6,21 @@ import type { Waveform } from "../../lib/audio/waveform/waveform";
 const BAR_WIDTH = 2;
 const BAR_GAP = 1;
 
-/** Dessine la forme d'onde symétrique, en trois couches superposées d'opacité croissante :
- *  amplitude totale, puis médiums + aigus, puis aigus — même lecture que l'aperçu 3 bandes des
- *  logiciels DJ, dans une seule teinte (celle du thème). */
-function draw(canvas: HTMLCanvasElement, waveform: Waveform, color: string) {
+/** Plage de la barre [début, fin], en % de sa largeur. */
+export type PercentRange = [from: number, to: number];
+
+/** Dessine la forme d'onde symétrique en blanc, en trois couches d'opacité croissante : amplitude
+ *  totale, puis médiums + aigus, puis aigus — même lecture que l'aperçu 3 bandes des logiciels DJ.
+ *  Sert de masque : la teinte vient de la couleur de fond de chaque couche (voir WaveformBar). */
+function draw(canvas: HTMLCanvasElement, waveform: Waveform, width: number, height: number): boolean {
+  if (width === 0 || height === 0) return false;
   const dpr = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-  if (width === 0 || height === 0) return;
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) return false;
   ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = color;
+  ctx.fillStyle = "#fff";
 
   const columns = Math.max(1, Math.floor(width / (BAR_WIDTH + BAR_GAP)));
   const middle = height / 2;
@@ -41,64 +41,83 @@ function draw(canvas: HTMLCanvasElement, waveform: Waveform, color: string) {
       ctx.fillRect(c * (BAR_WIDTH + BAR_GAP), middle - half, BAR_WIDTH, half * 2);
     }
   }
-  ctx.globalAlpha = 1;
+  return true;
 }
 
-function WaveformCanvas({ waveform, colorVar }: { waveform: Waveform; colorVar: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Redessinée uniquement quand la forme d'onde, la taille ou le thème changent — jamais au fil
-  // de la lecture (la progression est un simple découpage, voir WaveformBar).
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const redraw = () => draw(canvas, waveform, getComputedStyle(document.documentElement).getPropertyValue(colorVar).trim() || "#888");
-    redraw();
-    const resize = new ResizeObserver(redraw);
-    resize.observe(canvas);
-    const theme = new MutationObserver(redraw);
-    theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => {
-      resize.disconnect();
-      theme.disconnect();
-    };
-  }, [waveform, colorVar]);
-
-  return <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />;
-}
-
-/** Copie de la forme d'onde visible de 0 à `percent` % : fenêtre qui glisse et contenu immobile,
- *  par deux `transform` opposés — le tick de lecture ne provoque ni redessin ni mise en page,
- *  seulement une recomposition GPU. */
-function ClippedWaveform({ waveform, colorVar, percent }: { waveform: Waveform; colorVar: string; percent: number }) {
-  const offset = 100 - percent;
+/** Fenêtre [from, to] (%) sur un contenu pleine largeur, par trois `transform` imbriqués : bord
+ *  gauche coupé à `from`, bord droit à `to`, contenu ramené à sa place. Déplacer la fenêtre (tick de
+ *  lecture, tampon qui grandit) ne provoque ni mise en page ni redessin, seulement une recomposition. */
+export function RangeWindow({ from, to, children }: { from: number; to: number; children: ReactNode }) {
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{ transform: `translateX(-${offset}%)` }}>
-      <div className="absolute inset-0" style={{ transform: `translateX(${offset}%)` }}>
-        <WaveformCanvas waveform={waveform} colorVar={colorVar} />
+    <div className="absolute inset-0 overflow-hidden" style={{ transform: `translateX(${from}%)` }}>
+      <div className="absolute inset-0 overflow-hidden" style={{ transform: `translateX(${to - 100 - from}%)` }}>
+        <div className="absolute inset-0" style={{ transform: `translateX(${100 - to}%)` }}>
+          {children}
+        </div>
       </div>
     </div>
   );
 }
 
-/** Barre de progression en forme d'onde, en trois teintes comme la barre de YouTube : partie non
- *  chargée (sombre), partie chargée (gris clair), partie jouée (accent). */
+/** Une fenêtre par plage, sur le même contenu. */
+export function Ranges({ ranges, children }: { ranges: readonly PercentRange[]; children: ReactNode }) {
+  return ranges.map(([from, to], i) => (
+    <RangeWindow key={i} from={from} to={to}>
+      {children}
+    </RangeWindow>
+  ));
+}
+
+// Repli transparent : rien ne s'affiche avant le premier dessin (sinon des rectangles pleins).
+const MASK = "var(--waveform, linear-gradient(transparent, transparent))";
+const MASK_STYLE: CSSProperties = {
+  maskImage: MASK,
+  WebkitMaskImage: MASK,
+  maskSize: "100% 100%",
+  WebkitMaskSize: "100% 100%",
+};
+
+/** Barre de progression en forme d'onde, en trois teintes comme la barre de YouTube : piste entière
+ *  (sombre), plages chargées (gris clair), plages écoutées (blanc, accent au survol de la barre, comme Spotify). La forme d'onde n'est dessinée
+ *  qu'une fois (et au redimensionnement) en image de masque partagée par toutes les couches : ni la
+ *  lecture, ni le tampon, ni un changement de thème ne la redessinent. */
 export function WaveformBar({
   waveform,
-  progress,
+  played,
   buffered,
   pulsing,
 }: {
   waveform: Waveform;
-  progress: number;
-  buffered: number;
+  played: readonly PercentRange[];
+  buffered: readonly PercentRange[];
   pulsing: boolean;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const canvas = document.createElement("canvas");
+    const redraw = () => {
+      if (draw(canvas, waveform, root.clientWidth, root.clientHeight)) {
+        root.style.setProperty("--waveform", `url(${canvas.toDataURL()})`);
+      }
+    };
+    redraw();
+    const resize = new ResizeObserver(redraw);
+    resize.observe(root);
+    return () => resize.disconnect();
+  }, [waveform]);
+
   return (
-    <div className={`absolute inset-0 ${pulsing ? "animate-pulse" : ""}`}>
-      <WaveformCanvas waveform={waveform} colorVar="--color-neutral-700" />
-      <ClippedWaveform waveform={waveform} colorVar="--color-neutral-500" percent={buffered} />
-      <ClippedWaveform waveform={waveform} colorVar="--color-accent" percent={progress} />
+    <div ref={rootRef} className={`absolute inset-0 ${pulsing ? "animate-pulse" : ""}`}>
+      <div className="absolute inset-0 bg-neutral-700" style={MASK_STYLE} />
+      <Ranges ranges={buffered}>
+        <div className="absolute inset-0 bg-neutral-500" style={MASK_STYLE} />
+      </Ranges>
+      <Ranges ranges={played}>
+        <div className="absolute inset-0 bg-text-1 transition-colors group-hover:bg-accent" style={MASK_STYLE} />
+      </Ranges>
     </div>
   );
 }

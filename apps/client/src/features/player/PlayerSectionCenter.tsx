@@ -2,7 +2,7 @@ import { Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "../../compo
 import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { WaveformBar } from "./WaveformBar";
+import { Ranges, WaveformBar, type PercentRange } from "./WaveformBar";
 import { useTrackWaveform } from "./useTrackWaveform";
 
 // 0 est une valeur d'écoulement légitime (tout début de piste, y compris juste après un
@@ -55,13 +55,13 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={togglePlay}
-          className="w-9 h-9 rounded-full bg-accent shadow-play flex items-center justify-center hover:scale-105 hover:bg-accent-hover active:bg-accent-pressed transition-[transform,translate,scale,background-color]"
+          className="w-8 h-8 rounded-full bg-text-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-[transform,translate,scale]"
           title={isPlaying ? "Pause" : "Play"}
         >
           {isPlaying ? (
-            <Pause size={18} fill="currentColor" className="text-on-accent" />
+            <Pause size={16} fill="currentColor" className="text-bg-base" />
           ) : (
-              <Play size={18} fill="currentColor" className="text-on-accent ml-0.5" />
+              <Play size={16} fill="currentColor" className="text-bg-base ml-0.5" />
             )}
           </button>
 
@@ -135,9 +135,21 @@ export function PlayerSectionCenter() {
     // scrub) ; le seek réel n'est envoyé qu'au relâchement.
     const isScrubbing = isDragging && hoverProgress !== null;
     const displayTime = isScrubbing ? hoverProgress : currentTime;
-    const progress = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
-  const bufferedTime = usePlayerStore((s) => s.bufferedTime);
-  const bufferedProgress = duration > 0 ? Math.min(100, Math.max(progress, (bufferedTime / duration) * 100)) : 0;
+    const toPercent = (t: number) => (duration > 0 ? Math.min(100, Math.max(0, (t / duration) * 100)) : 0);
+    const progress = toPercent(displayTime);
+
+    // Trois couches : piste entière (fond), plages chargées (tampon du lecteur + cache, disjointes
+    // après un seek) et plages réellement écoutées — un passage sauté par un seek reste visible.
+    // Le segment en cours court de `playedFrom` à la position affichée (aperçu inclus pendant un
+    // glisser) ; seules ses bornes bougent au fil de la lecture.
+    const bufferedRanges = usePlayerStore((s) => s.bufferedRanges);
+    const playedRanges = usePlayerStore((s) => s.playedRanges);
+    const playedFrom = toPercent(usePlayerStore((s) => s.playedFrom));
+    const toPercentRange = ([a, b]: readonly [number, number]): PercentRange => [toPercent(a), toPercent(b)];
+    const buffered = currentTrack ? bufferedRanges.map(toPercentRange) : [];
+    const played: PercentRange[] = currentTrack
+      ? [...playedRanges.map(toPercentRange), [playedFrom, Math.max(playedFrom, progress)]]
+      : [];
 
     const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
       if (!barRef.current || !duration) return;
@@ -198,7 +210,7 @@ export function PlayerSectionCenter() {
           // que la barre de lecture garde exactement la même hauteur.
           <div
             ref={barRef}
-            className="relative -my-[9px] h-6 flex-1 cursor-pointer group"
+            className="relative -my-[10px] h-6 flex-1 cursor-pointer group"
             onClick={handleClickBar}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setHoverProgress(null)}
@@ -206,11 +218,11 @@ export function PlayerSectionCenter() {
             onMouseUp={() => setIsDragging(false)}
           >
             <WaveformBar
-            waveform={waveform}
-            progress={progress}
-            buffered={bufferedProgress}
-            pulsing={isBuffering && Boolean(currentTrack)}
-          />
+              waveform={waveform}
+              played={played}
+              buffered={buffered}
+              pulsing={isBuffering && Boolean(currentTrack)}
+            />
             {!isScrubbing && hoverProgress !== null && (
               <div
                 className="pointer-events-none absolute inset-y-0 left-0 w-full"
@@ -223,46 +235,42 @@ export function PlayerSectionCenter() {
         ) : (
         <div
           ref={barRef}
-          className="relative flex-1 h-1.5 bg-neutral-700 rounded-full cursor-pointer group"
+          className="relative flex-1 h-1 bg-neutral-700 rounded-full cursor-pointer group"
           onClick={handleClickBar}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverProgress(null)}
           onMouseDown={() => setIsDragging(true)}
           onMouseUp={() => setIsDragging(false)}
         >
-          {/* Hover fill — only when hover is behind current progress */}
-          {!isScrubbing && hoverProgress !== null && hoverProgress < currentTime && (
-            <div
-              className="absolute top-0 left-0 h-full bg-neutral-500 rounded-full"
-              style={{
-                width: `${(hoverProgress / (duration || 1)) * 100}%`,
-              }}
-            />
-          )}
-
-          {/* Remplissage et pastille déplacés par `transform` uniquement (jamais width/left) :
-              le tick de lecture (4×/s) ne déclenche alors ni layout ni repaint, seulement une
-              recomposition GPU — la barre reste fluide et quasi gratuite pendant toute l'écoute.
-              Le conteneur de la pastille fait toute la largeur de la barre : un translateX en %
-              de SA largeur équivaut donc à un % de la barre. */}
+          {/* Plages et pastille déplacées par `transform` uniquement (jamais width/left, voir
+              RangeWindow) : le tick de lecture (4×/s) ne déclenche ni layout ni repaint, seulement
+              une recomposition GPU. Le conteneur de la pastille fait toute la largeur de la barre :
+              un translateX en % de SA largeur équivaut donc à un % de la barre. */}
           <div className="absolute inset-0 overflow-hidden rounded-full">
-            {/* Partie déjà chargée (tampon du lecteur ou cache), sous la progression — comme la
-                barre grise claire de YouTube. */}
-            <div
-              className="absolute inset-0 origin-left rounded-full bg-neutral-500"
-              style={{ transform: `scaleX(${bufferedProgress / 100})` }}
-            />
-            <div
-              className={`relative h-full w-full origin-left rounded-full bg-accent ${isBuffering && currentTrack ? "animate-pulse" : ""}`}
-              style={{ transform: `scaleX(${progress / 100})` }}
-            />
+            <Ranges ranges={buffered}>
+              <div className="absolute inset-0 bg-neutral-500" />
+            </Ranges>
+            <div className={`absolute inset-0 ${isBuffering && currentTrack ? "animate-pulse" : ""}`}>
+              <Ranges ranges={played}>
+                <div className={`absolute inset-0 transition-colors group-hover:bg-accent ${isDragging ? "bg-accent" : "bg-text-1"}`} />
+              </Ranges>
+            </div>
           </div>
 
+          {!isScrubbing && hoverProgress !== null && (
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{ transform: `translateX(${(hoverProgress / (duration || 1)) * 100}%)` }}
+            >
+              <div className="h-full w-px bg-white/60" />
+            </div>
+          )}
+
           <div
-            className={`pointer-events-none absolute inset-0`}
+            className="pointer-events-none absolute inset-0"
             style={{ transform: `translateX(${progress}%)` }}
           >
-            <div className="absolute top-1/2 -left-1.5 h-3 w-3 -translate-y-1/2 rounded-full bg-accent opacity-0 shadow-play transition-opacity group-hover:opacity-100" />
+            <div className={`absolute top-1/2 -left-1.5 h-3 w-3 -translate-y-1/2 rounded-full bg-text-1 shadow-e1 transition-opacity group-hover:opacity-100 ${isDragging ? "opacity-100" : "opacity-0"}`} />
           </div>
         </div>
       )}

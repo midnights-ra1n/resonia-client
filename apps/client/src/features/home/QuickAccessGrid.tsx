@@ -36,7 +36,7 @@ export function QuickAccessGrid({ items, loading }: QuickAccessGridProps) {
       <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @4xl:grid-cols-4">
         {loading && items.length === 0
           ? Array.from({ length: SKELETON_COUNT }, (_, i) => (
-              <div key={i} className="h-16 animate-pulse rounded-xl bg-surface-2" />
+              <div key={i} className="h-16 animate-pulse rounded-md bg-surface-2" />
             ))
           : items.map((item) => (
               <QuickAccessTile
@@ -86,7 +86,7 @@ function QuickAccessTile({
 
   return (
     <div
-      className="group relative flex h-16 items-center gap-3 overflow-hidden rounded-xl bg-surface-2 pr-3 shadow-e1 transition-colors hover:bg-surface-3"
+      className="group relative flex h-16 items-center gap-3 overflow-hidden rounded-md bg-surface-2 pr-3 shadow-e1 transition-colors hover:bg-surface-3"
       {...(item.kind === "album" ? { ...albumPrefetchProps(id), onContextMenu: albumMenu.onContextMenu } : {})}
     >
       {/* Lien en calque sur toute la tuile, bouton Play en FRÈRE au-dessus (z-10) : jamais de

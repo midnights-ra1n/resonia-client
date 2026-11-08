@@ -151,3 +151,5 @@ Technologies used in the project:
 <h2>🛡️ License:</h2>
 
 This project is licensed under the GPL-3.0
+
+**Third-party font notice:** the optional *Spotify Mix* UI font (`apps/client/src/assets/fonts/spotify-mix/`) is proprietary to Spotify AB and is **not** covered by the GPL-3.0. It is included only so this free, open-source, non-commercial music player can offer a Spotify-like look. It is not the default font and is only loaded when selected in Settings → Appearance. All rights belong to Spotify; if you are a rights holder and want it removed, please open an issue. Forks and redistributions should check the font's terms or drop that folder.

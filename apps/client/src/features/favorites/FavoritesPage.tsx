@@ -101,7 +101,7 @@ export function FavoritesPage() {
   return (
     <div>
       <div className="flex items-end gap-6 bg-gradient-to-b from-accent-soft to-neutral-900 px-8 pb-6 pt-16">
-        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded-xl bg-surface-2 shadow-2xl">
+        <div className="flex h-56 w-56 shrink-0 items-center justify-center rounded-md bg-surface-2 shadow-2xl">
           <Heart size={80} className="text-accent" fill="currentColor" />
         </div>
 
@@ -187,7 +187,7 @@ export function FavoritesPage() {
                       setActiveRowSongId(song.id);
                       rowMenu.handleContextMenu(e);
                     }}
-                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_40px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
+                    className={`track-row-cv group relative grid cursor-pointer select-none grid-cols-[32px_1fr_1fr_72px_96px_40px] items-center gap-3 rounded-md px-2 py-3 hover:bg-surface-2 ${
                       isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""
                     }`}
                   >

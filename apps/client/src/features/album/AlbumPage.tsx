@@ -335,7 +335,7 @@ export function AlbumPage() {
                   setActiveSongId(song.id);
                   rowMenu.handleContextMenu(e);
                 }}
-                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2 ${
+                className={`track-row-cv group grid cursor-pointer select-none grid-cols-[16px_32px_1fr_72px_96px_64px] items-center gap-3 rounded-md px-2 py-3 hover:bg-surface-2 ${
                   isSelected ? "bg-neutral-800/70" : isCurrent ? "bg-accent-soft" : ""
                 }`}
               >

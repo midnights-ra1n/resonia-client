@@ -19,7 +19,7 @@ export function PageSkeleton() {
       <div className="mt-8 h-14 w-14 rounded-full bg-surface-2" />
       <div className="mt-8 space-y-2">
         {Array.from({ length: ROWS }, (_, i) => (
-          <div key={i} className="h-12 rounded-xl bg-surface-2/60" />
+          <div key={i} className="h-12 rounded-md bg-surface-2/60" />
         ))}
       </div>
     </div>

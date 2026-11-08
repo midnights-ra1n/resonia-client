@@ -1,0 +1,31 @@
+/* Spotify Mix — seulement les graisses utilisées par l'interface (font-normal/medium/semibold→bold/
+ * bold/black), sans italique. Une face par graisse : le stylesheet d'origine déclarait plusieurs
+ * fichiers sur la même graisse (Bold/Extrabold en `bold`, Black/Ultra en 900), la dernière gagnait. */
+@font-face {
+  font-family: "Spotify Mix";
+  src: url("./spotify-mix/SpotifyMix-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spotify Mix";
+  src: url("./spotify-mix/SpotifyMix-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spotify Mix";
+  src: url("./spotify-mix/SpotifyMix-Bold.woff2") format("woff2");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spotify Mix";
+  src: url("./spotify-mix/SpotifyMix-Black.woff2") format("woff2");
+  font-weight: 800 900;
+  font-style: normal;
+  font-display: swap;
+}

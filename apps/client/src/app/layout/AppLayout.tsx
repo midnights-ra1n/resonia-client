@@ -139,13 +139,13 @@ export function AppLayout() {
   };
 
   return (
-    // Cartes flottantes sur fond `bg-sunken`, séparées par 12px : sidebar (2 cartes), contenu,
+    // Cartes flottantes sur fond `bg-sunken`, séparées par 8px : sidebar (2 cartes), contenu,
     // file d'attente (si ouverte). La barre de lecture ne prend AUCUNE place dans la mise en
     // page : elle flotte par-dessus le bas de la colonne de contenu, qui défile dessous (le
     // `pb` de <main> garantit que la dernière ligne reste atteignable au-dessus d'elle).
     // `overflow-hidden` + `isolate` sur le panneau de contenu : le rayon découpe le scroll, et
     // le panneau forme son propre contexte d'empilement (aucun z-index de page ne déborde).
-    <div className="flex h-screen bg-bg-sunken p-3">
+    <div className="flex h-screen bg-bg-sunken p-2">
       {/* Sidebar et file d'attente REPLIÉES (largeur animée) plutôt que démontées à l'ouverture
           des paroles : la colonne de contenu — et le lecteur flottant qui y est ancré —
           s'élargit en douceur au lieu de sauter. Marges plutôt que `gap` : elles s'animent
@@ -154,7 +154,7 @@ export function AppLayout() {
       <div
         inert={showLyrics}
         className={`flex min-h-0 shrink-0 overflow-hidden transition-[width,margin-right,opacity] duration-[320ms] ${
-          showLyrics ? "mr-0 w-0 opacity-0" : "mr-3 w-60 opacity-100"
+          showLyrics ? "mr-0 w-0 opacity-0" : "mr-2 w-60 opacity-100"
         }`}
       >
         <Sidebar />
@@ -251,7 +251,7 @@ export function AppLayout() {
 
         {/* Lecteur flottant : `pointer-events-none` sur le calque pleine largeur pour que les
             clics passent au contenu sur les côtés, réactivés sur la barre elle-même. */}
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex justify-center">
           {/* Largeur proportionnelle à la colonne de contenu (96 %) plutôt que plafonnée à une
               valeur fixe : le lecteur suit la taille de l'écran tout en gardant toujours une marge
               visible sur les côtés, pour l'effet flottant. Plafond large pour les très grands écrans. */}
@@ -263,7 +263,7 @@ export function AppLayout() {
       <div
         inert={!queueOpen}
         className={`flex min-h-0 shrink-0 overflow-hidden transition-[width,margin-left,opacity] duration-[320ms] ${
-          queueOpen ? "ml-3 w-80 opacity-100" : "ml-0 w-0 opacity-0"
+          queueOpen ? "ml-2 w-80 opacity-100" : "ml-0 w-0 opacity-0"
         }`}
       >
         <QueuePanel />

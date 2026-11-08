@@ -32,7 +32,7 @@ export function Sidebar() {
   return (
     // Deux cartes flottantes empilées (marque + navigation, puis playlists) plutôt qu'un seul
     // bloc : la bibliothèque se lit comme un objet à part, à la manière de Spotify.
-    <aside className="flex w-60 shrink-0 flex-col gap-3 min-h-0">
+    <aside className="flex w-60 shrink-0 flex-col gap-2 min-h-0">
       <div className="flex shrink-0 flex-col gap-1 rounded-panel border border-white/5 bg-neutral-900 p-3 shadow-e2">
         {/* Logo complet (icône + nom), aligné à gauche sur les entrées de navigation. SVG
             intégré au bundle (svgr) : aucune requête, net à toute densité d'écran, et aucun

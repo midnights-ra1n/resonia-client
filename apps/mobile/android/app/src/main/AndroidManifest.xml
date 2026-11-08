@@ -1,9 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- allowBackup=false: a restored Keystore-encrypted session can't be decrypted on another device. -->
+    <!-- allowBackup=false: a restored Keystore-encrypted session can't be decrypted on another device.
+         usesCleartextTraffic: Android can't scope cleartext to IP ranges, so the app itself only
+         accepts http:// for local-network hosts (normalizeServerUrl in lib/session.dart). -->
     <application
         android:label="Resonia"
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

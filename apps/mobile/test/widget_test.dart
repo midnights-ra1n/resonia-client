@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:resonia/icons.dart';
 import 'package:resonia/login_page.dart';
 import 'package:resonia/main.dart';
 import 'package:resonia/session.dart';
@@ -26,7 +27,7 @@ void main() {
 
     // Onglets
     expect(find.byType(TextField), findsNothing);
-    await tester.tap(find.byIcon(Icons.search));
+    await tester.tap(find.byIcon(AppIcons.search).last);
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
 

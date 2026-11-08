@@ -12,10 +12,53 @@
   "loginSubmit": "Log in",
   "loginSubmitting": "Logging in...",
   "loginErrorInvalidUrl": "This server address isn't valid.",
+  "loginErrorInsecureHttp": "http:// only works for addresses on your local network. Use https:// instead.",
   "loginErrorUnreachable": "Can't reach the server. Check the address and your connection.",
   "loginErrorNotNavidrome": "This address doesn't look like a Navidrome server.",
   "loginErrorCredentials": "Wrong username or password.",
   "loginErrorGeneric": "An unknown error occurred.",
   "accountMenu": "Account",
-  "accountLogout": "Log out"
+  "accountLogout": "Log out",
+  "homeGreetingMorning": "Good morning, {username}",
+  "homeGreetingAfternoon": "Good afternoon, {username}",
+  "homeGreetingEvening": "Good evening, {username}",
+  "homeResumeListening": "Pick up where you left off",
+  "homeQuickAccess": "Quick access",
+  "homeYourPlaylists": "Your playlists",
+  "homeMostPlayedAlbums": "Most played albums",
+  "homeRecentlyPlayed": "Recently played",
+  "homeNewReleases": "New releases",
+  "homeDiscover": "Discover",
+  "homeNoAlbums": "No albums to show yet",
+  "homeLoadError": "Couldn't load your library.",
+  "retry": "Retry",
+  "trackCount": "{count, plural, =1{1 song} other{{count} songs}}",
+  "@homeGreetingMorning": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeGreetingAfternoon": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeGreetingEvening": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "@trackCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

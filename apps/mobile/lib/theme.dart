@@ -40,6 +40,7 @@ ThemeData buildTheme() {
   final t = base.textTheme.apply(bodyColor: AppColors.text1, displayColor: AppColors.text1);
   return base.copyWith(
     textTheme: t.copyWith(
+      headlineSmall: _weighted(t.headlineSmall?.copyWith(fontSize: 26, fontWeight: FontWeight.w800)),
       headlineMedium: _weighted(t.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
       titleMedium: _weighted(t.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
       bodyMedium: _weighted(t.bodyMedium),

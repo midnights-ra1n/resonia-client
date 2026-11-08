@@ -103,7 +103,49 @@ The app signs in with the Subsonic token scheme, like the web client. It checks 
 the Android Keystore (`flutter_secure_storage`), so you stay logged in across restarts until you log
 out from the account menu (the avatar at the top left).
 
-If you type a server address without `http://` or `https://`, the app uses `https://`.
+### `http://` on the local network
+
+Plain `http://` is only accepted for local-network servers; any other address must use `https://`.
+Local means:
+
+- private IPv4 addresses (`10.x`, `172.16–31.x`, `192.168.x`), loopback, link-local (`169.254.x`);
+- `100.64–127.x`, the range used by Tailscale and other VPNs;
+- IPv6 loopback, link-local and unique-local (`fc00::/7`) addresses;
+- `localhost`, `*.local` (mDNS) and single-label host names such as `nas`.
+
+If you leave out the scheme, the app picks `http://` for a local address (`192.168.1.2:4533`) and
+`https://` for anything else (`music.example.com`).
+
+On iOS, `Info.plist` sets `NSAllowsLocalNetworking`, the App Transport Security exception for local
+hosts only. On Android, cleartext traffic can't be limited to IP ranges, so `AndroidManifest.xml`
+allows it and the app enforces the rule itself (`normalizeServerUrl` in `lib/session.dart`).
+
+## Icons
+
+The app uses Google's **Material Symbols Rounded**, like the web client's default icon pack. The
+font in `assets/fonts/MaterialSymbolsRounded.ttf` only contains the icons listed in `lib/icons.dart`
+(about 2 KB instead of 15 MB). It keeps the `FILL` axis, so an active tab draws the filled version of
+the same glyph (`Icon(icon, fill: 1)`).
+
+To add an icon:
+
+1. Find it on [fonts.google.com/icons](https://fonts.google.com/icons?icon.style=Rounded) and copy its
+   code point.
+2. Add a line to `lib/icons.dart`: `static const myIcon = IconData(0x…, fontFamily: _f);`.
+3. Rebuild the font (this needs `pip install fonttools`):
+   ```sh
+   python3 tool/subset_icons.py
+   ```
+   The script downloads the full font from Google's GitHub repository. You can also pass the path of
+   a local copy of `MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf`.
+
+## App icon
+
+The iOS (`ios/Runner/Assets.xcassets/AppIcon.appiconset`) and Android (`android/app/src/main/res/mipmap-*`)
+icons use the diamond from the desktop app's `apps/client/build/Resonia.icon`. Android uses an
+adaptive icon (dark background, diamond foreground, monochrome variant for themed icons) and keeps a
+legacy PNG for Android 7. The launch screens use the same dark background (`#0C0B0A`), so the app
+doesn't flash white when it starts.
 
 ## Translations
 

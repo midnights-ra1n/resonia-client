@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'api.dart';
 import 'l10n/app_localizations.dart';
 import 'session.dart';
 import 'theme.dart';
@@ -18,7 +19,7 @@ class _LoginPageState extends State<LoginPage> {
   final _url = TextEditingController();
   final _user = TextEditingController();
   final _pass = TextEditingController();
-  LoginError? _error;
+  ApiError? _error;
   bool _loading = false;
 
   @override
@@ -39,21 +40,22 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await widget.onLoggedIn(await login(_url.text, _user.text, _pass.text));
       TextInput.finishAutofillContext(); // propose d'enregistrer dans le trousseau / gestionnaire
-    } on LoginException catch (e) {
+    } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.error);
     } catch (_) {
-      if (mounted) setState(() => _error = LoginError.unknown);
+      if (mounted) setState(() => _error = ApiError.unknown);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String _message(AppLocalizations l, LoginError e) => switch (e) {
-    LoginError.invalidUrl => l.loginErrorInvalidUrl,
-    LoginError.unreachable => l.loginErrorUnreachable,
-    LoginError.notNavidrome => l.loginErrorNotNavidrome,
-    LoginError.badCredentials => l.loginErrorCredentials,
-    LoginError.unknown => l.loginErrorGeneric,
+  String _message(AppLocalizations l, ApiError e) => switch (e) {
+    ApiError.invalidUrl => l.loginErrorInvalidUrl,
+    ApiError.insecureHttp => l.loginErrorInsecureHttp,
+    ApiError.unreachable => l.loginErrorUnreachable,
+    ApiError.notNavidrome => l.loginErrorNotNavidrome,
+    ApiError.badCredentials => l.loginErrorCredentials,
+    ApiError.unknown => l.loginErrorGeneric,
   };
 
   @override

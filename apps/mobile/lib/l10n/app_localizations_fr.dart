@@ -47,6 +47,10 @@ class AppLocalizationsFr extends AppLocalizations {
       'Cette adresse de serveur n\'est pas valide.';
 
   @override
+  String get loginErrorInsecureHttp =>
+      'http:// ne fonctionne qu\'avec les adresses de votre réseau local. Utilisez https://.';
+
+  @override
   String get loginErrorUnreachable =>
       'Impossible de joindre le serveur. Vérifiez l\'adresse et votre connexion.';
 
@@ -66,4 +70,60 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get accountLogout => 'Se déconnecter';
+
+  @override
+  String homeGreetingMorning(String username) {
+    return 'Bonjour, $username';
+  }
+
+  @override
+  String homeGreetingAfternoon(String username) {
+    return 'Bon après-midi, $username';
+  }
+
+  @override
+  String homeGreetingEvening(String username) {
+    return 'Bonsoir, $username';
+  }
+
+  @override
+  String get homeResumeListening => 'Reprendre l\'écoute';
+
+  @override
+  String get homeQuickAccess => 'Accès rapide';
+
+  @override
+  String get homeYourPlaylists => 'Tes playlists';
+
+  @override
+  String get homeMostPlayedAlbums => 'Albums les plus joués';
+
+  @override
+  String get homeRecentlyPlayed => 'Écoutés récemment';
+
+  @override
+  String get homeNewReleases => 'Nouveautés';
+
+  @override
+  String get homeDiscover => 'Découvrir';
+
+  @override
+  String get homeNoAlbums => 'Aucun album à afficher pour le moment';
+
+  @override
+  String get homeLoadError => 'Impossible de charger ta bibliothèque.';
+
+  @override
+  String get retry => 'Réessayer';
+
+  @override
+  String trackCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count titres',
+      one: '$count titre',
+    );
+    return '$_temp0';
+  }
 }

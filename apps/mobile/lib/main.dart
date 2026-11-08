@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'api.dart';
+import 'home_page.dart';
+import 'icons.dart';
 import 'l10n/app_localizations.dart';
 import 'login_page.dart';
 import 'session.dart';
@@ -66,6 +69,13 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _tab = 0;
+  late final _api = SubsonicApi(widget.session);
+
+  @override
+  void dispose() {
+    _api.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +88,7 @@ class _AppShellState extends State<AppShell> {
       body: IndexedStack(
         index: _tab,
         children: [
-          _Page(title: titles[0], leading: avatar),
+          HomePage(api: _api, leading: avatar),
           _Page(title: titles[1], leading: avatar, child: _SearchField(hint: l.searchPlaceholder)),
           _Page(title: titles[2], leading: avatar),
         ],
@@ -101,10 +111,10 @@ class _AppShellState extends State<AppShell> {
           unselectedItemColor: AppColors.text2,
           selectedFontSize: 11,
           unselectedFontSize: 11,
+          // Même glyphe Material Symbols, plein (FILL 1) quand l'onglet est actif.
           items: [
-            BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), activeIcon: const Icon(Icons.home_filled), label: titles[0]),
-            BottomNavigationBarItem(icon: const Icon(Icons.search), activeIcon: const Icon(Icons.saved_search), label: titles[1]),
-            BottomNavigationBarItem(icon: const Icon(Icons.library_music_outlined), activeIcon: const Icon(Icons.library_music), label: titles[2]),
+            for (final (i, icon) in [AppIcons.home, AppIcons.search, AppIcons.libraryMusic].indexed)
+              BottomNavigationBarItem(icon: Icon(icon, fill: 0), activeIcon: Icon(icon, fill: 1), label: titles[i]),
           ],
         ),
       ),
@@ -141,7 +151,7 @@ class _AccountButton extends StatelessWidget {
                   subtitle: Text(Uri.parse(session.url).host, style: const TextStyle(color: AppColors.text2)),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.logout, color: AppColors.text1),
+                  leading: const Icon(AppIcons.logout, color: AppColors.text1),
                   title: Text(l.accountLogout),
                   onTap: () {
                     Navigator.pop(ctx);
@@ -221,7 +231,7 @@ class _SearchField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: AppColors.text3),
-        prefixIcon: const Icon(Icons.search, color: AppColors.text2),
+        prefixIcon: const Icon(AppIcons.search, color: AppColors.text2),
         filled: true,
         fillColor: AppColors.surface2,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),

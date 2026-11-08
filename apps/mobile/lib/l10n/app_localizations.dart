@@ -170,6 +170,12 @@ abstract class AppLocalizations {
   /// **'This server address isn\'t valid.'**
   String get loginErrorInvalidUrl;
 
+  /// No description provided for @loginErrorInsecureHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'http:// only works for addresses on your local network. Use https:// instead.'**
+  String get loginErrorInsecureHttp;
+
   /// No description provided for @loginErrorUnreachable.
   ///
   /// In en, this message translates to:
@@ -205,6 +211,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Log out'**
   String get accountLogout;
+
+  /// No description provided for @homeGreetingMorning.
+  ///
+  /// In en, this message translates to:
+  /// **'Good morning, {username}'**
+  String homeGreetingMorning(String username);
+
+  /// No description provided for @homeGreetingAfternoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Good afternoon, {username}'**
+  String homeGreetingAfternoon(String username);
+
+  /// No description provided for @homeGreetingEvening.
+  ///
+  /// In en, this message translates to:
+  /// **'Good evening, {username}'**
+  String homeGreetingEvening(String username);
+
+  /// No description provided for @homeResumeListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick up where you left off'**
+  String get homeResumeListening;
+
+  /// No description provided for @homeQuickAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick access'**
+  String get homeQuickAccess;
+
+  /// No description provided for @homeYourPlaylists.
+  ///
+  /// In en, this message translates to:
+  /// **'Your playlists'**
+  String get homeYourPlaylists;
+
+  /// No description provided for @homeMostPlayedAlbums.
+  ///
+  /// In en, this message translates to:
+  /// **'Most played albums'**
+  String get homeMostPlayedAlbums;
+
+  /// No description provided for @homeRecentlyPlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Recently played'**
+  String get homeRecentlyPlayed;
+
+  /// No description provided for @homeNewReleases.
+  ///
+  /// In en, this message translates to:
+  /// **'New releases'**
+  String get homeNewReleases;
+
+  /// No description provided for @homeDiscover.
+  ///
+  /// In en, this message translates to:
+  /// **'Discover'**
+  String get homeDiscover;
+
+  /// No description provided for @homeNoAlbums.
+  ///
+  /// In en, this message translates to:
+  /// **'No albums to show yet'**
+  String get homeNoAlbums;
+
+  /// No description provided for @homeLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your library.'**
+  String get homeLoadError;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @trackCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 song} other{{count} songs}}'**
+  String trackCount(int count);
 }
 
 class _AppLocalizationsDelegate

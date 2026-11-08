@@ -14,7 +14,6 @@ dependencies:
     sdk: flutter
   flutter_secure_storage: ^11.2.0
   intl: any
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -31,3 +30,7 @@ flutter:
     - family: Geist
       fonts:
         - asset: assets/fonts/Geist-Variable.ttf
+    # Material Symbols Rounded réduite aux icônes de lib/icons.dart (voir tool/subset_icons.py).
+    - family: MaterialSymbolsRounded
+      fonts:
+        - asset: assets/fonts/MaterialSymbolsRounded.ttf

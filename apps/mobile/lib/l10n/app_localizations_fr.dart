@@ -126,4 +126,71 @@ class AppLocalizationsFr extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get back => 'Retour';
+
+  @override
+  String get close => 'Fermer';
+
+  @override
+  String get play => 'Lecture';
+
+  @override
+  String get pause => 'Pause';
+
+  @override
+  String get next => 'Suivant';
+
+  @override
+  String get previous => 'Précédent';
+
+  @override
+  String get shufflePlay => 'Lecture aléatoire';
+
+  @override
+  String get repeatOff => 'Répétition désactivée';
+
+  @override
+  String get repeatAll => 'Répéter tout';
+
+  @override
+  String get repeatOne => 'Répéter le titre';
+
+  @override
+  String get playbackPosition => 'Position de lecture';
+
+  @override
+  String get albumLabel => 'Album';
+
+  @override
+  String get albumNotFound => 'Album introuvable';
+
+  @override
+  String albumDurationHoursMinutes(int hours, int minutes) {
+    return '$hours h $minutes min';
+  }
+
+  @override
+  String albumDurationMinutes(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get pitchTitle => 'Pitch';
+
+  @override
+  String get pitchRange => 'Plage';
+
+  @override
+  String get pitchReset => 'Réinitialiser (1x)';
+
+  @override
+  String get pitchMasterTempo => 'Master Tempo';
+
+  @override
+  String get pitchMasterTempoHint => 'Garde la hauteur quand la vitesse change';
+
+  @override
+  String get pitchHint => 'Vitesse ± hauteur, comme sur une platine';
 }

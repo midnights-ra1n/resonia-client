@@ -1,5 +1,6 @@
 package com.resonia.resonia
 
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 
-class MainActivity : FlutterActivity()
+// AudioServiceActivity: lets the media notification and lock screen controls reach the Flutter engine.
+class MainActivity : AudioServiceActivity()

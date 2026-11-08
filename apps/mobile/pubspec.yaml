@@ -7,6 +7,7 @@ environment:
   sdk: ^3.13.7
 
 dependencies:
+  audio_session: ^0.2.4
   crypto: ^3.0.8
   flutter:
     sdk: flutter
@@ -14,10 +15,15 @@ dependencies:
     sdk: flutter
   flutter_secure_storage: ^11.2.0
   intl: any
+  just_audio: ^0.10.6
+  just_audio_background: ^0.0.1-beta.17
+  path_provider: ^2.1.6
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  plugin_platform_interface: ^2.1.8
+  just_audio_platform_interface: ^4.6.0
 
 flutter:
   uses-material-design: true
@@ -34,3 +40,11 @@ flutter:
     - family: MaterialSymbolsRounded
       fonts:
         - asset: assets/fonts/MaterialSymbolsRounded.ttf
+
+dependency_overrides:
+  # just_audio 0.10.6 + a small iOS patch (grep "RESONIA PATCH"): upstream ignores setPitch on iOS
+  # and always preserves pitch. The DJ-style pitch fader needs speed and pitch coupled (Varispeed).
+  # To update: copy the new release over third_party/just_audio (minus example/ and test/) and
+  # re-apply the patch in darwin/just_audio/Sources/just_audio.
+  just_audio:
+    path: third_party/just_audio

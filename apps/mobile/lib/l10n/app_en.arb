@@ -33,6 +33,27 @@
   "homeLoadError": "Couldn't load your library.",
   "retry": "Retry",
   "trackCount": "{count, plural, =1{1 song} other{{count} songs}}",
+  "back": "Back",
+  "close": "Close",
+  "play": "Play",
+  "pause": "Pause",
+  "next": "Next",
+  "previous": "Previous",
+  "shufflePlay": "Shuffle play",
+  "repeatOff": "Repeat off",
+  "repeatAll": "Repeat all",
+  "repeatOne": "Repeat one",
+  "playbackPosition": "Playback position",
+  "albumLabel": "Album",
+  "albumNotFound": "Album not found",
+  "albumDurationHoursMinutes": "{hours} hr {minutes} min",
+  "albumDurationMinutes": "{minutes} min",
+  "pitchTitle": "Pitch",
+  "pitchRange": "Range",
+  "pitchReset": "Reset (1x)",
+  "pitchMasterTempo": "Master Tempo",
+  "pitchMasterTempoHint": "Keeps the pitch when the speed changes",
+  "pitchHint": "Speed ± pitch, like a turntable",
   "@homeGreetingMorning": {
     "placeholders": {
       "username": {
@@ -57,6 +78,23 @@
   "@trackCount": {
     "placeholders": {
       "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@albumDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@albumDurationMinutes": {
+    "placeholders": {
+      "minutes": {
         "type": "int"
       }
     }

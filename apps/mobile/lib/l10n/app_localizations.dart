@@ -295,6 +295,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 song} other{{count} songs}}'**
   String trackCount(int count);
+
+  /// No description provided for @back.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get back;
+
+  /// No description provided for @close.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
+
+  /// No description provided for @play.
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get play;
+
+  /// No description provided for @pause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get pause;
+
+  /// No description provided for @next.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get next;
+
+  /// No description provided for @previous.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous'**
+  String get previous;
+
+  /// No description provided for @shufflePlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Shuffle play'**
+  String get shufflePlay;
+
+  /// No description provided for @repeatOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat off'**
+  String get repeatOff;
+
+  /// No description provided for @repeatAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat all'**
+  String get repeatAll;
+
+  /// No description provided for @repeatOne.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat one'**
+  String get repeatOne;
+
+  /// No description provided for @playbackPosition.
+  ///
+  /// In en, this message translates to:
+  /// **'Playback position'**
+  String get playbackPosition;
+
+  /// No description provided for @albumLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Album'**
+  String get albumLabel;
+
+  /// No description provided for @albumNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Album not found'**
+  String get albumNotFound;
+
+  /// No description provided for @albumDurationHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} hr {minutes} min'**
+  String albumDurationHoursMinutes(int hours, int minutes);
+
+  /// No description provided for @albumDurationMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min'**
+  String albumDurationMinutes(int minutes);
+
+  /// No description provided for @pitchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pitch'**
+  String get pitchTitle;
+
+  /// No description provided for @pitchRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Range'**
+  String get pitchRange;
+
+  /// No description provided for @pitchReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset (1x)'**
+  String get pitchReset;
+
+  /// No description provided for @pitchMasterTempo.
+  ///
+  /// In en, this message translates to:
+  /// **'Master Tempo'**
+  String get pitchMasterTempo;
+
+  /// No description provided for @pitchMasterTempoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps the pitch when the speed changes'**
+  String get pitchMasterTempoHint;
+
+  /// No description provided for @pitchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed ± pitch, like a turntable'**
+  String get pitchHint;
 }
 
 class _AppLocalizationsDelegate

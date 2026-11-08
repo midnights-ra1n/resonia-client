@@ -31,7 +31,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _submit() async {
-    if (_loading || _url.text.trim().isEmpty || _user.text.trim().isEmpty || _pass.text.isEmpty) return;
+    if (_loading ||
+        _url.text.trim().isEmpty ||
+        _user.text.trim().isEmpty ||
+        _pass.text.isEmpty) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
@@ -74,9 +79,19 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Center(child: Image.asset('assets/logo_full.png', height: 40, semanticLabel: 'Resonia')),
+                    Center(
+                      child: Image.asset(
+                        'assets/logo_full.png',
+                        height: 40,
+                        semanticLabel: 'Resonia',
+                      ),
+                    ),
                     const SizedBox(height: 40),
-                    Text(l.loginTitle, textAlign: TextAlign.center, style: text.headlineMedium),
+                    Text(
+                      l.loginTitle,
+                      textAlign: TextAlign.center,
+                      style: text.headlineMedium,
+                    ),
                     const SizedBox(height: 28),
                     _Field(
                       label: l.loginServerUrl,
@@ -103,7 +118,12 @@ class _LoginPageState extends State<LoginPage> {
                         // liveRegion : le lecteur d'écran annonce l'erreur dès qu'elle apparaît.
                         child: Semantics(
                           liveRegion: true,
-                          child: Text(_message(l, _error!), style: text.bodyMedium?.copyWith(color: AppColors.danger)),
+                          child: Text(
+                            _message(l, _error!),
+                            style: text.bodyMedium?.copyWith(
+                              color: AppColors.danger,
+                            ),
+                          ),
                         ),
                       ),
                     const SizedBox(height: 8),
@@ -112,7 +132,9 @@ class _LoginPageState extends State<LoginPage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.accent,
                         foregroundColor: AppColors.onAccent,
-                        disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.5),
+                        disabledBackgroundColor: AppColors.accent.withValues(
+                          alpha: 0.5,
+                        ),
                         disabledForegroundColor: AppColors.onAccent,
                         minimumSize: const Size.fromHeight(50),
                         shape: const StadiumBorder(),
@@ -152,7 +174,10 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pill = OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none);
+    final pill = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(999),
+      borderSide: BorderSide.none,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -160,7 +185,10 @@ class _Field extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 6),
-            child: Text(label, style: const TextStyle(color: AppColors.text2, fontSize: 14)),
+            child: Text(
+              label,
+              style: const TextStyle(color: AppColors.text2, fontSize: 14),
+            ),
           ),
           TextField(
             controller: controller,
@@ -170,7 +198,9 @@ class _Field extends StatelessWidget {
             enableSuggestions: false,
             textCapitalization: TextCapitalization.none,
             autofillHints: autofillHints,
-            textInputAction: onSubmitted == null ? TextInputAction.next : TextInputAction.go,
+            textInputAction: onSubmitted == null
+                ? TextInputAction.next
+                : TextInputAction.go,
             onSubmitted: onSubmitted,
             cursorColor: AppColors.accent,
             decoration: InputDecoration(
@@ -178,10 +208,15 @@ class _Field extends StatelessWidget {
               hintStyle: const TextStyle(color: AppColors.text3),
               filled: true,
               fillColor: AppColors.surface3,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 14,
+              ),
               border: pill,
               enabledBorder: pill,
-              focusedBorder: pill.copyWith(borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+              focusedBorder: pill.copyWith(
+                borderSide: const BorderSide(color: AppColors.accent, width: 2),
+              ),
             ),
           ),
         ],

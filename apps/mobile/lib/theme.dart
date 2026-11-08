@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 /// Jetons du thème « resonia-orange » du web (apps/client/src/index.css).
@@ -19,7 +20,9 @@ abstract final class AppColors {
 
 // Geist est variable : fontWeight seul ne pilote pas l'axe wght, il faut aussi fontVariations.
 TextStyle? _weighted(TextStyle? s) => s?.copyWith(
-  fontVariations: [FontVariation.weight((s.fontWeight ?? FontWeight.w400).value.toDouble())],
+  fontVariations: [
+    FontVariation.weight((s.fontWeight ?? FontWeight.w400).value.toDouble()),
+  ],
 );
 
 ThemeData buildTheme() {
@@ -35,16 +38,46 @@ ThemeData buildTheme() {
       error: AppColors.danger,
     ),
     splashFactory: NoSplash.splashFactory,
+    // Même transition sur iOS et Android (glisser depuis le bord pour revenir en arrière).
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     highlightColor: Colors.transparent,
   );
-  final t = base.textTheme.apply(bodyColor: AppColors.text1, displayColor: AppColors.text1);
+  final t = base.textTheme.apply(
+    bodyColor: AppColors.text1,
+    displayColor: AppColors.text1,
+  );
+  final w = t.copyWith(
+    headlineSmall: t.headlineSmall?.copyWith(
+      fontSize: 26,
+      fontWeight: FontWeight.w800,
+    ),
+    headlineMedium: t.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+    titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+    labelSmall: t.labelSmall?.copyWith(fontWeight: FontWeight.w500),
+  );
+  // Tous les styles du thème (boutons, interrupteurs, menus…) pilotent l'axe wght de Geist.
   return base.copyWith(
-    textTheme: t.copyWith(
-      headlineSmall: _weighted(t.headlineSmall?.copyWith(fontSize: 26, fontWeight: FontWeight.w800)),
-      headlineMedium: _weighted(t.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
-      titleMedium: _weighted(t.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-      bodyMedium: _weighted(t.bodyMedium),
-      labelSmall: _weighted(t.labelSmall?.copyWith(fontWeight: FontWeight.w500)),
+    textTheme: TextTheme(
+      displayLarge: _weighted(w.displayLarge),
+      displayMedium: _weighted(w.displayMedium),
+      displaySmall: _weighted(w.displaySmall),
+      headlineLarge: _weighted(w.headlineLarge),
+      headlineMedium: _weighted(w.headlineMedium),
+      headlineSmall: _weighted(w.headlineSmall),
+      titleLarge: _weighted(w.titleLarge),
+      titleMedium: _weighted(w.titleMedium),
+      titleSmall: _weighted(w.titleSmall),
+      bodyLarge: _weighted(w.bodyLarge),
+      bodyMedium: _weighted(w.bodyMedium),
+      bodySmall: _weighted(w.bodySmall),
+      labelLarge: _weighted(w.labelLarge),
+      labelMedium: _weighted(w.labelMedium),
+      labelSmall: _weighted(w.labelSmall),
     ),
   );
 }

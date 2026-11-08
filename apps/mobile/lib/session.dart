@@ -10,19 +10,40 @@ import 'api.dart';
 /// Session Subsonic, comme le web : on garde le couple salt + token (md5(motDePasse + salt)),
 /// jamais le mot de passe en clair.
 class Session {
-  const Session({required this.url, required this.username, required this.salt, required this.token});
+  const Session({
+    required this.url,
+    required this.username,
+    required this.salt,
+    required this.token,
+  });
 
   final String url;
   final String username;
   final String salt;
   final String token;
 
-  Map<String, String> get authParams => {'u': username, 't': token, 's': salt, 'v': '1.16.1', 'c': 'Resonia', 'f': 'json'};
+  Map<String, String> get authParams => {
+    'u': username,
+    't': token,
+    's': salt,
+    'v': '1.16.1',
+    'c': 'Resonia',
+    'f': 'json',
+  };
 
-  Map<String, String> toJson() => {'url': url, 'username': username, 'salt': salt, 'token': token};
+  Map<String, String> toJson() => {
+    'url': url,
+    'username': username,
+    'salt': salt,
+    'token': token,
+  };
 
-  static Session fromJson(Map<String, dynamic> j) =>
-      Session(url: j['url'], username: j['username'], salt: j['salt'], token: j['token']);
+  static Session fromJson(Map<String, dynamic> j) => Session(
+    url: j['url'],
+    username: j['username'],
+    salt: j['salt'],
+    token: j['token'],
+  );
 }
 
 /// Hôte du réseau local : IP privée / lien local / boucle locale / CGNAT (Tailscale…),
@@ -53,21 +74,31 @@ String normalizeServerUrl(String input) {
     s = '${isLocalHost(host) ? 'http' : 'https'}://$s';
   }
   final uri = Uri.tryParse(s);
-  if (uri == null || !uri.hasAuthority || uri.host.isEmpty || !(uri.isScheme('http') || uri.isScheme('https'))) {
+  if (uri == null ||
+      !uri.hasAuthority ||
+      uri.host.isEmpty ||
+      !(uri.isScheme('http') || uri.isScheme('https'))) {
     throw const ApiException(ApiError.invalidUrl);
   }
-  if (uri.isScheme('http') && !isLocalHost(uri.host)) throw const ApiException(ApiError.insecureHttp);
+  if (uri.isScheme('http') && !isLocalHost(uri.host)) {
+    throw const ApiException(ApiError.insecureHttp);
+  }
   return s.replaceFirst(RegExp(r'/+$'), '');
 }
 
 String _salt() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   final r = Random.secure();
   return List.generate(12, (_) => chars[r.nextInt(chars.length)]).join();
 }
 
 /// Vérifie les identifiants par un ping Subsonic et renvoie la session à enregistrer.
-Future<Session> login(String serverUrl, String username, String password) async {
+Future<Session> login(
+  String serverUrl,
+  String username,
+  String password,
+) async {
   final salt = _salt();
   final session = Session(
     url: normalizeServerUrl(serverUrl),
@@ -86,23 +117,29 @@ Future<Session> login(String serverUrl, String username, String password) async 
 
 /// Session persistée dans le Keychain (iOS) / Keystore (Android).
 class SessionStore {
-  SessionStore([FlutterSecureStorage? storage]) : _storage = storage ?? const FlutterSecureStorage();
+  SessionStore([FlutterSecureStorage? storage])
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
   static const _key = 'session';
   // Lisible après le premier déverrouillage : la lecture en arrière-plan écran verrouillé en aura besoin.
-  static const _ios = IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device);
+  static const _ios = IOSOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+  );
 
   Future<Session?> load() async {
     try {
       final raw = await _storage.read(key: _key, iOptions: _ios);
-      return raw == null ? null : Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      return raw == null
+          ? null
+          : Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
       return null; // Entrée illisible (clé perdue après restauration) : on redemande la connexion.
     }
   }
 
-  Future<void> save(Session s) => _storage.write(key: _key, value: jsonEncode(s.toJson()), iOptions: _ios);
+  Future<void> save(Session s) =>
+      _storage.write(key: _key, value: jsonEncode(s.toJson()), iOptions: _ios);
 
   Future<void> clear() => _storage.delete(key: _key, iOptions: _ios);
 }

@@ -120,6 +120,72 @@ On iOS, `Info.plist` sets `NSAllowsLocalNetworking`, the App Transport Security 
 hosts only. On Android, cleartext traffic can't be limited to IP ranges, so `AndroidManifest.xml`
 allows it and the app enforces the rule itself (`normalizeServerUrl` in `lib/session.dart`).
 
+## Player
+
+The audio engine lives in `lib/player/` and is built on
+[`just_audio`](https://pub.dev/packages/just_audio). It follows the same rules as the desktop engine.
+
+- **Gapless playback.** The whole queue is handed to the native player, so the next track starts
+  without a gap. The native player is AVQueuePlayer on iOS and ExoPlayer on Android. Both remove
+  the encoder delay and padding using the file's own metadata, so original files are streamed
+  untouched whenever the platform can play them. The desktop engine decodes tracks itself and also
+  trims up to 0.3 s of pure digital silence at each track's edges. That extra trim isn't on mobile
+  yet.
+- **Background playback.** `just_audio_background` (built on `audio_service`) gives the lock screen,
+  Control Center, the Dynamic Island, Android's media notification and headset buttons. This
+  requires `UIBackgroundModes: audio` in `Info.plist`, plus the `AudioService` service,
+  `MediaButtonReceiver` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` in `AndroidManifest.xml`.
+  `MainActivity` extends `AudioServiceActivity`.
+- **Cache.** Each track is streamed and written to disk by a single download
+  (`LockCachingAudioSource`). The cache is stored in `<app cache>/audio/<server>/`, holds up to 2 GB
+  and evicts the least recently played tracks first. Tracks already in the cache are played from the
+  file.
+  - Original files are kept as they are (`mp3`, `m4a`, `aac`, `flac`, `wav`, `aiff`, `alac`, plus
+    `ogg` and `opus` on Android).
+  - Other formats are transcoded by Navidrome to AAC 256 kbps. Transcoded streams carry no gapless
+    metadata.
+- **Preload.** The current track and the next 3 are downloaded, in the order playback will follow
+  (shuffle and repeat-all included). The current track always has priority, like on desktop:
+  - nothing else downloads until it has 15 seconds buffered;
+  - then one upcoming track downloads alongside it;
+  - once it is fully downloaded, the remaining upcoming tracks download in parallel.
+
+  A track that is still downloading is reused when it appears in a new queue, so a file is never
+  downloaded twice.
+- **Shuffle.** With shuffle on, the Play button starts on a random track. Tapping a track starts
+  with that track.
+- **Navidrome Now Playing and play counts.** These follow the desktop rules. After 1 second of
+  playback, the track shows in Navidrome's Now Playing. The play is counted at half the track, or
+  after 4 minutes at most, and only for tracks of 30 seconds or more. A play that was already
+  counted before a force quit isn't counted again.
+- **Resume after a force quit.** The queue, the shuffle order and the repeat mode are saved whenever
+  they change. The current track and position are saved every second while playing, and on pause,
+  seek, track change or when the app goes to the background. Writes are atomic: a temp file, then a
+  rename. The next launch restores everything paused at the same position. A different server
+  doesn't restore the queue, and logging out forgets it.
+- **Cover art.** Tracks of an album use the album's cover, so changing tracks never downloads it
+  again. Covers are requested in three sizes only (200, 600 and 1000 px), so one download
+  serves several screens. They go through the API's HTTP connection, are kept in
+  `<app cache>/covers/` and are read from disk on later launches. The dominant colour reuses the
+  200 px file.
+- **Battery.** The position display ticks only while music plays and the screen is visible. It
+  stops when the app is in the background or the page is covered.
+- **Pitch.** The pitch control works like a turntable, with a range of ±4, ±8, ±10 or ±16 %.
+  - By default, speed and pitch change together.
+  - With **Master Tempo** on, the tempo changes and the key stays the same.
+
+  The settings are saved in `settings.json`.
+
+### Patched `just_audio`
+
+On iOS, `just_audio` always keeps the pitch when the speed changes. To change both together, the app
+uses a copy of `just_audio` 0.10.6 in `third_party/just_audio`, which is wired in through
+`dependency_overrides` in `pubspec.yaml`. Each change in that copy is marked `RESONIA PATCH`:
+`setPitch` picks AVFoundation's `Varispeed` algorithm (speed and pitch together) or `Spectral`
+(Master Tempo). The algorithm is only switched when it has to be, because switching it on a playing
+track causes an audible drop; at normal speed the current one is kept. To update `just_audio`, copy the new version over that folder and apply the
+`RESONIA PATCH` blocks again.
+
 ## Icons
 
 The app uses Google's **Material Symbols Rounded**, like the web client's default icon pack. The

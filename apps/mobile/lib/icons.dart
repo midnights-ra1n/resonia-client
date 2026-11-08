@@ -12,7 +12,37 @@ abstract final class AppIcons {
   static const home = IconData(0xe9b2, fontFamily: _f);
   static const search = IconData(0xef7a, fontFamily: _f);
   static const libraryMusic = IconData(0xe030, fontFamily: _f);
-  static const logout = IconData(0xe9ba, fontFamily: _f, matchTextDirection: true);
+  static const logout = IconData(
+    0xe9ba,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
   static const musicNote = IconData(0xe405, fontFamily: _f);
-  static const queueMusic = IconData(0xe03d, fontFamily: _f, matchTextDirection: true);
+  static const playArrow = IconData(0xe037, fontFamily: _f);
+  static const pause = IconData(0xe034, fontFamily: _f);
+  static const skipNext = IconData(
+    0xe044,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
+  static const skipPrevious = IconData(
+    0xe045,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
+  static const shuffle = IconData(0xe043, fontFamily: _f);
+  static const repeat = IconData(0xe040, fontFamily: _f);
+  static const repeatOne = IconData(0xe041, fontFamily: _f);
+  static const arrowBack = IconData(
+    0xe5c4,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
+  static const keyboardArrowDown = IconData(0xe313, fontFamily: _f);
+  static const history = IconData(0xe8b3, fontFamily: _f);
+  static const queueMusic = IconData(
+    0xe03d,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
 }

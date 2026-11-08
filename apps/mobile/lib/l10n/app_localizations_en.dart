@@ -124,4 +124,71 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get back => 'Back';
+
+  @override
+  String get close => 'Close';
+
+  @override
+  String get play => 'Play';
+
+  @override
+  String get pause => 'Pause';
+
+  @override
+  String get next => 'Next';
+
+  @override
+  String get previous => 'Previous';
+
+  @override
+  String get shufflePlay => 'Shuffle play';
+
+  @override
+  String get repeatOff => 'Repeat off';
+
+  @override
+  String get repeatAll => 'Repeat all';
+
+  @override
+  String get repeatOne => 'Repeat one';
+
+  @override
+  String get playbackPosition => 'Playback position';
+
+  @override
+  String get albumLabel => 'Album';
+
+  @override
+  String get albumNotFound => 'Album not found';
+
+  @override
+  String albumDurationHoursMinutes(int hours, int minutes) {
+    return '$hours hr $minutes min';
+  }
+
+  @override
+  String albumDurationMinutes(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get pitchTitle => 'Pitch';
+
+  @override
+  String get pitchRange => 'Range';
+
+  @override
+  String get pitchReset => 'Reset (1x)';
+
+  @override
+  String get pitchMasterTempo => 'Master Tempo';
+
+  @override
+  String get pitchMasterTempoHint => 'Keeps the pitch when the speed changes';
+
+  @override
+  String get pitchHint => 'Speed ± pitch, like a turntable';
 }

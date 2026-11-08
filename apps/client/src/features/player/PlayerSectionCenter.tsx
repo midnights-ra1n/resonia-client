@@ -139,17 +139,14 @@ export function PlayerSectionCenter() {
     const progress = toPercent(displayTime);
 
     // Trois couches : piste entière (fond), plages chargées (tampon du lecteur + cache, disjointes
-    // après un seek) et plages réellement écoutées — un passage sauté par un seek reste visible.
-    // Le segment en cours court de `playedFrom` à la position affichée (aperçu inclus pendant un
-    // glisser) ; seules ses bornes bougent au fil de la lecture.
+    // après un seek) et remplissage. Le remplissage va toujours du début à la position affichée
+    // (comme Spotify : un clic le déplace aussitôt), plus les plages déjà écoutées au-delà, qui
+    // restent visibles après un retour en arrière.
     const bufferedRanges = usePlayerStore((s) => s.bufferedRanges);
     const playedRanges = usePlayerStore((s) => s.playedRanges);
-    const playedFrom = toPercent(usePlayerStore((s) => s.playedFrom));
     const toPercentRange = ([a, b]: readonly [number, number]): PercentRange => [toPercent(a), toPercent(b)];
     const buffered = currentTrack ? bufferedRanges.map(toPercentRange) : [];
-    const played: PercentRange[] = currentTrack
-      ? [...playedRanges.map(toPercentRange), [playedFrom, Math.max(playedFrom, progress)]]
-      : [];
+    const played: PercentRange[] = currentTrack ? [[0, progress], ...playedRanges.map(toPercentRange)] : [];
 
     const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
       if (!barRef.current || !duration) return;

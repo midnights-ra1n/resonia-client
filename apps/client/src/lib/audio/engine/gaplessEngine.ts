@@ -1527,17 +1527,21 @@ export class GaplessEngine {
     return startOffsetInTrim + (this.context.currentTime - scheduledStartContextTime) * this._playbackRate;
   }
 
-  /** Position (secondes de piste) jusqu'où la lecture peut avancer sans réseau : fin de la plage
-   *  tampon native contenant la position courante, ou toute la piste en mode buffer (décodée). */
-  get bufferedEnd(): number {
-    if (!this.trackState) return 0;
-    if (this.trackState.mode === "buffer") return this.duration;
-    if (this.nativeAudio.src.startsWith("blob:")) return this.duration;
+  /** Plages (secondes de piste) jouables sans réseau : toutes les plages tampon de l'élément natif
+   *  (plusieurs après un seek), ou toute la piste en mode buffer (décodée) / depuis un blob local. */
+  get bufferedRanges(): Array<[number, number]> {
+    if (!this.trackState) return [];
+    if (this.trackState.mode === "buffer") return [[0, this.duration]];
+    if (this.nativeAudio.src.startsWith("blob:")) return [[0, this.duration]];
     // Taille inconnue : `buffered` ne suit que la position (~2 s, voir NATIVE_HEALTHY_PLAYBACK_MS),
     // seul le cache renseigne alors l'avance réelle.
-    if (!Number.isFinite(this.nativeAudio.duration)) return this.currentTime;
-    const { ahead } = this.nativeBufferState(this.nativeAudio);
-    return this.currentTime + ahead;
+    if (!Number.isFinite(this.nativeAudio.duration)) return [];
+    const ranges = this.nativeAudio.buffered;
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < ranges.length; i++) {
+      out.push([this.nativeTimeBase + ranges.start(i), this.nativeTimeBase + ranges.end(i)]);
+    }
+    return out;
   }
 
   get duration(): number {

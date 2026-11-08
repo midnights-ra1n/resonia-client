@@ -17,7 +17,7 @@ import {
   updateNowPlayingMetadata,
 } from "../lib/audio/nowPlaying";
 import { getQualityById } from "../lib/audio/qualityOptions";
-import { estimateBufferedTime } from "../lib/audio/bufferedTime";
+import { estimateBufferedRanges, mergeRanges, sameRanges, type TimeRange } from "../lib/audio/bufferedTime";
 import { getCachedCoverUrl, loadAndCacheCover } from "../lib/image/coverCache";
 import { prefetchDominantColor } from "../lib/image/dominantColorCache";
 import { prefetchLyrics } from "../lib/lyrics/lyricsService";
@@ -217,8 +217,12 @@ export interface PlayerState {
 
   currentTime: number;
   setCurrentTime: (time: number) => void;
-  /** Position jusqu'où la piste est chargée (secondes) — barre de tampon façon YouTube. */
-  bufferedTime: number;
+  /** Plages de la piste déjà chargées (secondes) — barre de tampon façon YouTube. */
+  bufferedRanges: TimeRange[];
+  /** Plages déjà écoutées de la piste en cours, hors segment courant (voir `playedFrom`). */
+  playedRanges: TimeRange[];
+  /** Début du segment en cours d'écoute : il court jusqu'à `currentTime`, un seek le clôt. */
+  playedFrom: number;
 
   /** Durée RÉELLE côté moteur (`engine.duration`), pas la métadonnée serveur de
    *  `currentTrack.duration` : les deux peuvent diverger (rognage du silence de bord une
@@ -439,18 +443,18 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     })();
   }
 
-  /** Jusqu'où la piste en cours est chargée (voir estimateBufferedTime) — la barre progresse
+  /** Plages chargées de la piste en cours (voir estimateBufferedRanges) — la barre progresse
    *  donc aussi pendant la mise en cache, y compris en pause. Le tampon de l'élément <audio> seul
    *  ne suffit pas : sur un flux transcodé, Chromium n'en rapporte qu'environ 2 s d'avance quel
    *  que soit le débit réel, et la barre collait alors à la position de lecture. Le serveur
    *  transcode au débit de la qualité choisie, sans dépasser celui de l'original. */
-  function currentBufferedTime(track: Track, duration: number): number {
+  function currentBufferedRanges(track: Track, duration: number): TimeRange[] {
     const qualityId = getActiveQualityId();
     const maxKbps = getQualityById(qualityId)?.maxBitRate ?? 0;
     // maxKbps = 0 : sans limite (lossless), le débit de l'original fait foi.
     const kbps = track.bitRate && maxKbps > 0 ? Math.min(maxKbps, track.bitRate) : track.bitRate || maxKbps;
     const progress = cacheStore.getTask(track.id, qualityId)?.progress ?? null;
-    return estimateBufferedTime(engine.bufferedEnd, progress, duration, kbps);
+    return estimateBufferedRanges(engine.bufferedRanges, progress, duration, kbps);
   }
 
   function resetPlaybackFlags() {
@@ -663,7 +667,9 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         currentTime: 0,
         duration: engine.duration,
         // Piste décodée d'avance (gapless) : entièrement en mémoire.
-        bufferedTime: engine.duration,
+        bufferedRanges: [[0, engine.duration]],
+        playedRanges: [],
+        playedFrom: 0,
       });
       updateNowPlayingMetadata(nextTrackData);
       setNowPlayingPlaybackState("playing");
@@ -862,7 +868,10 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
           time = seekSettleTarget;
         }
       }
-      if (!document.hidden) set({ currentTime: time, duration, bufferedTime: currentBufferedTime(track, duration) });
+      if (!document.hidden) {
+        const bufferedRanges = currentBufferedRanges(track, duration);
+        set(sameRanges(bufferedRanges, get().bufferedRanges) ? { currentTime: time, duration } : { currentTime: time, duration, bufferedRanges });
+      }
       setNowPlayingPositionState(duration, time, false, engine.playbackRate);
 
       if (!scrobbledNowPlaying && time > 1) {
@@ -890,11 +899,11 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     if (bufferRefreshTimer !== null) return;
     bufferRefreshTimer = window.setTimeout(() => {
       bufferRefreshTimer = null;
-      const { currentTrack: track, duration, bufferedTime } = get();
+      const { currentTrack: track, duration, bufferedRanges } = get();
       // Fenêtre masquée : rien à afficher ; rattrapé au retour (voir visibilitychange).
       if (!track || document.hidden || duration <= 0) return;
-      const next = currentBufferedTime(track, duration);
-      if (Math.abs(next - bufferedTime) >= 0.05) set({ bufferedTime: next });
+      const next = currentBufferedRanges(track, duration);
+      if (!sameRanges(next, bufferedRanges)) set({ bufferedRanges: next });
     }, BUFFER_REFRESH_MS);
   }
 
@@ -984,7 +993,16 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     // En mode buffer (piste déjà décodée), `engine.duration` est connue immédiatement ; en
     // streaming natif, elle vaut encore 0 tant que les métadonnées n'ont pas chargé —
     // `tickProgress` la recale dès qu'elle devient disponible.
-    set({ currentTrack: track, queue, currentTime: offset, duration: engine.duration, bufferedTime: offset, isPlaying: true });
+    set({
+      currentTrack: track,
+      queue,
+      currentTime: offset,
+      duration: engine.duration,
+      bufferedRanges: [],
+      playedRanges: [],
+      playedFrom: offset,
+      isPlaying: true,
+    });
     updateNowPlayingMetadata(track);
     setNowPlayingPlaybackState("playing");
     setNowPlayingPositionState(engine.duration, offset, true, engine.playbackRate);
@@ -1076,7 +1094,9 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
     currentTime: 0,
     duration: 0,
-    bufferedTime: 0,
+    bufferedRanges: [],
+    playedRanges: [],
+    playedFrom: 0,
     setCurrentTime: (time) => {
       // Le swap gapless est désormais planifié à l'avance (horloge exacte), pas déclenché
       // en réaction à un événement : un seek à l'intérieur de la piste courante n'invalide
@@ -1095,8 +1115,15 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       // n'entende la fin.
       const engineDuration = get().duration;
       const clamped = engineDuration > 0 ? Math.max(0, Math.min(time, engineDuration)) : Math.max(0, time);
+      // Le seek clôt le segment écouté — une seule fois par rafale de clics débouncés (les suivants
+      // ne déplacent que son point de départ). Fenêtre masquée : currentTime n'y est pas tenu à jour.
+      if (pendingSeekTime === null) {
+        const { playedFrom, playedRanges, currentTime } = get();
+        const end = document.hidden ? engine.currentTime : currentTime;
+        set({ playedRanges: mergeRanges([...playedRanges, [playedFrom, end]], 1) });
+      }
       pendingSeekTime = clamped;
-      set({ currentTime: clamped });
+      set({ currentTime: clamped, playedFrom: clamped });
       if (seekDebounceTimer !== null) window.clearTimeout(seekDebounceTimer);
       seekDebounceTimer = window.setTimeout(() => {
         seekDebounceTimer = null;

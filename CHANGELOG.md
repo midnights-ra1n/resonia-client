@@ -16,6 +16,10 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.0.1
+
+- Fixed the progress bar not filling up to the new position after clicking on it: it now jumps right to where you clicked, like Spotify
+
 ## 1.0.0
 
 The first stable release of Resonia, a fast, Spotify-like desktop and web player for Navidrome.

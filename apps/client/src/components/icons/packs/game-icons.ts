@@ -1,0 +1,31 @@
+// Généré par scripts/gen-icon-packs.mjs — ne pas modifier à la main.
+import { GiCancel, GiChart, GiCloudDownload, GiCog, GiCycle, GiDatabase, GiDisc, GiFiles, GiGlobe, GiHearts, GiHourglass, GiHouse, GiInfo, GiLadybug, GiMicrophone, GiMusicalNotes, GiMute, GiPalette, GiPencil, GiPerson, GiPlug, GiPulse, GiRss, GiSpeaker, GiTick, GiTv } from "react-icons/gi";
+
+export default {
+  Bug: GiLadybug,
+  Copy: GiFiles,
+  Cast: GiTv,
+  ChartBar: GiChart,
+  Check: GiTick,
+  ClockCounterClockwise: GiHourglass,
+  Disc: GiDisc,
+  Download: GiCloudDownload,
+  GearSix: GiCog,
+  Globe: GiGlobe,
+  Palette: GiPalette,
+  HardDrive: GiDatabase,
+  Heart: GiHearts,
+  House: GiHouse,
+  Info: GiInfo,
+  Lyrics: GiMicrophone,
+  MusicNotes: GiMusicalNotes,
+  PencilSimple: GiPencil,
+  Plug: GiPlug,
+  Pulse: GiPulse,
+  Radio: GiRss,
+  Repeat: GiCycle,
+  SpeakerHigh: GiSpeaker,
+  SpeakerX: GiMute,
+  User: GiPerson,
+  X: GiCancel,
+};

@@ -1,0 +1,32 @@
+// Généré par scripts/gen-icon-packs.mjs — ne pas modifier à la main.
+import { CiCamera, CiEdit, CiGlobe, CiHardDrive, CiHeadphones, CiHeart, CiHome, CiLink, CiLogout, CiMonitor, CiPalette, CiPause1, CiRedo, CiRepeat, CiSettings, CiShuffle, CiSquarePlus, CiStar, CiTextAlignLeft, CiTimer, CiTrash, CiUndo, CiUser, CiViewList, CiVolumeHigh, CiVolumeMute, CiWifiOff } from "react-icons/ci";
+
+export default {
+  ArrowsClockwise: CiRedo,
+  Cast: CiMonitor,
+  ClockCounterClockwise: CiTimer,
+  GearSix: CiSettings,
+  Globe: CiGlobe,
+  Palette: CiPalette,
+  HardDrive: CiHardDrive,
+  Heart: CiHeart,
+  House: CiHome,
+  ImageSquare: CiCamera,
+  ListBullets: CiViewList,
+  ListPlus: CiSquarePlus,
+  SignOut: CiLogout,
+  Lyrics: CiTextAlignLeft,
+  MusicNotes: CiHeadphones,
+  Pause: CiPause1,
+  PencilSimple: CiEdit,
+  Plug: CiLink,
+  Repeat: CiRepeat,
+  RestartAlt: CiUndo,
+  Shuffle: CiShuffle,
+  SpeakerHigh: CiVolumeHigh,
+  SpeakerX: CiVolumeMute,
+  Star: CiStar,
+  Trash: CiTrash,
+  User: CiUser,
+  WifiSlash: CiWifiOff,
+};

@@ -1,4 +1,5 @@
-import type { ComponentType, SVGProps } from "react";
+import type { ComponentType, CSSProperties, SVGProps } from "react";
+import { create } from "zustand";
 
 // Material Symbols (le set d'icônes de fonts.google.com/icons), servies par le paquet npm
 // `@material-symbols/svg-400` — un fichier SVG local par icône, jamais une police ni un CSS
@@ -68,67 +69,78 @@ export interface IconProps extends SVGProps<SVGSVGElement> {
  *  components/menu/ContextMenu.tsx), rendu dynamiquement via `<Icon ... />`. */
 export type Icon = ComponentType<IconProps>;
 
-/** Chaque SVG Material Symbols n'a pas d'attribut `fill` explicite (donc "black" par défaut
- *  en CSS) : on le fait suivre la couleur de texte ambiante par défaut (`currentColor`), sauf
- *  si l'appelant force une couleur précise via `fill="..."` — exactement le même contrat que
- *  les icônes Phosphor précédemment utilisées ici (`<Play fill="white" .../>` etc.), pour
- *  n'avoir à migrer que l'import, jamais les usages. `size` mappe sur `width`/`height`. */
-function wrap(Svg: ComponentType<SVGProps<SVGSVGElement>>): Icon {
-  return function WrappedIcon({ size, fill, style, ...rest }: IconProps) {
-    return <Svg width={size} height={size} fill={fill ?? "currentColor"} style={style} {...rest} />;
-  };
+type SvgComponent = ComponentType<SVGProps<SVGSVGElement>>;
+
+/** Pack d'icônes actif (voir lib/appearance/icons.ts) : `null` = Material Symbols Rounded, le
+ *  défaut importé ci-dessus. Un pack ne couvre pas forcément toutes nos icônes : celles qui
+ *  lui manquent retombent sur Material. */
+export const useIconPackStore = create<{ pack: Partial<Record<string, SvgComponent>> | null }>(() => ({ pack: null }));
+
+/** `size` est multiplié par `--icon-scale` (réglage Apparence → Taille des icônes). `fill`
+ *  donne la couleur (même contrat qu'avant : `fill="white"`, `fill="currentColor"`) ; il passe
+ *  par `color` et jamais par l'attribut `fill`, qui remplirait les icônes à traits (Lucide,
+ *  Feather...). Les SVG Material n'ont pas de `fill` propre : on leur met `currentColor`. */
+function icon(name: string, Fallback: SvgComponent): Icon {
+  function PackIcon({ size, fill, style, ...rest }: IconProps) {
+    const Override = useIconPackStore((s) => s.pack?.[name]);
+    const dim = size === undefined ? undefined : `calc(${typeof size === "number" ? `${size}px` : size} * var(--icon-scale, 1))`;
+    const st: CSSProperties = { width: dim, height: dim, color: fill === "currentColor" ? undefined : fill, ...style };
+    return Override ? <Override style={st} {...rest} /> : <Fallback fill="currentColor" style={st} {...rest} />;
+  }
+  PackIcon.displayName = name;
+  return PackIcon;
 }
 
-export const ArrowLeft = wrap(IconArrowBack);
-export const ArrowRight = wrap(IconArrowForward);
-export const ArrowsClockwise = wrap(IconAutorenew);
-export const Bug = wrap(IconBugReport);
-export const Code = wrap(IconCode);
-export const Copy = wrap(IconContentCopy);
-export const CaretDown = wrap(IconKeyboardArrowDown);
-export const CaretLeft = wrap(IconChevronLeft);
-export const CaretRight = wrap(IconChevronRight);
-export const Cast = wrap(IconCast);
-export const ChartBar = wrap(IconBarChart);
-export const Check = wrap(IconCheck);
-export const CircleNotch = wrap(IconProgressActivity);
-export const ClockCounterClockwise = wrap(IconHistory);
-export const Disc = wrap(IconAlbum);
-export const DotsSixVertical = wrap(IconDragIndicator);
-export const Download = wrap(IconDownload);
-export const Folder = wrap(IconFolder);
-export const GearSix = wrap(IconSettings);
-export const Globe = wrap(IconLanguage);
-export const Palette = wrap(IconPalette);
-export const HardDrive = wrap(IconHardDrive);
-export const Heart = wrap(IconFavoriteFill);
-export const House = wrap(IconHome);
-export const ImageSquare = wrap(IconImage);
-export const Info = wrap(IconInfo);
-export const ListBullets = wrap(IconList);
-export const ListPlus = wrap(IconPlaylistAdd);
-export const SignOut = wrap(IconLogout);
-export const Lyrics = wrap(IconLyrics);
-export const MusicNotes = wrap(IconMusicNote);
-export const Pause = wrap(IconPauseFill);
-export const PencilSimple = wrap(IconEdit);
-export const Play = wrap(IconPlayArrowFill);
-export const Playlist = wrap(IconPlaylistPlay);
-export const Plug = wrap(IconCast);
-export const Plus = wrap(IconAdd);
-export const Pulse = wrap(IconGraphicEq);
-export const Radio = wrap(IconNetworkCheck);
-export const Repeat = wrap(IconRepeat);
-export const RestartAlt = wrap(IconRestartAlt);
-export const Shuffle = wrap(IconShuffle);
-export const SkipBack = wrap(IconSkipPreviousFill);
-export const SkipForward = wrap(IconSkipNextFill);
-export const SortAscending = wrap(IconArrowUpward);
-export const SortDescending = wrap(IconArrowDownward);
-export const SpeakerHigh = wrap(IconVolumeUp);
-export const SpeakerX = wrap(IconVolumeOff);
-export const Star = wrap(IconStar);
-export const Trash = wrap(IconDelete);
-export const User = wrap(IconPerson);
-export const WifiSlash = wrap(IconWifiOff);
-export const X = wrap(IconClose);
+export const ArrowLeft = icon("ArrowLeft", IconArrowBack);
+export const ArrowRight = icon("ArrowRight", IconArrowForward);
+export const ArrowsClockwise = icon("ArrowsClockwise", IconAutorenew);
+export const Bug = icon("Bug", IconBugReport);
+export const Code = icon("Code", IconCode);
+export const Copy = icon("Copy", IconContentCopy);
+export const CaretDown = icon("CaretDown", IconKeyboardArrowDown);
+export const CaretLeft = icon("CaretLeft", IconChevronLeft);
+export const CaretRight = icon("CaretRight", IconChevronRight);
+export const Cast = icon("Cast", IconCast);
+export const ChartBar = icon("ChartBar", IconBarChart);
+export const Check = icon("Check", IconCheck);
+export const CircleNotch = icon("CircleNotch", IconProgressActivity);
+export const ClockCounterClockwise = icon("ClockCounterClockwise", IconHistory);
+export const Disc = icon("Disc", IconAlbum);
+export const DotsSixVertical = icon("DotsSixVertical", IconDragIndicator);
+export const Download = icon("Download", IconDownload);
+export const Folder = icon("Folder", IconFolder);
+export const GearSix = icon("GearSix", IconSettings);
+export const Globe = icon("Globe", IconLanguage);
+export const Palette = icon("Palette", IconPalette);
+export const HardDrive = icon("HardDrive", IconHardDrive);
+export const Heart = icon("Heart", IconFavoriteFill);
+export const House = icon("House", IconHome);
+export const ImageSquare = icon("ImageSquare", IconImage);
+export const Info = icon("Info", IconInfo);
+export const ListBullets = icon("ListBullets", IconList);
+export const ListPlus = icon("ListPlus", IconPlaylistAdd);
+export const SignOut = icon("SignOut", IconLogout);
+export const Lyrics = icon("Lyrics", IconLyrics);
+export const MusicNotes = icon("MusicNotes", IconMusicNote);
+export const Pause = icon("Pause", IconPauseFill);
+export const PencilSimple = icon("PencilSimple", IconEdit);
+export const Play = icon("Play", IconPlayArrowFill);
+export const Playlist = icon("Playlist", IconPlaylistPlay);
+export const Plug = icon("Plug", IconCast);
+export const Plus = icon("Plus", IconAdd);
+export const Pulse = icon("Pulse", IconGraphicEq);
+export const Radio = icon("Radio", IconNetworkCheck);
+export const Repeat = icon("Repeat", IconRepeat);
+export const RestartAlt = icon("RestartAlt", IconRestartAlt);
+export const Shuffle = icon("Shuffle", IconShuffle);
+export const SkipBack = icon("SkipBack", IconSkipPreviousFill);
+export const SkipForward = icon("SkipForward", IconSkipNextFill);
+export const SortAscending = icon("SortAscending", IconArrowUpward);
+export const SortDescending = icon("SortDescending", IconArrowDownward);
+export const SpeakerHigh = icon("SpeakerHigh", IconVolumeUp);
+export const SpeakerX = icon("SpeakerX", IconVolumeOff);
+export const Star = icon("Star", IconStar);
+export const Trash = icon("Trash", IconDelete);
+export const User = icon("User", IconPerson);
+export const WifiSlash = icon("WifiSlash", IconWifiOff);
+export const X = icon("X", IconClose);

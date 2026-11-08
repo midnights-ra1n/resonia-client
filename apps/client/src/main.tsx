@@ -10,6 +10,7 @@ import { useServersStore } from "./stores/serversStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { requestPersistentStorage } from "./lib/audio/cache/opfsStore";
 import { initAppearance } from "./lib/appearance/fonts";
+import { initIcons } from "./lib/appearance/icons";
 import { registerServiceWorker } from "./lib/app/serviceWorker";
 import { initDocumentTitle } from "./lib/app/documentTitle";
 import { initListeningHistory } from "./lib/stats/listeningHistory";
@@ -33,12 +34,16 @@ initListeningHistory();
 // Avant le premier rendu : la police choisie s'applique sans bascule visible au lancement.
 initAppearance();
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </StrictMode>,
+// Rendu une fois le pack d'icônes choisi chargé (chunk local, immédiat pour le défaut) : pas de
+// bascule visible des icônes au lancement.
+void initIcons().then(() =>
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </StrictMode>,
+  ),
 );
 
 // Après le premier affichage, quand le navigateur est inactif : rien de tout ça ne retarde le lancement.

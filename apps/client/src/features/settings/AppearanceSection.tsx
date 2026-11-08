@@ -7,7 +7,18 @@ import {
   type LyricsFontId,
 } from "../../lib/appearance/fonts";
 import { DEFAULT_THEME, THEMES, useThemeStore } from "../../lib/appearance/themes";
+import {
+  DEFAULT_ICON_PACK,
+  DEFAULT_ICON_SCALE,
+  ICON_PACK_OPTIONS,
+  ICON_SCALE_MAX,
+  ICON_SCALE_MIN,
+  useIconSettingsStore,
+} from "../../lib/appearance/icons";
+import { GearSix, Heart, House, MusicNotes, Pause, Play, Playlist, Shuffle, SkipForward, Trash } from "../../components/icons";
 import { useSettingsStore } from "../../stores/settingsStore";
+
+const PREVIEW_ICONS = [House, Play, Pause, SkipForward, Shuffle, Heart, Playlist, MusicNotes, Trash, GearSix];
 
 const SELECT_CLASS =
   "select-pill mt-2 w-full rounded-full bg-neutral-900 border border-neutral-700 pl-4 pr-10 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]";
@@ -23,6 +34,10 @@ export function AppearanceSection() {
   const setLyricsFont = useAppearanceStore((s) => s.setLyricsFont);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const iconPack = useIconSettingsStore((s) => s.iconPack);
+  const iconScale = useIconSettingsStore((s) => s.iconScale);
+  const setIconPack = useIconSettingsStore((s) => s.setIconPack);
+  const setIconScale = useIconSettingsStore((s) => s.setIconScale);
   const showWaveform = useSettingsStore((s) => s.showWaveform);
   const setShowWaveform = useSettingsStore((s) => s.setShowWaveform);
 
@@ -74,6 +89,53 @@ export function AppearanceSection() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="icon-pack-select" className="block text-sm font-medium text-white">
+            {t("settings.iconPack")}
+          </label>
+          <p className="mt-1 text-xs text-neutral-500">{t("settings.iconPackDescription")}</p>
+          <select
+            id="icon-pack-select"
+            value={iconPack}
+            onChange={(e) => setIconPack(e.target.value)}
+            className={SELECT_CLASS}
+          >
+            {ICON_PACK_OPTIONS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+                {p.id === DEFAULT_ICON_PACK ? ` ${t("settings.themeDefaultSuffix")}` : ""}
+                {p.coverage < 40 ? ` ${t("settings.iconPackPartial")}` : ""}
+              </option>
+            ))}
+          </select>
+
+          <label htmlFor="icon-size-range" className="mt-5 flex items-baseline justify-between text-sm font-medium text-white">
+            {t("settings.iconSize")}
+            <span className="text-xs tabular-nums text-neutral-400">{Math.round(iconScale * 100)} %</span>
+          </label>
+          <p className="mt-1 text-xs text-neutral-500">{t("settings.iconSizeDescription")}</p>
+          <input
+            id="icon-size-range"
+            type="range"
+            min={ICON_SCALE_MIN}
+            max={ICON_SCALE_MAX}
+            step={0.05}
+            value={iconScale}
+            onChange={(e) => setIconScale(Number(e.target.value))}
+            onDoubleClick={() => setIconScale(DEFAULT_ICON_SCALE)}
+            className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-neutral-700 accent-accent"
+          />
+
+          <div
+            className="mt-3 flex flex-wrap items-center gap-4 rounded-panel border border-white/5 bg-surface-2 p-4 text-white shadow-e1"
+            aria-hidden="true"
+          >
+            {PREVIEW_ICONS.map((I, i) => (
+              <I key={i} size={22} />
+            ))}
           </div>
         </div>
 

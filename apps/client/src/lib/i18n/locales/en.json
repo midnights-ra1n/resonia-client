@@ -371,7 +371,12 @@
     "spotifyTestOk": "Connected ({{artist}})",
     "spotifyTestError": "Failed: {{error}}",
     "waveform": "Waveform in the playback bar",
-    "waveformDescription": "Shows the track's waveform (lows, mids, highs) like DJ mixing software. Computed once per track, then kept in cache."
+    "waveformDescription": "Shows the track's waveform (lows, mids, highs) like DJ mixing software. Computed once per track, then kept in cache.",
+    "iconPack": "Icon pack",
+    "iconPackDescription": "Icons missing from a pack are replaced with Material Symbols ones.",
+    "iconPackPartial": "(partial)",
+    "iconSize": "Icon size",
+    "iconSizeDescription": "Applies to every icon in the app."
   },
   "update": {
     "promptTitle": "Software Update",

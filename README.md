@@ -82,6 +82,10 @@ Don't want to use Docker? Each release also ships a `Resonia-web-X.Y.Z.zip` arch
 > The web version needs a secure context (**HTTPS** or `localhost`) for its service worker and audio cache. If you host it on another machine, put it behind a reverse proxy with TLS.
 > Offline downloads and configurable transcoding are only available in the desktop app. The web version always streams AAC at 256 kbps.
 
+<h3>📱 Mobile app (iOS / Android)</h3>
+
+The Flutter mobile app lives in [`apps/mobile`](apps/mobile). It's in early development and isn't on the App Store or Google Play: build it yourself as an IPA or APK, or sideload it on an iPhone with Xcode. See the [mobile README](apps/mobile/README.md) for the steps.
+
 <h3>🔧 Build from source</h3>
 
 **Prerequisites:** [Node.js 22+](https://nodejs.org/) and [pnpm](https://pnpm.io/) (you can enable it with `corepack enable`).
@@ -111,6 +115,16 @@ Platform-specific targets are also available: `electron:dist:mac`, `electron:dis
 > [!NOTE]
 > - On macOS, packaging needs **Xcode 26+**, which compiles the Liquid Glass app icon with `actool`.
 > - On Linux, building the `.rpm` target needs the `rpm` package (`sudo apt install rpm` on Debian/Ubuntu).
+
+**Mobile app**
+
+Needs [Flutter](https://docs.flutter.dev/get-started/install) 3.47+ (plus Xcode for iOS, Android Studio for Android):
+
+```bash
+cd apps/mobile
+flutter pub get
+flutter run
+```
 
 **Docker image**
 
@@ -143,6 +157,7 @@ Technologies used in the project:
 *   Origin Private File System
 *   Service Worker (app ressources caching)
 *   Electron & electron-builder
+*   Flutter (mobile app)
 *   Navidrome
 *   LRCLIB
 *   Last.fm

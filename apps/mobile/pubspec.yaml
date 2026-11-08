@@ -1,0 +1,33 @@
+name: resonia
+description: "Resonia mobile client for Navidrome"
+publish_to: 'none'
+version: 1.0.1+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  crypto: ^3.0.8
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  intl: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/logo_full.png
+  fonts:
+    # Sous-ensemble latin de Geist (police par défaut du web), converti depuis le woff2 Fontsource :
+    # Flutter ne lit que TTF/OTF. Embarquée pour un rendu identique iOS / Android.
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/Geist-Variable.ttf

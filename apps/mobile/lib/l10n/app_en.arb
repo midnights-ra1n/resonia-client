@@ -1,0 +1,21 @@
+{
+  "@@locale": "en",
+  "navHome": "Home",
+  "navSearch": "Search",
+  "navLibrary": "Library",
+  "searchPlaceholder": "Search tracks, artists, albums...",
+  "loginTitle": "Log in",
+  "loginServerUrl": "Server address",
+  "loginServerUrlPlaceholder": "https://music.example.com",
+  "loginUsername": "Username",
+  "loginPassword": "Password",
+  "loginSubmit": "Log in",
+  "loginSubmitting": "Logging in...",
+  "loginErrorInvalidUrl": "This server address isn't valid.",
+  "loginErrorUnreachable": "Can't reach the server. Check the address and your connection.",
+  "loginErrorNotNavidrome": "This address doesn't look like a Navidrome server.",
+  "loginErrorCredentials": "Wrong username or password.",
+  "loginErrorGeneric": "An unknown error occurred.",
+  "accountMenu": "Account",
+  "accountLogout": "Log out"
+}

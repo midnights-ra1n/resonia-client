@@ -1,0 +1,21 @@
+{
+  "@@locale": "fr",
+  "navHome": "Accueil",
+  "navSearch": "Rechercher",
+  "navLibrary": "Bibliothèque",
+  "searchPlaceholder": "Rechercher titres, artistes, albums...",
+  "loginTitle": "Connexion",
+  "loginServerUrl": "Adresse du serveur",
+  "loginServerUrlPlaceholder": "https://musique.exemple.com",
+  "loginUsername": "Nom d'utilisateur",
+  "loginPassword": "Mot de passe",
+  "loginSubmit": "Se connecter",
+  "loginSubmitting": "Connexion...",
+  "loginErrorInvalidUrl": "Cette adresse de serveur n'est pas valide.",
+  "loginErrorUnreachable": "Impossible de joindre le serveur. Vérifiez l'adresse et votre connexion.",
+  "loginErrorNotNavidrome": "Cette adresse ne semble pas être un serveur Navidrome.",
+  "loginErrorCredentials": "Nom d'utilisateur ou mot de passe incorrect.",
+  "loginErrorGeneric": "Une erreur inconnue est survenue.",
+  "accountMenu": "Compte",
+  "accountLogout": "Se déconnecter"
+}

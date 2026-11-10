@@ -29,6 +29,8 @@ export function PlayerSectionCenter() {
   const toggleRepeat = usePlayerStore((s) => s.toggleRepeat);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
   const prevTrack = usePlayerStore((s) => s.prevTrack);
+  // Lecture demandée mais pas encore audible (chargement réseau, attente de données).
+  const isLoading = usePlayerStore((s) => s.isPlaying && (s.engineState === "loading" || s.engineState === "buffering"));
 
   return (
     <div className="flex flex-col items-center gap-2 w-full max-w-2xl">
@@ -55,9 +57,11 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={togglePlay}
-          className="w-8 h-8 rounded-full bg-text-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-[transform,translate,scale]"
+          className="relative w-8 h-8 rounded-full bg-text-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-[transform,translate,scale]"
           title={isPlaying ? "Pause" : "Play"}
+          aria-busy={isLoading}
         >
+          {isLoading && <span className="loading-ring" aria-hidden />}
           {isPlaying ? (
             <Pause size={16} fill="currentColor" className="text-bg-base" />
           ) : (

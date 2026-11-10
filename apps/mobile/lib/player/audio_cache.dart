@@ -8,10 +8,10 @@ import '../session.dart';
 
 /// Cache disque des fichiers audio, par serveur : `<caches>/audio/<serveur>/<id>.<ext>`.
 ///
-/// Le téléchargement lui-même est fait par `LockCachingAudioSource` (just_audio) : la piste en
-/// cours est lue ET enregistrée en un seul téléchargement, et le préchargement des suivantes
-/// passe par la même source (voir PlayerController._prefetch) — jamais deux téléchargements du
-/// même fichier. Ici : emplacements, choix du format, éviction.
+/// Le téléchargement lui-même est fait par `downloader.dart` : la piste en cours est lue ET
+/// enregistrée en un seul téléchargement, et le préchargement des suivantes passe par le même
+/// objet — jamais deux téléchargements du même fichier. Ici : emplacements, choix du format,
+/// éviction.
 class AudioCache {
   AudioCache(this.dir);
 
@@ -97,6 +97,23 @@ class AudioCache {
       _delete(f);
       _delete(File('${f.path}.mime'));
     }
+  }
+
+  /// Vide le cache sauf [keep] (fichiers en cours / à venir, avec leur `.part`). Renvoie les
+  /// octets libérés.
+  Future<int> clear({Set<String> keep = const {}}) async {
+    var freed = 0;
+    await for (final e in dir.list()) {
+      if (e is! File) continue;
+      if (keep.contains(e.path.replaceFirst(RegExp(r'\.(part|mime)$'), ''))) {
+        continue;
+      }
+      try {
+        freed += e.lengthSync();
+      } catch (_) {}
+      _delete(e);
+    }
+    return freed;
   }
 
   static void _delete(File f) {

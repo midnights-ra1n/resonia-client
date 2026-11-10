@@ -421,6 +421,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Speed ± pitch, like a turntable'**
   String get pitchHint;
+
+  /// Time between tapping a track or Play and the first sound (stopwatch in the full-screen player).
+  ///
+  /// In en, this message translates to:
+  /// **'Start time'**
+  String get startTime;
+
+  /// No description provided for @clearCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear music cache'**
+  String get clearCache;
+
+  /// No description provided for @clearCacheBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded songs will be removed from this device. The track playing and the next ones are kept.'**
+  String get clearCacheBody;
+
+  /// No description provided for @cacheCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache cleared ({size})'**
+  String cacheCleared(String size);
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
 }
 
 class _AppLocalizationsDelegate

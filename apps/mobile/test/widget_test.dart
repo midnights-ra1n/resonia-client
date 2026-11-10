@@ -3,15 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:resonia/icons.dart';
 import 'package:resonia/login_page.dart';
 import 'package:resonia/main.dart';
 import 'package:resonia/player/player.dart';
 import 'package:resonia/session.dart';
 
-import 'fake_audio_platform.dart';
+import 'fake_engine.dart';
 
 const session = Session(
   url: 'https://m.example.com',
@@ -23,7 +21,7 @@ const session = Session(
 late Directory tmp;
 
 PlayerController player() => PlayerController(
-  player: AudioPlayer(),
+  engine: FakeEngine(),
   stateDir: () async => Directory('${tmp.path}/state'),
   cacheDir: () async => Directory('${tmp.path}/cache'),
 );
@@ -31,7 +29,6 @@ PlayerController player() => PlayerController(
 void main() {
   setUp(() async {
     FlutterSecureStorage.setMockInitialValues({});
-    JustAudioPlatform.instance = FakeJustAudio();
     tmp = await Directory.systemTemp.createTemp('resonia');
   });
   tearDown(() => tmp.delete(recursive: true));

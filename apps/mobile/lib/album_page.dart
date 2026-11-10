@@ -4,6 +4,7 @@ import 'api.dart';
 import 'app_scope.dart';
 import 'icons.dart';
 import 'l10n/app_localizations.dart';
+import 'player/player_ui.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -286,9 +287,11 @@ class _Tracks extends StatelessWidget {
         final isCurrent = s.id == currentId;
         final color = isCurrent ? AppColors.accent : AppColors.text1;
         return InkWell(
-          onTap: () => isCurrent
-              ? player.togglePlay()
-              : player.playQueue(songs, start: i),
+          // Comme Spotify : toucher un titre ouvre le lecteur plein écran.
+          onTap: () {
+            if (!isCurrent) player.playQueue(songs, start: i);
+            openNowPlaying(context);
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(

@@ -16,14 +16,19 @@ const PREFETCH_COUNT = 3;
 const MAX_CONCURRENT = 2;
 // Plages parallèles par fichier (bureau, voir `downloads` dans electron/main/index.ts).
 const MAX_SEGMENTS = 3;
-// Relances d'une piste dont le téléchargement a échoué, espacées (5 s, 10 s, 20 s, 40 s, 80 s).
-const SLOT_MAX_RETRIES = 5;
+// Relances d'une piste dont le téléchargement a échoué : sans limite tant qu'elle reste dans la
+// fenêtre (réseau faible = on insiste), espacées de 5 s, 10 s, 20 s… 60 s au plus. Le retour du
+// réseau (événement "online") les relance aussitôt.
 const SLOT_RETRY_DELAY_MS = 5000;
+const SLOT_RETRY_MAX_DELAY_MS = 60000;
 
-// Tant que le flux lu télécharge encore ("shared") : une seule connexion de fond, sans découpage —
-// à plusieurs (jusqu'à 2 pistes × 3 plages), elles prenaient l'essentiel du débit au flux lu.
+// Tant que le flux lu télécharge encore ("shared") : une connexion sans découpage pour la piste
+// active ET une pour la suivante. En strict séquentiel, la suivante n'était prête qu'une fois la
+// piste en cours entièrement en cache — trop tard sur un serveur lent, et l'enchaînement gapless
+// retombait sur un rechargement réseau (coupure). Le flux lu reste prioritaire : la pression
+// réseau du moteur suspend tout dès que son avance baisse.
 const LIMITS: Record<Exclude<NetworkMode, "exclusive">, { concurrent: number; segments: number }> = {
-  shared: { concurrent: 1, segments: 1 },
+  shared: { concurrent: 2, segments: 1 },
   free: { concurrent: MAX_CONCURRENT, segments: MAX_SEGMENTS },
 };
 
@@ -67,6 +72,28 @@ class PrefetchScheduler {
     // foregroundActivity). Sur bureau, HTTP/2 est désactivé et les téléchargements passent par
     // leurs propres connexions (session dédiée du process principal) — rien à céder aux pages.
     if (!isElectron()) onForegroundBusyChange(() => this.applyMode());
+    if (typeof window !== "undefined") window.addEventListener("online", () => this.wakeRetries());
+  }
+
+  // Attentes de relance en cours (voir runWorker) : réveillées dès que le réseau revient.
+  private retryWaiters = new Set<() => void>();
+
+  private wakeRetries() {
+    const waiters = [...this.retryWaiters];
+    this.retryWaiters.clear();
+    waiters.forEach((wake) => wake());
+  }
+
+  private waitRetry(retry: number): Promise<void> {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.retryWaiters.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, Math.min(SLOT_RETRY_DELAY_MS * 2 ** retry, SLOT_RETRY_MAX_DELAY_MS));
+      this.retryWaiters.add(done);
+    });
   }
 
   /** Usage réseau permis par le flux en cours de lecture (voir NetworkMode côté moteur). */
@@ -85,6 +112,15 @@ class PrefetchScheduler {
     }
     const limits = LIMITS[mode];
     const changed = limits !== this.limits;
+    // Plus de plages parallèles permises : les fichiers à plages en cours sont relancés (reprise à
+    // l'octet près, une requête) pour en profiter — sinon ils finissaient sur une seule connexion.
+    if (changed && limits.segments > this.limits.segments) {
+      for (const trackId of [...this.inFlight]) {
+        if (!cacheStore.isRangeResumable(trackId, this.qualityId)) continue;
+        cacheStore.pause(trackId, this.qualityId);
+        this.inFlight.delete(trackId);
+      }
+    }
     this.limits = limits;
     if (this.paused) this.resume();
     else if (changed) this.restart();
@@ -233,20 +269,20 @@ class PrefetchScheduler {
         // Échec (le téléchargeur a déjà épuisé ses relances rapides) : retenté plus tard, sinon la
         // piste restait partielle jusqu'au prochain changement de piste — barre de chargement
         // figée, forme d'onde et enchaînement gapless jamais prêts.
-        if (!task.error || task.isComplete || retry >= SLOT_MAX_RETRIES) break;
-        await new Promise((resolve) => setTimeout(resolve, SLOT_RETRY_DELAY_MS * 2 ** retry));
+        if (!task.error || task.isComplete) break;
+        await this.waitRetry(retry);
         if (generation !== this.generation) return;
         await this.waitUntilResumed();
         if (generation !== this.generation) return;
       }
-      // Fini, budget atteint ou échecs répétés : on passe à la suivante — elle sera redemandée au
-      // prochain changement de piste.
+      // Fini ou budget atteint : on passe à la suivante.
       this.inFlight.delete(slot.trackId);
     }
   }
 
   stop() {
     this.generation++;
+    this.wakeRetries();
     this.resumeWaiters.forEach((wake) => wake());
     this.resumeWaiters.clear();
     this.slots.forEach((s) => cacheStore.pause(s.trackId, this.qualityId));

@@ -98,5 +98,16 @@
         "type": "int"
       }
     }
+  },
+  "startTime": "Start time",
+  "clearCache": "Clear music cache",
+  "clearCacheBody": "Downloaded songs will be removed from this device. The track playing and the next ones are kept.",
+  "cacheCleared": "Cache cleared ({size})",
+  "@cacheCleared": {
+    "placeholders": { "size": { "type": "String" } }
+  },
+  "cancel": "Cancel",
+  "@startTime": {
+    "description": "Time between tapping a track or Play and the first sound (stopwatch in the full-screen player)."
   }
 }

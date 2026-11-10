@@ -2,19 +2,10 @@ import { detectEdgeSilence, logicalDuration, type SilenceTrim } from "./silenceT
 import type { EngineError, EngineState, EngineStateListener } from "./types";
 import { debugLog, networkDebugLog } from "../debug/audioDebugLogger";
 
-// Fondu très court, uniquement pour masquer le point de jonction entre deux sources
-// (natif→buffer, ou deux AudioBufferSourceNode consécutifs) — pas pour compenser un
-// écart de timing : la planification elle-même est sample-accurate. Porté de 8ms à 25ms
-// car WebKit (donc l'app de bureau compilée) peut démarrer un AudioBufferSourceNode
-// planifié avec un jitter de quelques millisecondes par rapport à l'instant demandé —
-// avec une fenêtre trop courte, ce jitter suffisait à laisser passer un blanc audible
-// entre la fin du fondu sortant et le début réel du fondu entrant.
+// Micro-fondu des bascules qui ne sont PAS un enchaînement de pistes : natif→buffer en cours de
+// piste (voir attachDecodedActive) et coupure/reprise de la sortie locale. L'enchaînement gapless,
+// lui, n'en a aucun (voir trySchedulePending).
 const SWAP_FADE_SECONDS = 0.025;
-
-// Avance de démarrage "silencieuse" de la piste suivante avant le début réel du fondu (voir
-// `trySchedulePending`) : absorbe le jitter de démarrage d'un AudioBufferSourceNode planifié
-// à l'avance sous WebKit, indépendamment de la largeur du fondu lui-même.
-const PRESTART_MARGIN_SECONDS = 0.15;
 
 // Fondu d'entrée appliqué à tout démarrage "à froid" d'un AudioBufferSourceNode
 // (loadAndPlay depuis le cache décodé, resume(), seek()) — distinct de SWAP_FADE_SECONDS
@@ -59,8 +50,10 @@ export type NetworkMode = "exclusive" | "shared" | "free";
 // sept à dix y tombe à ~40-50 Ko/s au lieu de 0,4 à 1,4 Mo/s, quel que soit le protocole — et une
 // connexion lente le reste. En HTTP/1.1, interrompre une réponse en cours ferme sa socket : la
 // relance part sur une autre connexion, rapide dans l'immense majorité des cas.
+// Réseau faible : on relance SANS limite tant que la piste reste demandée, avec un délai qui double
+// à chaque essai (3,5 s, 7 s, puis 14 s au plus) — jamais une lecture abandonnée en silence.
 const NATIVE_STALL_RECONNECT_MS = 3500;
-const MAX_NATIVE_RECONNECTS = 3;
+const NATIVE_STALL_RECONNECT_MAX_MS = 14000;
 
 // WAV silencieux (0,05s, 8-bit/4kHz mono) utilisé uniquement pour ancrer la session Now
 // Playing du système — voir le commentaire sur `sessionAnchor` ci-dessous. Le base64 doit
@@ -307,7 +300,7 @@ export class GaplessEngine {
   private stateListeners = new Set<EngineStateListener>();
 
   // Voir `scheduleRescheduleOfPending` (déclenché par setPlaybackRate) : ces deux champs
-  // suivent la dernière replanification réelle du crossfade en attente, pour la limiter à
+  // suivent la dernière replanification réelle du raccord en attente, pour la limiter à
   // une fréquence raisonnable même quand setPlaybackRate est appelé à chaque frame.
   private lastPendingRescheduleAtMs = 0;
   private pendingRescheduleTimer: ReturnType<typeof window.setTimeout> | null = null;
@@ -559,6 +552,14 @@ export class GaplessEngine {
     this.installOutputDeviceChangeHandler();
     this.installContextStateWatcher();
     this.suspendContextIfIdle();
+    // Connexion revenue : relance immédiate d'un flux bloqué, sans attendre la fin du délai.
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", () => {
+        if (this.nativeStallTimer === null || this.trackState?.mode !== "native" || this.trackState.isPaused) return;
+        this.clearNativeStallWatchdog();
+        this.reconnectNative();
+      });
+    }
   }
 
   /** Un AudioContext "running" garde un flux de sortie ouvert et actif côté système, même muet :
@@ -695,6 +696,7 @@ export class GaplessEngine {
     audio.addEventListener("playing", () => {
       if (this.trackState?.mode === "native") {
         this.clearNativeStallWatchdog();
+        this.nativeReconnects = 0;
         this.nativePlayingSince = performance.now();
         // Les événements "progress" peuvent s'arrêter (flux en pause côté réseau) : réévaluation
         // garantie une fois le délai de lecture saine écoulé.
@@ -723,6 +725,14 @@ export class GaplessEngine {
       const mediaError = audio.error;
       const offset = this.trackState.pauseOffset;
 
+      // Coupure réseau en cours de flux : on retente (voir armNativeStallWatchdog) au lieu
+      // d'arrêter la lecture — la piste reprend d'elle-même quand la connexion revient.
+      if (mediaError?.code === MediaError.MEDIA_ERR_NETWORK && !audio.src.startsWith("blob:")) {
+        networkDebugLog("native:network-error", { position: Math.round(this.currentTime) });
+        this.setState("buffering");
+        this.armNativeStallWatchdog();
+        return;
+      }
       if (mediaError?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
         // Priorité au streaming progressif via MediaSource : évite d'attendre le
         // téléchargement complet du fichier avant de démarrer. Limité au démarrage à froid
@@ -1132,7 +1142,7 @@ export class GaplessEngine {
     }
   }
 
-  /** Replanifie le crossfade en attente (voir `trySchedulePending`), mais au maximum une fois
+  /** Replanifie le raccord en attente (voir `trySchedulePending`), mais au maximum une fois
    *  toutes les `PENDING_RESCHEDULE_MIN_INTERVAL_MS` — `setPlaybackRate` peut être appelé à
    *  chaque frame pendant un glissé du pitch fader (voir le throttle RAF côté playerStore), et
    *  chaque replanification crée/détruit un `AudioBufferSourceNode` + un `GainNode` : sans cette
@@ -1142,7 +1152,7 @@ export class GaplessEngine {
    *  filet de sécurité si ça arrive quand même). Le premier appel après une pause d'activité
    *  s'exécute quasi immédiatement (délai nul) ; seuls les appels rapprochés sont coalescés — la
    *  dernière vitesse demandée est toujours celle appliquée au final, jamais une valeur
-   *  intermédiaire perdue. N'affecte QUE la replanification du crossfade : la vitesse audible de
+   *  intermédiaire perdue. N'affecte QUE la replanification du raccord : la vitesse audible de
    *  la source déjà en cours change, elle, instantanément à chaque appel de setPlaybackRate
    *  (voir plus haut), jamais retardée. */
   private scheduleRescheduleOfPending() {
@@ -1265,14 +1275,15 @@ export class GaplessEngine {
   private armNativeStallWatchdog() {
     this.clearNativeStallWatchdog();
     if (typeof window === "undefined" || this.trackState?.mode !== "native") return;
-    if (this.nativeReconnects >= MAX_NATIVE_RECONNECTS || this.nativeAudio.src.startsWith("blob:")) return;
+    if (this.nativeAudio.src.startsWith("blob:")) return;
     const token = this.loadToken;
+    const delay = Math.min(NATIVE_STALL_RECONNECT_MS * 2 ** this.nativeReconnects, NATIVE_STALL_RECONNECT_MAX_MS);
     this.nativeStallTimer = window.setTimeout(() => {
       this.nativeStallTimer = null;
       if (token !== this.loadToken || this.trackState?.mode !== "native" || this.trackState.isPaused) return;
       if (this._state !== "loading" && this._state !== "buffering") return;
       this.reconnectNative();
-    }, NATIVE_STALL_RECONNECT_MS);
+    }, delay);
   }
 
   /** Nouvelle requête pour le flux natif à la position courante. Flux transcodé (sans plages) :
@@ -1617,7 +1628,7 @@ export class GaplessEngine {
     // fin — jusqu'à `trim.end`, borné à MAX_TRIM_SECONDS — que le mode buffer, lui, rogne). Sans
     // ce clamp, `remaining` ci-dessous tombe à 0 et la source démarrée à l'instant est stoppée
     // quasi immédiatement : son `onended` se déclenche aussitôt, déclenchant soit la coupure
-    // prématurée de la piste (si aucune suivante prête), soit un crossfade vers la piste
+    // prématurée de la piste (si aucune suivante prête), soit un passage à la piste
     // suivante bien avant la fin réelle perçue — coupure/saccade au moment précis de la bascule
     // streaming natif → buffer, plus probable quand le pitch fader raccourcit la fenêtre réelle
     // de lecture restante (rate > 1).
@@ -1679,46 +1690,32 @@ export class GaplessEngine {
     }
   }
 
-  /** Programme, sur l'horloge de l'AudioContext, le démarrage de la piste en attente
-   *  autour de l'instant de fin calculé de la piste courante — aucune attente d'événement,
-   *  aucune heuristique : purement déterministe. No-op si la piste courante n'est pas
-   *  actuellement en train de jouer en mode buffer, ou si déjà planifié.
+  /** Programme, sur l'horloge de l'AudioContext, le démarrage de la piste en attente à
+   *  l'instant exact de fin de la piste courante — aucune attente d'événement, aucune
+   *  heuristique : purement déterministe.
    *
-   *  La jonction elle-même est un micro-crossfade symétrique (piste courante 1→0, piste
-   *  suivante 0→1, sur la même fenêtre de SWAP_FADE_SECONDS se terminant à `endTime`) plutôt
-   *  qu'un raccord bord-à-bord (arrêt sec + fade-in seul après coup). Sur Chromium, deux
-   *  AudioBufferSourceNode démarré/arrêté au même instant s'enchaînent déjà sample-accurate ;
-   *  WebKit (moteur de l'app desktop compilée) est en pratique moins fiable sur cet
-   *  alignement pile-à-pile et peut laisser un micro-gap au raccord — un vrai chevauchement
-   *  audible absorbe cette imprécision des deux côtés. `endTime` reste la référence logique
-   *  (position 0 de la piste suivante, bascule d'état) : le début physique de `nextSource`
-   *  est avancé de PRESTART_MARGIN_SECONDS + SWAP_FADE_SECONDS pour ce chevauchement — voir
-   *  le commentaire sur `prerollMargin` ci-dessous pour la raison des deux marges distinctes. */
+   *  Raccord bord à bord, au sample près, SANS fondu ni chevauchement : c'est ce que fait un vrai
+   *  lecteur gapless (Spotify, Apple Music). L'ancien micro-crossfade de 25 ms superposait la fin
+   *  d'une piste au début de la suivante et adoucissait l'attaque de celle-ci : audible à chaque
+   *  transition, et pire sur un album continu (live, mix) où il décalait la musique de 25 ms.
+   *  `AudioBufferSourceNode.start(t)` est sample-accurate dans Chromium (Electron, WebView2, CEF)
+   *  comme dans WebKit : rien à masquer au raccord. No-op si la piste courante n'est pas en train
+   *  de jouer en mode buffer, ou si déjà planifié. */
   private trySchedulePending() {
     if (!this.pendingNext || this.pendingNext.scheduled) return;
     if (!this.trackState || this.trackState.mode !== "buffer" || this.trackState.isPaused || !this.trackState.playback) return;
 
     const { buffer: curBuffer, trim: curTrim, playback } = this.trackState;
-    const { source: curSource, gain: curGain, scheduledStartContextTime, startOffsetInTrim } = playback;
+    const { source: curSource, scheduledStartContextTime, startOffsetInTrim } = playback;
     const rate = this._playbackRate;
     // Temps-piste et temps-contexte divergent dès que `rate !== 1` : la source consomme
     // `logicalDuration - startOffsetInTrim` secondes de piste en
     // `(logicalDuration - startOffsetInTrim) / rate` secondes réelles.
     const naturalEndTime = scheduledStartContextTime + (logicalDuration(curBuffer, curTrim) - startOffsetInTrim) / rate;
-    const now = this.context.currentTime;
-    // Si la piste suivante n'a fini d'être préparée (téléchargement + décodage) qu'après le
-    // début de fenêtre de fondu prévue — voire après la fin naturelle de la piste courante —
-    // planifier le fondu sur `naturalEndTime` produirait des instants d'automation déjà dans
-    // le passé : Web Audio les applique alors instantanément, ce qui écrase le fondu en une
-    // coupure sèche (le défaut même qu'on cherche à masquer). On ancre donc systématiquement
-    // la fenêtre de fondu à un instant futur garanti, quitte à raccourcir le chevauchement.
-    const endTime = Math.max(naturalEndTime, now + SWAP_FADE_SECONDS);
-    const crossfadeStart = Math.max(endTime - SWAP_FADE_SECONDS, now);
-
+    // Piste suivante prête trop tard (fin déjà passée) : un instant dans le passé démarrerait
+    // « tout de suite », on s'y ancre explicitement pour garder currentTime juste.
+    const endTime = Math.max(naturalEndTime, this.context.currentTime);
     if (endTime > naturalEndTime) {
-      // `startBufferAt` avait déjà programmé l'arrêt de `curSource` à `naturalEndTime` (fin
-      // exacte, silence de bord compris) : repousser cet arrêt pour qu'il ne coupe pas le son
-      // avant la fin du fondu qu'on vient d'étendre au-delà de cette échéance d'origine.
       try {
         curSource.stop(endTime);
       } catch {
@@ -1726,47 +1723,17 @@ export class GaplessEngine {
       }
     }
 
-    // Cette fonction est ré-invoquée à chaque changement de vitesse (voir setPlaybackRate) —
-    // potentiellement des dizaines de fois par seconde pendant qu'on glisse le pitch fader.
-    // Sans `cancelScheduledValues`, chaque appel EMPILE un nouveau couple
-    // setValueAtTime/linearRampToValueAtTime sur la timeline d'automation de `curGain` par
-    // dessus les précédents (jamais nettoyés) : plusieurs rampes concurrentes vers des
-    // échéances légèrement différentes se chevauchent alors, et le volume réellement rendu
-    // devient imprévisible (creux audibles qui reviennent aussitôt) au lieu de suivre la
-    // dernière rampe demandée. On repart donc toujours d'une timeline propre, ancrée sur la
-    // valeur réelle au temps présent.
-    curGain.gain.cancelScheduledValues(now);
-    curGain.gain.setValueAtTime(curGain.gain.value, now);
-    curGain.gain.setValueAtTime(curGain.gain.value, crossfadeStart);
-    curGain.gain.linearRampToValueAtTime(0, endTime);
-
     const { buffer: nextBuffer, trim: nextTrim } = this.pendingNext;
-
-    // `start(t)` planifié loin à l'avance reste sample-accurate sur l'horloge audio, mais
-    // WebKit peut avoir plusieurs ms de jitter entre l'instant demandé et l'instant où le
-    // noeud commence RÉELLEMENT à émettre des échantillons (constaté empiriquement : élargir
-    // SWAP_FADE_SECONDS réduisait le trou sans l'éliminer). On démarre donc `nextSource` en
-    // avance sur `crossfadeStart` — à gain nul, donc inaudible — pour que ce démarrage ait le
-    // temps de "se stabiliser" avant que la rampe de volume ne débute ; la position lue dans
-    // le buffer est décalée d'autant pour que la piste soit toujours exactement à `trim.start`
-    // au moment où `crossfadeStart` (donc la rampe) arrive réellement.
-    // `prerollMargin` est un délai réel (temps-contexte) ; la quantité de piste qu'il
-    // consomme avant `crossfadeStart` est `prerollMargin * rate` (voir `naturalEndTime`
-    // ci-dessus) — la borne sur `nextTrim.start` doit donc elle aussi passer en temps réel.
-    const prerollMargin = Math.max(0, Math.min(PRESTART_MARGIN_SECONDS, nextTrim.start / rate, crossfadeStart - now));
-    const physicalStart = crossfadeStart - prerollMargin;
-
+    // Gain neutre : la source a son propre noeud (déconnecté au pause/seek/swap) comme toute
+    // source buffer, mais aucune automation — pas de fondu au raccord.
     const nextGain = this.context.createGain();
-    nextGain.gain.setValueAtTime(0, physicalStart);
-    nextGain.gain.setValueAtTime(0, crossfadeStart);
-    nextGain.gain.linearRampToValueAtTime(1, endTime);
     nextGain.connect(this.bufferMasterGain);
 
     const nextSource = this.context.createBufferSource();
     nextSource.buffer = nextBuffer;
-    nextSource.playbackRate.setValueAtTime(rate, physicalStart);
+    nextSource.playbackRate.setValueAtTime(rate, endTime);
     nextSource.connect(nextGain);
-    nextSource.start(physicalStart, nextTrim.start - prerollMargin * rate);
+    nextSource.start(endTime, nextTrim.start);
     try {
       nextSource.stop(endTime + logicalDuration(nextBuffer, nextTrim) / rate);
     } catch {
@@ -1774,16 +1741,7 @@ export class GaplessEngine {
     }
     nextSource.onended = () => this.handleBufferSourceEnded(nextSource);
 
-    // `nextSource` continue d'avancer dans le buffer pendant toute la fenêtre de fondu
-    // (`crossfadeStart` → `endTime`, `SWAP_FADE_SECONDS` de temps réel écoulé à `rate`) : sa
-    // position logique vaut `trim.start` à `crossfadeStart` (voir commentaire plus haut), donc
-    // `SWAP_FADE_SECONDS * rate` de plus à `endTime`, jamais 0 — sans ce rattrapage,
-    // `currentTime` sous-évaluait la position réelle de cette quantité pour toute la piste une
-    // fois active (imperceptible à vitesse normale, mais visible sur des paroles synchronisées
-    // dès que `rate` s'éloigne de 1, l'erreur croissant avec le pitch). `rate` est capturé ici
-    // (pas relu sur `this._playbackRate`) : c'est la vitesse réellement appliquée à cette
-    // source précise, qui peut différer si le pitch a encore changé d'ici le commit.
-    curSource.onended = () => this.commitPendingSwap(nextSource, nextGain, endTime, SWAP_FADE_SECONDS * rate);
+    curSource.onended = () => this.commitPendingSwap(nextSource, nextGain, endTime, 0);
 
     this.pendingNext.scheduled = true;
     this.pendingNext.scheduledSource = nextSource;

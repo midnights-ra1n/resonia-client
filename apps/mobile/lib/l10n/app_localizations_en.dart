@@ -191,4 +191,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pitchHint => 'Speed ± pitch, like a turntable';
+
+  @override
+  String get startTime => 'Start time';
+
+  @override
+  String get clearCache => 'Clear music cache';
+
+  @override
+  String get clearCacheBody =>
+      'Downloaded songs will be removed from this device. The track playing and the next ones are kept.';
+
+  @override
+  String cacheCleared(String size) {
+    return 'Cache cleared ($size)';
+  }
+
+  @override
+  String get cancel => 'Cancel';
 }

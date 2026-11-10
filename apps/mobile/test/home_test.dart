@@ -2,8 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:resonia/api.dart';
 import 'package:resonia/app_scope.dart';
 import 'package:resonia/home_page.dart';
@@ -11,7 +9,7 @@ import 'package:resonia/l10n/app_localizations.dart';
 import 'package:resonia/player/player.dart';
 import 'package:resonia/session.dart';
 
-import 'fake_audio_platform.dart';
+import 'fake_engine.dart';
 
 class FakeApi extends SubsonicApi {
   FakeApi(this.lists, {this.fail = false})
@@ -50,8 +48,7 @@ Future<void> pumpHome(WidgetTester tester, SubsonicApi api) async {
     4000,
   ); // grand écran : toutes les sections visibles
   addTearDown(tester.view.reset);
-  JustAudioPlatform.instance = FakeJustAudio();
-  final player = PlayerController(player: AudioPlayer());
+  final player = PlayerController(engine: FakeEngine());
   addTearDown(player.dispose);
   await tester.pumpWidget(
     MaterialApp(

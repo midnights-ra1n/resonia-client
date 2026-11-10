@@ -1,12 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:resonia/api.dart';
+import 'package:resonia/icons.dart';
 import 'package:resonia/app_scope.dart';
 import 'package:resonia/l10n/app_localizations.dart';
 import 'package:resonia/player/player.dart';
@@ -14,7 +14,7 @@ import 'package:resonia/player/player_ui.dart';
 import 'package:resonia/session.dart';
 import 'package:resonia/widgets.dart';
 
-import 'fake_audio_platform.dart';
+import 'fake_engine.dart';
 
 final songs = [
   for (var i = 0; i < 6; i++)
@@ -30,11 +30,16 @@ final songs = [
 /// Faux Navidrome : chaque /rest/stream renvoie 4 Ko « audio ».
 final requests = <Uri>[];
 
+/// Tant qu'il n'est pas terminé, le serveur ne répond pas aux /rest/stream (réseau lent).
+Completer<void>? hold;
+
 Future<HttpServer> fakeServer() async {
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   requests.clear();
-  server.listen((req) {
+  hold = null;
+  server.listen((req) async {
     requests.add(req.uri);
+    if (req.uri.path.endsWith('/stream')) await hold?.future;
     req.response.headers.contentType = ContentType('audio', 'mpeg');
     req.response.contentLength = 4096;
     req.response
@@ -49,20 +54,17 @@ late HttpServer server;
 late SubsonicApi api;
 final controllers = <PlayerController>[];
 
-PlayerController newController() {
+late FakeEngine engine;
+
+PlayerController newController([FakeEngine? e]) {
   final c = PlayerController(
-    player: AudioPlayer(),
+    engine: e ?? (engine = FakeEngine()),
     stateDir: () async => Directory('${tmp.path}/state'),
     cacheDir: () async => Directory('${tmp.path}/cache'),
   );
   controllers.add(c);
   return c;
 }
-
-bool downloading() =>
-    Directory(tmp.path)
-        .listSync(recursive: true)
-        .any((f) => f.path.endsWith('.part'));
 
 Future<void> until(bool Function() cond) async {
   for (var i = 0; i < 200 && !cond(); i++) {
@@ -71,13 +73,22 @@ Future<void> until(bool Function() cond) async {
   expect(cond(), isTrue);
 }
 
+/// Les pochettes se chargent en temps réel : on attend la fin des requêtes avant de fermer le serveur.
+Future<void> settleNetwork(
+  WidgetTester tester,
+  PlayerController c,
+) => tester.runAsync(() async {
+  await c
+      .detach(); // arrête les téléchargements de préchargement encore en cours
+  await Future<void>.delayed(const Duration(milliseconds: 300));
+});
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // Le binding de test fait répondre 400 à tout HttpClient : ici, vrai faux serveur local.
   HttpOverrides.global = null;
 
   setUp(() async {
-    JustAudioPlatform.instance = FakeJustAudio();
     tmp = await Directory.systemTemp.createTemp('resonia');
     server = await fakeServer();
     const salt = 'abc';
@@ -92,28 +103,124 @@ void main() {
   });
 
   tearDown(() async {
-    // Préchargement arrêté, puis on laisse finir le téléchargement en vol avant de tout effacer.
+    // Téléchargements arrêtés (un .part reste pour la reprise), le temps de fermer les fichiers.
     for (final c in controllers) {
       c.dispose();
     }
     controllers.clear();
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    await until(() => !downloading());
+    await Future<void>.delayed(const Duration(milliseconds: 200));
     api.close();
     await server.close(force: true);
     await tmp.delete(recursive: true);
   });
 
+  int streams() => requests.where((u) => u.path.endsWith('/stream')).length;
+
+  test('the engine is given the next tracks once they are cached; wraps on repeat-all', () async {
+    final a = newController();
+    await a.attach(api);
+    await a.playQueue(songs, start: 1);
+    await until(() => engine.nextIds.join() == 's2s3s4');
+    expect(engine.current?.id, 's1');
+
+    await a.playQueue(songs, start: 4);
+    await a.cycleRepeat(); // tout répéter
+    await until(() => engine.nextIds.join() == 's5s0s1');
+    await a
+        .cycleRepeat(); // un titre : la suite du moteur est la piste elle-même
+    await until(() => engine.nextIds.join() == 's4');
+  });
+
   test(
-    'upcomingIndices follows the effective order and wraps on repeat-all',
-    () {
-      expect(upcomingIndices([0, 1, 2, 3, 4], 1, 3), [2, 3, 4]);
-      expect(upcomingIndices([0, 1, 2, 3, 4], 3, 3), [4]);
-      expect(upcomingIndices([0, 1, 2, 3, 4], 3, 3, wrap: true), [4, 0, 1]);
-      expect(upcomingIndices([3, 0, 4, 1, 2], 4, 3), [1, 2]); // mélange
-      expect(upcomingIndices([0, 1], 0, 3, wrap: true), [
-        1,
-      ]); // jamais la piste en cours
+    'gapless: the engine advances on its own and the controller follows',
+    () async {
+      final a = newController();
+      await a.attach(api);
+      await a.playQueue(songs, start: 0);
+      await until(() => engine.nextIds.join() == 's1s2s3');
+      final starts = engine.starts.length;
+
+      engine.advance();
+      await until(() => a.current?.id == 's1');
+      expect(a.position, lessThan(const Duration(seconds: 1)));
+      await until(
+        () => engine.nextIds.join() == 's2s3s4',
+      ); // la suite se complète
+      expect(
+        engine.starts.length,
+        starts,
+      ); // jamais de start() : le moteur n'a pas été relancé
+    },
+  );
+
+  test(
+    'a track plays from the cache: tapping it again downloads nothing',
+    () async {
+      final a = newController();
+      await a.attach(api);
+      await a.playQueue(songs, start: 2);
+      await until(() => engine.current?.id == 's2' && !a.loading);
+      await until(() => streams() == 4); // s2 + 3 suivantes
+      await a.playQueue(songs, start: 3);
+      await until(() => engine.current?.id == 's3');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(
+        requests.where((u) => u.queryParameters['id'] == 's3'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test('slow network: loading shows at once, the sound waits for the file, a pause is respected', () async {
+    hold = Completer<void>();
+    final a = newController();
+    await a.attach(api);
+    final play = a.playQueue(songs, start: 1);
+    await play;
+    expect(a.current?.id, 's1'); // l'interface a déjà la nouvelle piste
+    expect(a.loading, isTrue);
+    expect(engine.starts, isEmpty);
+
+    await a.pause(); // pause pendant le chargement
+    hold!.complete();
+    await until(() => engine.starts.isNotEmpty);
+    expect(engine.startPlay.last, isFalse);
+    await until(() => !a.loading);
+  });
+
+  test('skipping fast: only the last track is started', () async {
+    hold = Completer<void>();
+    final a = newController();
+    await a.attach(api);
+    await a.playQueue(songs, start: 0);
+    for (var i = 0; i < 4; i++) {
+      await a.next();
+    }
+    expect(a.current?.id, 's4');
+    hold!.complete();
+    await until(() => engine.starts.isNotEmpty && !a.loading);
+    expect(engine.starts.map((s) => s.first), ['s4']);
+    // Les pistes abandonnées en route n'ont pas été téléchargées jusqu'au bout pour rien.
+    expect(
+      requests.where((u) => u.queryParameters['id'] == 's1'),
+      hasLength(1),
+    );
+  });
+
+  test(
+    'previous is always available: on the first track it restarts the track',
+    () async {
+      final a = newController();
+      await a.attach(api);
+      await a.playQueue(songs, start: 0);
+      await until(() => !a.loading);
+      await a.previous();
+      expect(a.current?.id, 's0');
+      expect(engine.seeks.last, Duration.zero);
+      await a.next();
+      await until(() => a.current?.id == 's1' && !a.loading);
+      await a.previous(); // < 3 s : piste d'avant
+      await until(() => a.current?.id == 's0');
     },
   );
 
@@ -121,21 +228,27 @@ void main() {
     final a = newController();
     await a.attach(api);
     await a.playQueue(songs, start: 2);
+    await until(() => !a.loading);
     await a.seek(const Duration(seconds: 42, milliseconds: 500));
     await a.toggleShuffle();
-    await a.player
+    await a
         .pause(); // position figée : elle doit revenir à la milliseconde près
-    final order = List.of(a.player.shuffleIndices);
+    final order = List.of(a.playOrder);
     // Pas de dispose() : l'app est tuée, seuls les fichiers déjà écrits comptent.
 
     final b = newController();
     await b.attach(api);
     expect(b.queue.map((s) => s.id), songs.map((s) => s.id));
     expect(b.current?.id, 's2');
-    expect(b.player.position, const Duration(seconds: 42, milliseconds: 500));
+    expect(b.position, const Duration(seconds: 42, milliseconds: 500));
     expect(b.shuffle, isTrue);
-    expect(b.player.shuffleIndices, order);
+    expect(b.playOrder, order);
     expect(b.playing, isFalse); // reprise en pause, jamais de son au lancement
+    expect(engine.starts, isEmpty);
+
+    await b.togglePlay(); // le son part là où on s'était arrêté
+    await until(() => engine.current?.id == 's2');
+    expect(engine.position, const Duration(seconds: 42, milliseconds: 500));
   });
 
   test(
@@ -189,23 +302,29 @@ void main() {
     },
   );
 
-  test('pitch couples speed and pitch, Master Tempo keeps the pitch, settings persist', () async {
+  test('pitch is applied live (no reload), couples speed and pitch, Master Tempo keeps the pitch, settings persist', () async {
     final a = newController();
     await a.attach(api);
     await a.playQueue(songs);
-    final native = (JustAudioPlatform.instance as FakeJustAudio).players.last;
+    await until(() => !a.loading);
+    final starts = engine.starts.length;
 
     a.setPitch(2.54);
     expect(a.pitch, 2.5);
-    await until(() => native.speed == 1.025 && native.pitch == 1.025);
+    await until(() => engine.speed == 1.025 && engine.coupled);
 
     a.toggleMasterTempo();
-    await until(() => native.speed == 1.025 && native.pitch == 1);
+    await until(() => engine.speed == 1.025 && !engine.coupled);
 
     a.setPitch(30); // borné à la plage (±8 par défaut)
     expect(a.pitch, 8);
     a.setPitchRange(4);
     expect(a.pitch, 4);
+    await until(() => engine.speed == 1.04);
+    expect(
+      engine.starts.length,
+      starts,
+    ); // le moteur n'a jamais été rechargé : aucune coupure
 
     await Future<void>.delayed(
       const Duration(milliseconds: 600),
@@ -213,6 +332,19 @@ void main() {
     final b = newController();
     await b.attach(api);
     expect((b.pitch, b.pitchRange, b.masterTempo), (4.0, 4, true));
+    await until(() => engine.speed == 1.04); // réappliqué au lancement
+  });
+
+  test('the position follows the rate', () async {
+    final a = newController();
+    await a.attach(api);
+    await a.playQueue(songs);
+    await until(() => !a.loading);
+    a.setPitch(8);
+    final p0 = a.position;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    final moved = (a.position - p0).inMilliseconds;
+    expect(moved, inInclusiveRange(480, 620)); // 500 ms × 1,08
   });
 
   testWidgets(
@@ -225,8 +357,7 @@ void main() {
       await tester.runAsync(() async {
         await c.attach(api);
         await c.playQueue(songs, start: 1);
-        await c.player
-            .pause(); // pas de minuterie de position : l'écran se stabilise
+        await c.pause(); // pas de minuterie de position : l'écran se stabilise
       });
       await tester.pumpWidget(
         MaterialApp(
@@ -248,10 +379,19 @@ void main() {
       // Le lecteur (créé hors du temps simulé) répond en temps réel : on lui en laisse un peu.
       Future<void> swipe(Offset by) async {
         await tester.fling(find.byType(Cover), by, 1200);
-        await tester.pumpAndSettle();
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(
+            const Duration(milliseconds: 100),
+          ); // sortie / entrée de la pochette
+        }
+        // Le fichier se télécharge en temps réel ; la barre de chargement s'anime tant que ça dure.
+        await tester.runAsync(() async {
+          for (var i = 0; i < 80 && c.loading; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+          }
+          // « Suivant » lance la lecture ; en pause, plus de minuterie de position : l'écran se stabilise.
+          await c.pause();
+        });
         await tester.pumpAndSettle();
       }
 
@@ -261,8 +401,69 @@ void main() {
       expect(c.current?.id, 's1');
       await swipe(const Offset(0, 300));
       expect(find.byType(NowPlayingPage), findsNothing);
+      await settleNetwork(tester, c);
+      await tester.pump(
+        const Duration(seconds: 10),
+      ); // purge les minuteries de la zone simulée
     },
   );
+
+  testWidgets(
+    'now playing layout matches the iPhone 16 mock-up (393 x 852 pt)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1179, 2556);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final c = newController();
+      await tester.runAsync(() async {
+        await c.attach(api);
+        await c.playQueue(songs, start: 1);
+        await c.pause();
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (context, child) =>
+              AppScope(api: api, player: c, child: child!),
+          home: const NowPlayingPage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final cover = tester.getRect(find.byType(Cover));
+      expect(cover.left, 24);
+      expect(cover.width, 345);
+      expect(cover.height, 345);
+      final play = tester.getCenter(find.byType(PlayButton));
+      expect(play.dx, closeTo(196.5, 0.5));
+      expect(tester.getSize(find.byType(PlayButton)).width, 64);
+      // Précédent actif dès le premier titre, à 112 pt de la gauche.
+      final prev = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, AppIcons.skipPrevious),
+      );
+      expect(prev.onPressed, isNotNull);
+      expect(
+        tester
+            .getCenter(find.widgetWithIcon(IconButton, AppIcons.skipPrevious))
+            .dx,
+        closeTo(112, 0.5),
+      );
+      await settleNetwork(tester, c);
+      await tester.pump(
+        const Duration(seconds: 10),
+      ); // purge les minuteries de la zone simulée
+    },
+  );
+
+  test('start time: measured from the tap until the track plays', () async {
+    final a = newController();
+    await a.attach(api);
+    expect(a.startElapsed, isNull);
+    await a.playQueue(songs, start: 2);
+    await until(() => !a.measuringStart);
+    expect(a.startLatency, isNotNull);
+    expect(a.startElapsed, a.startLatency);
+  });
 
   test(
     'shuffle: Play starts on a random track, a tapped track plays first',
@@ -274,7 +475,10 @@ void main() {
       for (var k = 0; k < 10; k++) {
         await a.playQueue(songs);
         starts.add(a.current!.id);
-        expect(a.player.effectiveIndices.first, a.player.currentIndex);
+        expect(
+          a.playOrder.first,
+          songs.indexWhere((s) => s.id == a.current!.id),
+        );
       }
       expect(starts.length, greaterThan(1)); // jamais toujours la piste 1
       await a.playQueue(songs, start: 4);
@@ -288,6 +492,7 @@ void main() {
       final a = newController();
       await a.attach(api);
       await a.playQueue(songs);
+      await until(() => !a.loading);
       List<String?> scrobbles() => [
         for (final u in requests)
           if (u.path.endsWith('/scrobble'))

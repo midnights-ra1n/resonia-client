@@ -122,36 +122,49 @@ allows it and the app enforces the rule itself (`normalizeServerUrl` in `lib/ses
 
 ## Player
 
-The audio engine lives in `lib/player/` and is built on
-[`just_audio`](https://pub.dev/packages/just_audio). It follows the same rules as the desktop engine.
+The player lives in `lib/player/`. `PlayerController` (`player.dart`) owns the queue, shuffle, repeat,
+downloads, cache and Navidrome scrobbling; an `AudioEngine` (`engine.dart`) only plays complete local
+files one after the other. It follows the same rules as the desktop engine.
 
-- **Gapless playback.** The whole queue is handed to the native player, so the next track starts
-  without a gap. The native player is AVQueuePlayer on iOS and ExoPlayer on Android. Both remove
-  the encoder delay and padding using the file's own metadata, so original files are streamed
-  untouched whenever the platform can play them. The desktop engine decodes tracks itself and also
-  trims up to 0.3 s of pure digital silence at each track's edges. That extra trim isn't on mobile
-  yet.
-- **Background playback.** `just_audio_background` (built on `audio_service`) gives the lock screen,
-  Control Center, the Dynamic Island, Android's media notification and headset buttons. This
-  requires `UIBackgroundModes: audio` in `Info.plist`, plus the `AudioService` service,
-  `MediaButtonReceiver` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` in `AndroidManifest.xml`.
-  `MainActivity` extends `AudioServiceActivity`.
-- **Cache.** Each track is streamed and written to disk by a single download
-  (`LockCachingAudioSource`). The cache is stored in `<app cache>/audio/<server>/`, holds up to 2 GB
-  and evicts the least recently played tracks first. Tracks already in the cache are played from the
-  file.
+- **iOS engine.** `ios/Runner/GaplessEngine.swift` is built on `AVAudioEngine`. Tracks are decoded
+  in 4 s pieces, always in sequence from the start of the file (never a seek inside a compressed
+  file), and scheduled edge to edge in a single `AVAudioPlayerNode`, always about 10 s ahead of the
+  playhead. The next track therefore joins the current one sample-exactly, with no fade and no
+  dependency on the network. Encoder delay and padding come from the file's own metadata; like the
+  desktop (`silenceTrim.ts`), up to 0.3 s of digital silence and the first / last few ms of an AAC
+  file that decoded badly at the seam are trimmed.
+- **Android engine.** ExoPlayer through `just_audio` (`JustAudioEngine`), with the same contract:
+  the current track plus the next tracks that are already cached.
+  shortcut: no dedicated Android engine yet; write one (MediaCodec + AudioTrack) if ExoPlayer lets
+  a gap through at the seam.
+- **Background playback.** iOS: the engine owns the audio session, interruptions, headphone
+  unplugging, the lock screen and Control Center (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`;
+  needs `UIBackgroundModes: audio`). Previous / next are always enabled. Android:
+  `just_audio_background` (notification, headset buttons; `AudioService`, `MediaButtonReceiver` and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK` in `AndroidManifest.xml`, `MainActivity` extends
+  `AudioServiceActivity`).
+- **Cache.** One download per track (`lib/player/downloader.dart`), written to
+  `<app cache>/audio/<server>/`. A track that is in the cache is read from the file and never
+  downloaded again; otherwise it is downloaded once, then played. A cut connection resumes at the
+  exact byte (HTTP range), a connection with no data for 6 s is replaced, and failures are retried
+  without limit (0.5 s up to 15 s apart). The cache holds up to 2 GB and evicts the least recently
+  played tracks first.
   - Original files are kept as they are (`mp3`, `m4a`, `aac`, `flac`, `wav`, `aiff`, `alac`, plus
     `ogg` and `opus` on Android).
   - Other formats are transcoded by Navidrome to AAC 256 kbps. Transcoded streams carry no gapless
     metadata.
 - **Preload.** The current track and the next 3 are downloaded, in the order playback will follow
-  (shuffle and repeat-all included). The current track always has priority, like on desktop:
-  - nothing else downloads until it has 15 seconds buffered;
-  - then one upcoming track downloads alongside it;
-  - once it is fully downloaded, the remaining upcoming tracks download in parallel.
-
-  A track that is still downloading is reused when it appears in a new queue, so a file is never
-  downloaded twice.
+  (shuffle and repeat-all included), one at a time so each gets the whole bandwidth: the current
+  track first, then the next one, long before the transition. As soon as a next track is in the
+  cache, the controller hands it to the engine (`setNext`).
+- **Start.** Tapping a track shows it at once and starts its download; the sound starts as soon as
+  the file is complete (instant when it's cached or preloaded). While it waits, the seek bar turns
+  into an endless loading animation (and the mini player's bar too). Skipping tracks quickly
+  replaces the pending request: only the last track is downloaded and started. A playback error
+  re-downloads the file once, then skips it. The full-screen player shows the time from the tap to
+  the first sound (`0.412 s`).
+  shortcut: a track that is neither cached nor preloaded waits for its whole download before it
+  plays; progressive start (decoding the first seconds while the rest downloads) isn't done.
 - **Shuffle.** With shuffle on, the Play button starts on a random track. Tapping a track starts
   with that track.
 - **Navidrome Now Playing and play counts.** These follow the desktop rules. After 1 second of
@@ -171,20 +184,16 @@ The audio engine lives in `lib/player/` and is built on
 - **Battery.** The position display ticks only while music plays and the screen is visible. It
   stops when the app is in the background or the page is covered.
 - **Pitch.** The pitch control works like a turntable, with a range of ±4, ±8, ±10 or ±16 %.
-  - By default, speed and pitch change together.
-  - With **Master Tempo** on, the tempo changes and the key stays the same.
+  - By default, speed and pitch change together (`AVAudioUnitVarispeed`).
+  - With **Master Tempo** on, the tempo changes and the key stays the same (`AVAudioUnitTimePitch`).
 
-  The settings are saved in `settings.json`.
+  Speed is a live parameter of those audio units: nothing is reloaded or dropped, so dragging the
+  fader never cuts the sound. The settings are saved in `settings.json`.
 
-### Patched `just_audio`
+### `just_audio` (Android only)
 
-On iOS, `just_audio` always keeps the pitch when the speed changes. To change both together, the app
-uses a copy of `just_audio` 0.10.6 in `third_party/just_audio`, which is wired in through
-`dependency_overrides` in `pubspec.yaml`. Each change in that copy is marked `RESONIA PATCH`:
-`setPitch` picks AVFoundation's `Varispeed` algorithm (speed and pitch together) or `Spectral`
-(Master Tempo). The algorithm is only switched when it has to be, because switching it on a playing
-track causes an audible drop; at normal speed the current one is kept. To update `just_audio`, copy the new version over that folder and apply the
-`RESONIA PATCH` blocks again.
+`third_party/just_audio` is a copy of `just_audio` 0.10.6 wired in through `dependency_overrides`.
+Its iOS patch (`RESONIA PATCH`) predates the native iOS engine and is no longer used on iOS.
 
 ## Icons
 

@@ -124,14 +124,27 @@ Future<Color?> dominantColor(SubsonicApi api, String? coverArt) {
       final px = (await image.toByteData())!;
       image.dispose();
       codec.dispose();
-      var r = 0, g = 0, b = 0;
-      final n = px.lengthInBytes ~/ 4;
+      // Moyenne pondérée par la saturation : une pochette verte avec un peu de blanc donne du vert,
+      // pas un gris terne (comme la couleur dominante d'un lecteur Spotify).
+      var r = 0.0, g = 0.0, b = 0.0, total = 0.0;
       for (var i = 0; i < px.lengthInBytes; i += 4) {
-        r += px.getUint8(i);
-        g += px.getUint8(i + 1);
-        b += px.getUint8(i + 2);
+        final pr = px.getUint8(i),
+            pg = px.getUint8(i + 1),
+            pb = px.getUint8(i + 2);
+        final hi = pr > pg ? (pr > pb ? pr : pb) : (pg > pb ? pg : pb);
+        final lo = pr < pg ? (pr < pb ? pr : pb) : (pg < pb ? pg : pb);
+        final w = 0.05 + (hi == 0 ? 0 : (hi - lo) / hi);
+        r += pr * w;
+        g += pg * w;
+        b += pb * w;
+        total += w;
       }
-      return Color.fromARGB(255, r ~/ n, g ~/ n, b ~/ n);
+      return Color.fromARGB(
+        255,
+        (r / total).round(),
+        (g / total).round(),
+        (b / total).round(),
+      );
     } catch (_) {
       _tints.remove(coverArt); // réessayé à la prochaine demande
       return null;
@@ -283,4 +296,114 @@ class PlayButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Barre de lecture en « chargement infini » : un segment qui glisse sans fin, à la place de la
+/// barre normale ([child]) quand un titre tarde à démarrer (comme Spotify). N'apparaît qu'après
+/// 200 ms : un démarrage instantané (cache) ne la fait jamais clignoter. Rien n'est animé hors
+/// chargement (batterie).
+class LoadingBar extends StatefulWidget {
+  const LoadingBar({
+    super.key,
+    required this.loading,
+    required this.height,
+    required this.color,
+    required this.trackColor,
+    required this.child,
+  });
+
+  final bool loading;
+  final double height;
+  final Color color;
+  final Color trackColor;
+  final Widget child;
+
+  @override
+  State<LoadingBar> createState() => _LoadingBarState();
+}
+
+class _LoadingBarState extends State<LoadingBar>
+    with SingleTickerProviderStateMixin {
+  late final _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+  Timer? _delay;
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(LoadingBar old) {
+    super.didUpdateWidget(old);
+    if (old.loading != widget.loading) _sync();
+  }
+
+  void _sync() {
+    _delay?.cancel();
+    if (!widget.loading) {
+      _anim.stop();
+      _shown = false;
+      return;
+    }
+    _delay = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() => _shown = true);
+      _anim.repeat();
+    });
+  }
+
+  @override
+  void dispose() {
+    _delay?.cancel();
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_shown) return widget.child;
+    return SizedBox(
+      height: widget.height,
+      child: Center(
+        child: SizedBox(
+          height: widget.height,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(widget.height / 2),
+            child: CustomPaint(
+              painter: _LoadingPainter(_anim, widget.color, widget.trackColor),
+              size: Size.infinite,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingPainter extends CustomPainter {
+  _LoadingPainter(this.t, this.color, this.track) : super(repaint: t);
+
+  final Animation<double> t;
+  final Color color;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = track);
+    final w = size.width * 0.35;
+    final x = Curves.easeInOut.transform(t.value) * (size.width + w) - w;
+    canvas.drawRect(
+      Rect.fromLTWH(x, 0, w, size.height),
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_LoadingPainter old) =>
+      old.color != color || old.track != track;
 }

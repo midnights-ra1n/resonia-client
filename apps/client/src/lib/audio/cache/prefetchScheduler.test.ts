@@ -265,6 +265,7 @@ function flush() {
 
 describe("prefetchScheduler — modes réseau du flux en cours de lecture", () => {
   beforeEach(() => {
+    vi.clearAllMocks(); // historique d'appels propre à chaque test (implémentations conservées)
     requestedOrder.length = 0;
     requestedSegments.length = 0;
     rangeResumable.clear();
@@ -279,7 +280,7 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
     { trackId: "next2", streamUrl: "https://x/2" },
   ];
 
-  it("« shared » (flux lu encore en téléchargement) : une seule connexion, sans plages parallèles", async () => {
+  it("« shared » (flux lu encore en téléchargement) : piste active et suivante, sans plages parallèles", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     prefetchScheduler.setQuality("aac-256");
     prefetchScheduler.setNetworkMode("exclusive");
@@ -290,8 +291,8 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
 
     prefetchScheduler.setNetworkMode("shared");
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active"]);
-    expect(requestedSegments).toEqual([1]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1"]);
+    expect(requestedSegments).toEqual([1, 1]);
   });
 
   it("« free » : deux connexions en parallèle, plages parallèles autorisées", async () => {
@@ -302,10 +303,13 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
     prefetchScheduler.setUpcoming(window3);
     await flush();
 
+    rangeResumable.add("active").add("next1");
+
+    // Fichiers à plages relancés pour passer en plages parallèles.
     prefetchScheduler.setNetworkMode("free");
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1"]);
-    expect(requestedSegments.at(-1)).toBe(3);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "active", "next1"]);
+    expect(requestedSegments.slice(2)).toEqual([3, 3]);
   });
 
   it("« exclusive » : coupe net un fichier à plages (reprise bon marché), suspend un flux transcodé", async () => {

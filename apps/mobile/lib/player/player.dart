@@ -1,7 +1,3 @@
-// LockCachingAudioSource est « expérimental » upstream ; just_audio est figé dans third_party/,
-// il ne peut donc pas changer sous nos pieds.
-// ignore_for_file: experimental_member_use
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,65 +5,83 @@ import 'dart:math';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../api.dart';
 import 'audio_cache.dart';
+import 'downloader.dart';
+import 'engine.dart';
 
 /// Plages du pitch fader (±%), comme le bureau (stores/playerStore.ts).
 const pitchRanges = [4, 8, 10, 16];
 const _defaultPitchRange = 8;
 const _upcoming = 3; // pistes préchargées après la courante
 
-/// Moteur de lecture : file d'attente, lecture gapless (playlist native just_audio), cache,
-/// préchargement, pitch, et reprise exacte après une fermeture forcée.
+enum Repeat { off, one, all }
+
+/// Contrôleur de lecture. Il possède la file, le mélange, la boucle, les téléchargements et le
+/// cache ; le moteur ([AudioEngine]) ne fait que lire des fichiers complets à la suite, sans coupure.
 ///
-/// Invariants (CLAUDE.md) : la transition entre pistes est faite par le lecteur natif
-/// (AVQueuePlayer / ExoPlayer), jamais par l'UI ; le préchargement laisse la priorité à la
-/// piste en cours, pour ne jamais la faire caler (voir [_prefetch]).
+/// Invariants (CLAUDE.md) :
+/// - la transition entre deux pistes est faite par le moteur, jamais par l'UI : ici on ne fait que
+///   lui donner à l'avance la suite déjà en cache ([_syncNext]) ;
+/// - les 3 pistes suivantes sont préchargées, la piste en cours est toujours servie en premier : un
+///   préchargement ne ralentit ni n'interrompt jamais ce qui sonne (voir [Downloads]) ;
+/// - un titre n'est téléchargé qu'une fois : lu depuis le cache s'il y est, sinon téléchargé vers le
+///   cache puis lu — jamais de second téléchargement du même fichier.
 class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
   PlayerController({
-    AudioPlayer? player,
+    AudioEngine? engine,
     Future<Directory> Function()? stateDir,
     Future<Directory> Function()? cacheDir,
-  }) : player = player ?? AudioPlayer(),
+  }) : _engineOrNull = engine,
        _stateDirFn = stateDir ?? _defaultStateDir,
        _cacheDirFn = cacheDir ?? getApplicationCacheDirectory {
-    _subs = [
-      this.player.currentIndexStream.listen((_) => _onIndexChanged()),
-      this.player.playingStream.listen(_onPlaying),
-      this.player.shuffleModeEnabledStream.listen((_) => notifyListeners()),
-      this.player.loopModeStream.listen((_) => notifyListeners()),
-      this.player.processingStateStream.listen((_) => notifyListeners()),
-      // Répétition d'un titre : nouvelle écoute pour Navidrome.
-      this.player.positionDiscontinuityStream.listen((d) {
-        if (d.reason == PositionDiscontinuityReason.autoAdvance) {
-          _resetScrobble();
-        }
-      }),
-    ];
     WidgetsBinding.instance.addObserver(this);
   }
 
-  final AudioPlayer player;
+  final AudioEngine? _engineOrNull;
+  late final AudioEngine engine = _engineOrNull ?? AudioEngine.create();
+  StreamSubscription<EngineEvent>? _events;
   final Future<Directory> Function() _stateDirFn;
   final Future<Directory> Function() _cacheDirFn;
-  late final List<StreamSubscription<dynamic>> _subs;
 
   SubsonicApi? _api;
   AudioCache? _cache;
+  late final _downloads = Downloads(
+    onIdle: () => unawaited(_cache?.evict(keep: _keep)),
+    onComplete: _syncNext,
+  );
+  Set<String> _keep = const {};
   Directory? _stateDir;
+
   List<Song> _queue = const [];
-  List<AudioSource> _sources = const [];
+  List<int> _order = const []; // ordre de lecture : indices dans _queue
+  int _pos = 0; // place de la piste courante dans _order
+  bool _shuffle = false;
+  Repeat _repeat = Repeat.off;
+
+  bool _playing =
+      false; // lecture demandée (même si le fichier n'est pas encore là)
+  bool _buffering = false; // en attente du fichier / du moteur
+  bool _awaiting = false; // un start() est en cours : on attend son Started
+  String? _loadedId; // piste que le moteur tient comme courante
+  List<String> _sentNext = const []; // suite déjà donnée au moteur
+  int _gen = 0; // change à chaque demande de lecture : les attentes périmées s'arrêtent
+  int _failures = 0;
+  Duration _openAt = Duration.zero;
+  Duration? _duration;
 
   double pitch = 0; // en %, vitesse effective = 1 + pitch / 100
   int pitchRange = _defaultPitchRange;
   bool masterTempo = false; // true : hauteur préservée
+  double _speed = 1;
 
-  /// Lecture en arrière-plan : contrôles écran verrouillé / Dynamic Island / notification.
+  /// Lecture en arrière-plan. iOS : session et écran verrouillé sont gérés par le moteur natif.
+  /// Android : notification via just_audio_background.
   static Future<void> initBackground() async {
+    if (!Platform.isAndroid) return;
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.resonia.resonia.playback',
       androidNotificationChannelName: 'Resonia',
@@ -82,40 +96,75 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
       Directory('${(await getApplicationSupportDirectory()).path}/player');
 
   List<Song> get queue => _queue;
-  Song? get current {
-    final i = player.currentIndex;
-    return i != null && i < _queue.length ? _queue[i] : null;
+
+  /// Ordre de lecture effectif (mélange compris) : indices dans [queue].
+  List<int> get playOrder => List.unmodifiable(_order);
+  Song? get current => _queue.isEmpty ? null : _queue[_order[_pos]];
+  bool get playing => _playing;
+  bool get shuffle => _shuffle;
+  Repeat get repeat => _repeat;
+
+  /// Le son tarde : la barre de lecture passe en chargement infini.
+  bool get loading => _playing && _buffering;
+  bool get hasNext => _pos < _order.length - 1 || _repeat != Repeat.off;
+
+  Duration get duration =>
+      _duration ?? Duration(seconds: current?.duration ?? 0);
+
+  // Position : instantané à l'évènement du moteur, puis horloge locale × vitesse. Aucun aller-retour
+  // natif, donc aucun coût pour l'interface qui la lit 4 fois par seconde.
+  Duration _posBase = Duration.zero;
+  final _posClock = Stopwatch();
+
+  Duration get position {
+    if (!_posClock.isRunning) return _posBase;
+    final p = _posBase + _posClock.elapsed * _speed;
+    final d = duration;
+    return d > Duration.zero && p > d ? d : p;
   }
 
-  bool get playing => player.playing;
-  bool get shuffle => player.shuffleModeEnabled;
-  LoopMode get loopMode => player.loopMode;
-  bool get loading =>
-      player.processingState == ProcessingState.loading ||
-      player.processingState == ProcessingState.buffering;
+  void _setPosition(Duration p, {required bool running}) {
+    _posBase = p;
+    _posClock
+      ..reset()
+      ..stop();
+    if (running) _posClock.start();
+  }
+
+  void _rebase() => _setPosition(position, running: _posClock.isRunning);
 
   // ───────────────────────── Session ─────────────────────────
 
   /// Ouvre le cache du serveur et restaure la file sauvegardée (même serveur uniquement).
   Future<void> attach(SubsonicApi api) async {
     _api = api;
+    _events ??= engine.events.listen(_onEvent);
     _cache = await AudioCache.open(api.session, await _cacheDirFn());
     _stateDir = await _stateDirFn();
     await _stateDir!.create(recursive: true);
     unawaited(_cache!.evict());
     _loadSettings();
-    unawaited(_applyRate());
+    _speed = 1 + pitch / 100;
+    unawaited(_pushRate());
     await _restore();
   }
 
   /// Déconnexion : arrêt et oubli de la file (le cache audio, lui, reste sur le disque).
   Future<void> detach() async {
     _gen++;
+    _downloads.stopAll();
+    _tick?.cancel();
     try {
-      await player.stop();
+      await engine.stop();
+      await engine.setNowPlaying(null);
     } catch (_) {}
     _queue = const [];
-    _sources = const [];
+    _order = const [];
+    _pos = 0;
+    _playing = _buffering = _awaiting = false;
+    _loadedId = null;
+    _sentNext = const [];
+    _setPosition(Duration.zero, running: false);
     for (final f in ['queue.json', 'position.json']) {
       _delete(File('${_stateDir?.path}/$f'));
     }
@@ -128,80 +177,129 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
   /// Sans [start] (bouton Lecture d'un album), le mode aléatoire part d'une piste au hasard.
   Future<void> playQueue(List<Song> songs, {int? start}) async {
     if (songs.isEmpty || _api == null) return;
-    _scrobbleId = null; // même titre relancé : nouvelle écoute
-    start ??= player.shuffleModeEnabled ? Random().nextInt(songs.length) : 0;
+    start ??= _shuffle ? Random().nextInt(songs.length) : 0;
     _queue = List.unmodifiable(songs);
-    _sources = _sourcesFor(songs);
-    _prefetchedFor = null;
-    notifyListeners();
-    try {
-      await player.setAudioSources(
-        _sources,
-        initialIndex: start,
-        initialPosition: Duration.zero,
-      );
-      if (player.shuffleModeEnabled) {
-        await player.shuffle(); // piste choisie en tête du mélange
-      }
-    } on PlayerException catch (_) {
-      // Piste illisible / serveur injoignable : l'état « idle » est reflété par l'UI.
-    } on PlayerInterruptedException catch (_) {
-      return; // remplacée par une autre demande de lecture
-    }
+    _order = _makeOrder(start);
+    _pos = _shuffle ? 0 : start;
+    _scrobbleId = null; // même titre relancé : nouvelle écoute
     _saveQueue();
-    unawaited(
-      player.play(),
-    ); // play() ne se termine qu'à la pause : ne pas attendre
+    await _open(_pos);
+  }
+
+  List<int> _makeOrder(int first) {
+    final n = _queue.length;
+    if (!_shuffle) return List.generate(n, (i) => i);
+    final rest = [
+      for (var i = 0; i < n; i++)
+        if (i != first) i,
+    ]..shuffle();
+    return [first, ...rest];
   }
 
   Future<void> togglePlay() async {
-    if (player.playing) return player.pause();
-    if (player.processingState == ProcessingState.completed) {
-      await player.seek(
-        Duration.zero,
-        index: player.effectiveIndices.firstOrNull,
-      );
-    }
-    unawaited(player.play());
+    if (current == null) return;
+    if (_playing) return pause();
+    return resume();
   }
 
-  Future<void> next() => player.seekToNext();
-
-  /// Comme partout : après 3 s, « précédent » revient au début de la piste.
-  Future<void> previous() async {
-    if (player.position > const Duration(seconds: 3) || !player.hasPrevious) {
-      await seek(Duration.zero);
-    } else {
-      await player.seekToPrevious();
+  Future<void> pause() async {
+    if (!_playing) return;
+    _playing = false;
+    _startWatch = null; // mise en pause avant le son : plus rien à mesurer
+    _setPosition(position, running: false);
+    notifyListeners();
+    final p = await engine.pause();
+    if (!_playing && !_awaiting && _loadedId != null) {
+      _setPosition(p, running: false);
+      notifyListeners();
     }
-  }
-
-  Future<void> seek(Duration position) async {
-    await player.seek(position);
     _savePosition(force: true);
+    _publishState();
+  }
+
+  Future<void> resume() async {
+    if (_playing || current == null) return;
+    _markStart();
+    if (_loadedId != current!.id || _awaiting) {
+      // Rien de chargé (file restaurée, fin de liste) : on ouvre la piste à la position gardée.
+      final at = _posBase >= duration && duration > Duration.zero
+          ? Duration.zero
+          : _posBase;
+      return _open(_pos, at: at);
+    }
+    _playing = true;
+    _setPosition(_posBase, running: !_buffering);
+    notifyListeners();
+    await engine.play();
+    _markLoaded();
+    _publishState();
+  }
+
+  Future<void> next() async {
+    final n = _following(1, loopOne: false);
+    if (n.isEmpty) return seek(Duration.zero);
+    await _open(n.first);
+  }
+
+  /// Comme partout : après 3 s, « précédent » revient au début de la piste ; sinon piste d'avant
+  /// (toujours disponible : sur la première, il recommence la piste).
+  Future<void> previous() async {
+    final n = _order.length;
+    final canGo = _pos > 0 || (_repeat == Repeat.all && n > 1);
+    if (position > const Duration(seconds: 3) || !canGo) {
+      return seek(Duration.zero);
+    }
+    await _open(_pos > 0 ? _pos - 1 : n - 1);
+  }
+
+  Future<void> seek(Duration p) async {
+    if (current == null) return;
+    final d = duration;
+    p = p < Duration.zero
+        ? Duration.zero
+        : (d > Duration.zero && p > d ? d : p);
+    _setPosition(p, running: _playing && !_buffering);
+    _openAt = p;
+    notifyListeners();
+    if (_loadedId == current!.id && !_awaiting) await engine.seek(p);
+    _savePosition(force: true);
+    _publishState();
   }
 
   Future<void> toggleShuffle() async {
-    final on = !player.shuffleModeEnabled;
-    if (on) await player.shuffle();
-    await player.setShuffleModeEnabled(on);
+    if (_queue.isEmpty) {
+      _shuffle = !_shuffle;
+      return notifyListeners();
+    }
+    final cur = _order[_pos];
+    _shuffle = !_shuffle;
+    _order = _shuffle
+        ? _makeOrder(cur)
+        : List.generate(_queue.length, (i) => i);
+    _pos = _shuffle ? 0 : cur;
     _saveQueue();
-    _prefetchedFor = null;
     _prefetch();
+    _syncNext();
+    notifyListeners();
   }
 
   Future<void> cycleRepeat() async {
-    await player.setLoopMode(switch (player.loopMode) {
-      LoopMode.off => LoopMode.all,
-      LoopMode.all => LoopMode.one,
-      LoopMode.one => LoopMode.off,
-    });
+    _repeat = switch (_repeat) {
+      Repeat.off => Repeat.all,
+      Repeat.all => Repeat.one,
+      Repeat.one => Repeat.off,
+    };
     _saveQueue();
+    _prefetch();
+    _syncNext();
+    notifyListeners();
   }
 
   // ───────────────────────── Pitch ─────────────────────────
 
-  /// Pitch fader façon platine DJ : vitesse et hauteur couplées, sauf en Master Tempo.
+  /// Pitch fader façon platine DJ : vitesse et hauteur couplées, sauf en Master Tempo. Le moteur
+  /// règle la vitesse en direct sur des unités audio : rien n'est jeté ni rechargé, donc aucune
+  /// coupure pendant qu'on glisse.
   void setPitch(double percent) {
     final p = ((percent.clamp(-pitchRange, pitchRange) * 10).round() / 10)
         .toDouble();
@@ -209,7 +307,7 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
     if (p == pitch) return;
     pitch = p;
     notifyListeners();
-    _applyRate();
+    unawaited(_pushRate());
     _saveSettingsSoon();
   }
 
@@ -225,149 +323,312 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
   void toggleMasterTempo() {
     masterTempo = !masterTempo;
     notifyListeners();
-    _applyRate();
+    unawaited(_pushRate());
     _saveSettingsSoon();
   }
 
-  bool _applying = false;
-  bool _rateDirty = false;
+  Future<void> _pushRate() async {
+    _rebase(); // la position écoulée jusqu'ici l'a été à l'ancienne vitesse
+    _speed = 1 + pitch / 100;
+    try {
+      await engine.setRate(_speed, coupled: !masterTempo);
+    } catch (_) {
+      // Plateforme sans réglage de vitesse : la lecture reste normale.
+    }
+    _publishState();
+  }
 
-  /// Coalesce les mises à jour pendant un glissé : au plus un réglage natif toutes les 60 ms
-  /// (chaque changement de vitesse coûte au moteur audio), le dernier demandé gagne.
-  Future<void> _applyRate() async {
-    if (_applying) {
-      _rateDirty = true;
+  // ───────────────────────── File : ordre, suite, préchargement ─────────────────────────
+
+  /// Places (dans [_order]) des [count] pistes qui suivent la courante : mélange et boucle compris.
+  /// En répétition d'un titre, la suite du moteur est la piste elle-même ([loopOne]) ; pour le
+  /// préchargement, c'est la vraie suivante.
+  List<int> _following(int count, {bool loopOne = true}) {
+    final n = _order.length;
+    if (n == 0) return const [];
+    if (loopOne && _repeat == Repeat.one) return [_pos];
+    if (n == 1) return _repeat == Repeat.all ? [_pos] : const [];
+    return [
+      for (var k = 1; k <= count && k < n; k++)
+        if (_pos + k < n)
+          _pos + k
+        else if (_repeat == Repeat.all)
+          (_pos + k) % n,
+    ];
+  }
+
+  Song _songAt(int pos) => _queue[_order[pos]];
+
+  EngineTrack _track(Song s) => EngineTrack(
+    id: s.id,
+    path: _cache!.fileFor(s).path,
+    title: s.title,
+    artist: s.artist,
+    album: s.album,
+    duration: s.duration == null ? null : Duration(seconds: s.duration!),
+    art: s.coverArt == null ? null : _api!.coverUrl(s.coverArt!, 600),
+  );
+
+  TrackDownload _download(Song s) {
+    final f = AudioCache.formatFor(s);
+    return _downloads.of(
+      _api!.streamUri(s.id, format: f.format, maxBitRate: f.maxBitRate),
+      _cache!.fileFor(s),
+    );
+  }
+
+  /// Suite déjà en cache, dans l'ordre : s'arrête au premier titre manquant (le moteur ne peut pas
+  /// sauter un trou).
+  List<EngineTrack> _ready() {
+    final cache = _cache;
+    if (cache == null) return const [];
+    final out = <EngineTrack>[];
+    for (final p in _following(_upcoming)) {
+      final s = _songAt(p);
+      if (!cache.isCached(s)) break;
+      out.add(_track(s));
+    }
+    return out;
+  }
+
+  /// Donne au moteur la suite prête ; rappelé quand l'ordre change ou qu'un titre finit de
+  /// télécharger. Aucun effet si rien n'a changé.
+  void _syncNext() {
+    if (_loadedId == null || _awaiting) return;
+    final ready = _ready();
+    final ids = [for (final t in ready) t.id];
+    if (ids.join('\u0000') == _sentNext.join('\u0000')) return;
+    _sentNext = ids;
+    unawaited(engine.setNext(ready).catchError((_) {}));
+  }
+
+  /// Télécharge la piste en cours puis les [_upcoming] suivantes (ordre effectif : mélange et
+  /// boucle compris), une à la fois et dans cet ordre : la piste en cours a toute la bande
+  /// passante, puis la suivante est prête bien avant la transition.
+  void _prefetch() {
+    final cur = current;
+    if (cur == null || _cache == null) return;
+    final order = [
+      _download(cur),
+      if (_playing)
+        for (final p in _following(_upcoming, loopOne: false))
+          _download(_songAt(p)),
+    ];
+    _keep = {for (final d in order) d.file.path};
+    _downloads.retain({..._keep});
+    _downloads.prioritize(order);
+  }
+
+  // ───────────────────────── Ouverture d'une piste ─────────────────────────
+
+  /// Joue la piste de la place [pos]. L'interface montre la nouvelle piste tout de suite ; le son
+  /// part dès que le fichier est complet (instantané s'il est en cache, y compris pour les pistes
+  /// préchargées de la file). Un « suivant » répété remplace la demande en cours : seule la dernière
+  /// compte, et seul son fichier se télécharge.
+  Future<void> _open(
+    int pos, {
+    Duration at = Duration.zero,
+    bool play = true,
+  }) async {
+    final cache = _cache;
+    if (cache == null || pos < 0 || pos >= _order.length) return;
+    final gen = ++_gen;
+    _pos = pos;
+    final song = _songAt(pos);
+    _markStart();
+    _playing = play;
+    _awaiting = true;
+    _buffering = true;
+    _openAt = at;
+    _duration = null;
+    _setPosition(at, running: false);
+    notifyListeners();
+    unawaited(engine.setNowPlaying(_track(song)).catchError((_) {}));
+    _prefetch();
+    // Rend la main tout de suite : l'interface est à jour, le son suit dès que le fichier est là.
+    unawaited(_load(gen, pos, song, at));
+  }
+
+  Future<void> _load(int gen, int pos, Song song, Duration at) async {
+    final d = _download(song);
+    if (!d.complete) {
+      // Le téléchargement a déjà démarré (_prefetch) ; en attendant, la piste d'avant se tait.
+      if (_loadedId != null) unawaited(engine.pause().catchError((_) => at));
+      if (!await d.waitComplete(() => gen != _gen)) return;
+    }
+    if (gen != _gen) return;
+
+    final ready = _ready();
+    _sentNext = [for (final t in ready) t.id];
+    bool ok;
+    try {
+      // `_playing` relu ici : une pause pendant l'attente du fichier est respectée.
+      ok = await engine.start(
+        [_track(song), ...ready],
+        position: at,
+        play: _playing,
+      );
+    } catch (_) {
+      ok = false;
+    }
+    if (gen != _gen) return;
+    if (!ok) return _fail(pos, at);
+  }
+
+  /// Fichier illisible : on le jette et on le retélécharge une fois (copie corrompue) ; au second
+  /// échec, la piste est sautée.
+  void _fail(int pos, Duration at) {
+    if (pos != _pos) return;
+    _awaiting = false;
+    _loadedId = null;
+    if (_failures++ == 0) {
+      final song = _songAt(pos);
+      _download(song).forget();
+      _delete(_cache!.fileFor(song));
+      unawaited(_open(pos, at: at, play: _playing));
       return;
     }
-    _applying = true;
-    try {
-      do {
-        _rateDirty = false;
-        final speed = 1 + pitch / 100;
-        final p = masterTempo ? 1.0 : speed;
-        if (player.speed != speed) await player.setSpeed(speed);
-        // Android : pitch natif ExoPlayer. iOS : correctif third_party/just_audio (Varispeed).
-        if (player.pitch != p) await player.setPitch(p);
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-      } while (_rateDirty);
-    } catch (_) {
-      // Plateforme sans pitch : la vitesse seule s'applique.
-    } finally {
-      _applying = false;
+    _failures = 0;
+    final n = _following(1, loopOne: false);
+    if (n.isNotEmpty && _playing) {
+      unawaited(_open(n.first));
+    } else {
+      _buffering = false;
+      _playing = false;
+      notifyListeners();
     }
   }
 
-  // ───────────────────────── Sources & cache ─────────────────────────
+  // ───────────────────────── Évènements du moteur ─────────────────────────
 
-  // Sources encore en téléchargement, par fichier de cache : une nouvelle file qui contient le
-  // même titre reprend la même source, sinon deux téléchargements écriraient le même fichier.
-  final _downloading = <String, LockCachingAudioSource>{};
-
-  List<AudioSource> _sourcesFor(List<Song> songs) {
-    final paths = {for (final s in songs) _cache!.fileFor(s).path};
-    _downloading.removeWhere(
-      (path, _) => !paths.contains(path) || File(path).existsSync(),
-    );
-    final used = <String>{};
-    return [for (final s in songs) _source(s, reuse: used.add(s.id))];
+  void _onEvent(EngineEvent e) {
+    switch (e) {
+      case Started(:final id, :final duration):
+        _onStarted(id, duration);
+      case Ended():
+        _onEnded();
+      case PlayingChanged(:final playing, :final position):
+        if (_awaiting || playing == _playing) return;
+        _playing = playing;
+        _setPosition(position, running: playing && !_buffering);
+        if (playing) _markStart();
+        _savePosition(force: true);
+        _publishState();
+        notifyListeners();
+      case Remote(:final command, :final position):
+        switch (command) {
+          case 'play':
+            unawaited(resume());
+          case 'pause':
+            unawaited(pause());
+          case 'toggle':
+            unawaited(togglePlay());
+          case 'next':
+            unawaited(next());
+          case 'previous':
+            unawaited(previous());
+          case 'seek':
+            if (position != null) unawaited(seek(position));
+        }
+      case Failed(:final id):
+        if (id == current?.id) _fail(_pos, _openAt);
+    }
   }
 
-  /// [reuse] false : titre déjà présent plus tôt dans la file, lu en flux sans cache (une
-  /// même source ne peut pas figurer deux fois dans une playlist just_audio).
-  AudioSource _source(Song s, {bool reuse = true}) {
-    final api = _api!;
-    final file = _cache!.fileFor(s);
-    final tag = MediaItem(
-      id: s.id,
-      title: s.title,
-      artist: s.artist,
-      album: s.album,
-      duration: s.duration == null ? null : Duration(seconds: s.duration!),
-      artUri: s.coverArt == null
-          ? null
-          : Uri.parse(api.coverUrl(s.coverArt!, 600)),
-    );
-    if (file.existsSync()) return AudioSource.file(file.path, tag: tag);
-    final f = AudioCache.formatFor(s);
-    final uri = api.streamUri(s.id, format: f.format, maxBitRate: f.maxBitRate);
-    if (!reuse) return AudioSource.uri(uri, tag: tag);
-    // Lit le flux ET l'enregistre dans le cache, en un seul téléchargement.
-    return _downloading[file.path] ??= LockCachingAudioSource(
-      uri,
-      cacheFile: file,
-      tag: tag,
-    );
-  }
-
-  int _gen = 0;
-  int? _prefetchedFor;
-
-  void _onIndexChanged() {
+  void _onStarted(String id, Duration dur) {
+    final cur = current;
+    if (cur == null) return;
+    _duration = dur > Duration.zero ? dur : null;
+    if (_awaiting && id == cur.id) {
+      // La piste demandée sonne.
+      _awaiting = false;
+      _buffering = false;
+      _loadedId = id;
+      _failures = 0;
+      _setPosition(_openAt, running: _playing);
+      _markLoaded();
+    } else {
+      // Enchaînement fait par le moteur (gapless) : on suit.
+      final next = _following(_upcoming).where((p) => _songAt(p).id == id);
+      if (next.isEmpty) return;
+      _pos = next.first;
+      _loadedId = id;
+      _awaiting = false;
+      _buffering = false;
+      _setPosition(Duration.zero, running: _playing);
+      _resetScrobble();
+      // Le moteur a consommé la tête de la suite : on lui redonne la nouvelle.
+      _sentNext = _sentNext.isEmpty ? const [] : _sentNext.sublist(1);
+    }
+    final song = current!;
+    _cache?.touch(song);
     _savePosition(force: true);
-    final c = current;
-    if (c != null) _cache?.touch(c);
+    _saveQueue();
     _prefetch();
+    _syncNext();
+    unawaited(engine.setNowPlaying(_track(song)).catchError((_) {}));
+    _publishState();
     notifyListeners();
   }
 
-  /// Précharge la piste en cours et les [_upcoming] suivantes (ordre effectif : mélange et
-  /// boucle compris), en laissant toujours la priorité réseau à la piste en cours, comme le
-  /// bureau : rien d'autre tant qu'elle a moins de 15 s d'avance, puis une seule suivante,
-  /// puis toutes en parallèle une fois qu'elle est entièrement téléchargée.
-  Future<void> _prefetch() async {
-    final i = player.currentIndex;
-    if (i == null ||
-        !player.playing ||
-        _prefetchedFor == i ||
-        _cache == null ||
-        i >= _sources.length) {
+  /// Le moteur n'a plus rien à jouer : soit la suite n'était pas encore en cache (on attend son
+  /// téléchargement), soit c'est la fin de la file.
+  void _onEnded() {
+    if (_awaiting) return;
+    final n = _following(1);
+    if (n.isNotEmpty && _playing) {
+      unawaited(_open(n.first));
       return;
     }
-    _prefetchedFor = i;
-    final gen = ++_gen;
-    final upcoming = upcomingIndices(
-      player.effectiveIndices,
-      i,
-      _upcoming,
-      wrap: player.loopMode == LoopMode.all,
-    );
-    final keep = {
-      for (final j in [i, ...upcoming]) _cache!.fileFor(_queue[j]).path,
-    };
-
-    // En général déjà demandée par le lecteur natif : même téléchargement, réutilisé.
-    final current = _download(_sources[i]);
-    await Future.any([current, _bufferedAhead(const Duration(seconds: 15))]);
-    if (gen != _gen || upcoming.isEmpty) return;
-    final first = _download(_sources[upcoming.first]);
-    await current;
-    if (gen != _gen) return;
-    await Future.wait([
-      first,
-      for (final j in upcoming.skip(1)) _download(_sources[j]),
-    ]);
-    if (gen == _gen) await _cache!.evict(keep: keep);
+    _playing = false;
+    _loadedId = null;
+    _sentNext = const [];
+    _setPosition(Duration.zero, running: false);
+    _publishState();
+    notifyListeners();
   }
 
-  /// Se termine quand le lecteur a [ahead] d'audio en tampon (8 s au plus d'attente).
-  Future<void> _bufferedAhead(Duration ahead) => player.bufferedPositionStream
-      .firstWhere((b) => b - player.position >= ahead)
-      .timeout(const Duration(seconds: 8))
-      .then<void>((_) {}, onError: (_) {});
+  void _publishState() => unawaited(
+    engine
+        .setNowPlayingState(
+          position,
+          playing: _playing && !_buffering,
+          speed: _speed,
+        )
+        .catchError((_) {}),
+  );
 
-  static Future<void> _download(AudioSource s) async {
-    if (s is! LockCachingAudioSource) return; // déjà un fichier local
-    try {
-      // Une requête d'un octet déclenche le téléchargement complet vers le cache ; s'il est
-      // déjà en cours (lecture), c'est le même téléchargement qui est réutilisé.
-      final r = await s.request(0, 1);
-      await r.stream.drain<void>();
-      await s.downloadProgressStream
-          .firstWhere((p) => p >= 1)
-          .timeout(const Duration(minutes: 10));
-    } catch (_) {
-      // Échec réseau : on passe à la suivante, la lecture streamera.
-    }
+  // ───────────────────────── Cache ─────────────────────────
+
+  /// Vide le cache audio (garde la piste en cours et les suivantes préchargées). Octets libérés.
+  Future<int> clearCache() async {
+    final cache = _cache;
+    if (cache == null) return 0;
+    final c = current;
+    final keep = {..._keep, if (c != null) cache.fileFor(c).path};
+    _downloads.forgetExcept(keep);
+    return cache.clear(keep: keep);
+  }
+
+  // ───────────────────────── Démarrage & reprise ─────────────────────────
+
+  /// Temps entre le geste (titre touché, Lecture) et le son : mesuré en direct pendant le
+  /// chargement, figé au démarrage. `null` : aucune mesure.
+  Stopwatch? _startWatch;
+  Duration? startLatency;
+  bool get measuringStart => _startWatch != null;
+  Duration? get startElapsed => _startWatch?.elapsed ?? startLatency;
+
+  void _markStart() {
+    _startWatch = Stopwatch()..start();
+    startLatency = null;
+  }
+
+  void _markLoaded() {
+    final watch = _startWatch;
+    if (watch == null) return;
+    _startWatch = null;
+    if (_playing) startLatency = watch.elapsed;
   }
 
   // ───────────────────────── Navidrome ─────────────────────────
@@ -389,19 +650,17 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
   void _scrobble() {
     final song = current;
     final api = _api;
-    if (song == null || api == null) return;
+    if (song == null || api == null || !_playing || _buffering) return;
     if (song.id != _scrobbleId) {
       _scrobbleId = song.id;
       _resetScrobble();
     }
-    final pos = player.position;
+    final pos = position;
     if (!_nowPlayingSent && pos > const Duration(seconds: 1)) {
       _nowPlayingSent = true;
       unawaited(api.scrobble(song.id, submission: false).catchError((_) {}));
     }
-    final at = _submitAt(
-      player.duration ?? Duration(seconds: song.duration ?? 0),
-    );
+    final at = _submitAt(duration);
     if (!_submitted && at > Duration.zero && pos >= at) {
       _submitted = true;
       unawaited(api.scrobble(song.id, submission: true).catchError((_) {}));
@@ -410,22 +669,24 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
 
   // ───────────────────────── Persistance ─────────────────────────
 
+  // Fermeture forcée = pas de dernier rappel : la position est écrite chaque seconde en lecture.
+  // Une seule minuterie, et seulement pendant que le son joue (batterie).
   Timer? _tick;
   String? _lastPosition;
 
-  void _onPlaying(bool playing) {
-    _tick?.cancel();
-    // Fermeture forcée = pas de dernier rappel : on écrit la position chaque seconde en lecture.
-    if (playing) {
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-        _savePosition();
-        _scrobble();
-      });
-      _prefetch();
-    } else {
-      _savePosition(force: true);
+  @override
+  void notifyListeners() {
+    final run = _playing && !_buffering;
+    if (run != (_tick != null)) {
+      _tick?.cancel();
+      _tick = run
+          ? Timer.periodic(const Duration(seconds: 1), (_) {
+              _savePosition();
+              _scrobble();
+            })
+          : null;
     }
-    notifyListeners();
+    super.notifyListeners();
   }
 
   @override
@@ -469,17 +730,19 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
     _write(_file('queue.json'), {
       'server': _serverKey,
       'songs': [for (final s in _queue) s.toJson()],
-      'shuffle': player.shuffleModeEnabled,
-      'shuffleOrder': player.shuffleIndices,
-      'loop': player.loopMode.index,
+      'shuffle': _shuffle,
+      'shuffleOrder': _order,
+      'loop': _repeat.index,
     });
     _savePosition(force: true);
   }
 
   void _savePosition({bool force = false}) {
-    final i = player.currentIndex;
-    if (i == null || _queue.isEmpty) return;
-    final json = jsonEncode({'index': i, 'ms': player.position.inMilliseconds});
+    if (_queue.isEmpty) return;
+    final json = jsonEncode({
+      'index': _order[_pos],
+      'ms': position.inMilliseconds,
+    });
     if (!force && json == _lastPosition) return;
     _lastPosition = json;
     _write(_file('position.json'), jsonDecode(json) as Object);
@@ -506,31 +769,19 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
         order.length == songs.length && order.toSet().length == songs.length;
 
     _queue = List.unmodifiable(songs);
-    _sources = _sourcesFor(songs);
-    _prefetchedFor = null;
-    notifyListeners();
-    try {
-      await player.setLoopMode(
-        LoopMode.values[((q['loop'] as num?)?.toInt() ?? 0).clamp(0, 2)],
-      );
-      await player.setAudioSources(
-        _sources,
-        initialIndex: index,
-        initialPosition: Duration(
-          milliseconds: (p?['ms'] as num?)?.toInt() ?? 0,
-        ),
-        shuffleOrder: validOrder ? _FixedShuffleOrder(order) : null,
-      );
-      if (q['shuffle'] == true) await player.setShuffleModeEnabled(true);
-      final at = _submitAt(Duration(seconds: songs[index].duration ?? 0));
-      _scrobbleId = songs[index].id;
-      _nowPlayingSent = false;
-      _submitted =
-          at > Duration.zero &&
-          Duration(milliseconds: (p?['ms'] as num?)?.toInt() ?? 0) >= at;
-    } catch (_) {
-      // Hors ligne et piste non cachée : la file reste affichée, la lecture réessaiera.
-    }
+    _shuffle = q['shuffle'] == true;
+    _repeat = Repeat.values[((q['loop'] as num?)?.toInt() ?? 0).clamp(0, 2)];
+    _order = validOrder ? order : List.generate(songs.length, (i) => i);
+    _pos = max(0, _order.indexOf(index));
+    final ms = (p?['ms'] as num?)?.toInt() ?? 0;
+    _openAt = Duration(milliseconds: ms);
+    _setPosition(_openAt, running: false);
+    final at = _submitAt(Duration(seconds: songs[index].duration ?? 0));
+    _scrobbleId = songs[index].id;
+    _nowPlayingSent = false;
+    _submitted = at > Duration.zero && _openAt >= at;
+    // La reprise ne télécharge que la piste affichée ; le son part au premier appui sur Lecture.
+    _prefetch();
     notifyListeners();
   }
 
@@ -560,66 +811,12 @@ class PlayerController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _gen++; // arrête le préchargement en cours
+    _downloads.close();
     WidgetsBinding.instance.removeObserver(this);
-    for (final s in _subs) {
-      s.cancel();
-    }
+    unawaited(_events?.cancel());
     _tick?.cancel();
     _settingsTimer?.cancel();
-    player.dispose();
+    if (_events != null) unawaited(engine.dispose());
     super.dispose();
-  }
-}
-
-/// Indices des [count] pistes qui suivent [current] dans [order] (ordre de lecture effectif).
-List<int> upcomingIndices(
-  List<int> order,
-  int current,
-  int count, {
-  bool wrap = false,
-}) {
-  final pos = order.indexOf(current);
-  if (pos < 0) return const [];
-  return [
-    for (var k = 1; k <= count && k < order.length; k++)
-      if (pos + k < order.length)
-        order[pos + k]
-      else if (wrap)
-        order[(pos + k) % order.length],
-  ];
-}
-
-/// Ordre de mélange restauré tel qu'il était avant la fermeture de l'app. just_audio vide
-/// puis remplit l'ordre (`clear()` + `insert(0, n)`) et remélange au chargement : on y glisse
-/// l'ordre sauvé et on ignore ce premier mélange.
-class _FixedShuffleOrder extends DefaultShuffleOrder {
-  _FixedShuffleOrder(this._initial);
-
-  List<int>? _initial;
-  bool _skipShuffle = false;
-
-  @override
-  void shuffle({int? initialIndex}) {
-    if (_skipShuffle) {
-      _skipShuffle = false;
-      return;
-    }
-    super.shuffle(initialIndex: initialIndex);
-  }
-
-  @override
-  void insert(int index, int count) {
-    final initial = _initial;
-    _initial = null;
-    if (initial != null &&
-        indices.isEmpty &&
-        index == 0 &&
-        count == initial.length) {
-      indices.addAll(initial);
-      _skipShuffle = true;
-    } else {
-      super.insert(index, count);
-    }
   }
 }

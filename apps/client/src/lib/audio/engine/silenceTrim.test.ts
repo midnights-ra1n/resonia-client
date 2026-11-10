@@ -41,6 +41,33 @@ describe("detectEdgeSilence", () => {
   });
 });
 
+describe("detectEdgeSilence — creux de bord (AAC)", () => {
+  const sampleRate = 44100;
+  // Musique régulière (sinus 220 Hz) avec un creux de 6 ms à -30 dB au début et à la fin.
+  const withDropouts = (i: number, length: number) => {
+    const music = 0.5 * Math.sin((2 * Math.PI * 220 * i) / sampleRate);
+    const dip = Math.round(0.006 * sampleRate);
+    return i < dip || i >= length - dip ? music * 0.03 : music;
+  };
+
+  it("retire le creux de reconstruction en début et en fin de piste", () => {
+    const length = 3 * sampleRate;
+    const buffer = makeFakeAudioBuffer(3, sampleRate, 1, (i) => withDropouts(i, length));
+    const trim = detectEdgeSilence(buffer);
+    expect(trim.start).toBeGreaterThanOrEqual(0.006);
+    expect(trim.end).toBeGreaterThanOrEqual(0.006);
+    expect(trim.start).toBeLessThanOrEqual(0.021);
+    expect(trim.end).toBeLessThanOrEqual(0.021);
+  });
+
+  it.each([40, 55, 110, 220, 880])("ne rogne rien sur une musique sans creux, même grave (%i Hz)", (hz) => {
+    const buffer = makeFakeAudioBuffer(3, sampleRate, 1, (i) => 0.5 * Math.sin((2 * Math.PI * hz * i) / sampleRate + 1));
+    const trim = detectEdgeSilence(buffer);
+    expect(trim.start).toBe(0);
+    expect(trim.end).toBe(0);
+  });
+});
+
 describe("logicalDuration", () => {
   it("soustrait le rognage de bord de la durée brute", () => {
     const buffer = makeFakeAudioBuffer(10, 44100, 1);

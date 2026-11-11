@@ -523,6 +523,7 @@ function registerIpcHandlers() {
   //   - écriture directe à la bonne position du fichier : aucun octet ne traverse l'IPC. ----
   const DOWNLOAD_SEGMENTS = 3;
   const MIN_SEGMENT_BYTES = 1024 * 1024;
+  const DOWNLOAD_CHUNK_BYTES = 512 * 1024;
   const DOWNLOAD_STALL_TIMEOUT_MS = 20_000;
   const DOWNLOAD_MAX_RETRIES = 3;
   const DOWNLOAD_PROGRESS_INTERVAL_MS = 250;
@@ -837,14 +838,27 @@ function registerIpcHandlers() {
         total = announced;
         const remaining = total - opts.from;
         const maxSegments = Math.max(1, Math.min(DOWNLOAD_SEGMENTS, Math.floor(opts.maxSegments ?? DOWNLOAD_SEGMENTS)));
-        const count = Math.max(1, Math.min(maxSegments, Math.floor(remaining / MIN_SEGMENT_BYTES)));
-        const size = Math.ceil(remaining / count);
+        const workers = Math.max(1, Math.min(maxSegments, Math.floor(remaining / MIN_SEGMENT_BYTES)));
+        // Plages PETITES et consommées dans l'ordre par `workers` connexions (plutôt qu'un gros tiers
+        // de fichier par connexion) : à l'interruption, seuls les octets contigus depuis le début
+        // sont réutilisables à la reprise (voir TrackDownloader.resumePosition) — avec trois grands
+        // tiers, on jetait les deux tiers de ce qui était téléchargé et la piste semblait repartir
+        // de zéro. Ici on ne perd que les plages en vol (~workers × CHUNK).
+        const chunk = workers === 1 ? remaining : DOWNLOAD_CHUNK_BYTES;
+        const count = Math.ceil(remaining / chunk);
         segments = Array.from({ length: count }, (_, i) => ({
-          start: opts.from + i * size,
-          end: Math.min(total, opts.from + (i + 1) * size),
+          start: opts.from + i * chunk,
+          end: Math.min(total, opts.from + (i + 1) * chunk),
           done: 0,
         }));
-        await Promise.all(segments.map((seg, i) => runSegment(seg, i === 0 ? first : undefined)));
+        let next = 0;
+        const worker = async () => {
+          while (next < segments.length) {
+            const seg = segments[next++];
+            await runSegment(seg, seg === segments[0] ? first : undefined);
+          }
+        };
+        await Promise.all(Array.from({ length: workers }, worker));
       } else {
         // 200 (fichier transcodé à la volée, plages ignorées), 416 ou taille inconnue : séquentiel.
         await runSegment(segments[0], first);

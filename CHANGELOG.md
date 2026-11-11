@@ -16,6 +16,12 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.1.0-beta.2
+
+- Fixed songs restarting their download from scratch when you leave them and come back: the part already downloaded is now kept (desktop)
+- Playback bar: lyrics, queue, connect and volume buttons reordered like Spotify, with a thinner volume slider that turns orange on hover
+- Hovering the progress bar now shows a tooltip with the time at the cursor position
+
 
 ## 1.1.0-beta.1
 

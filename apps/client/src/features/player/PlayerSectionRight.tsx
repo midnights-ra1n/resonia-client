@@ -58,42 +58,19 @@ export function PlayerSectionRight() {
 
   return (
     <div className="flex items-center gap-3 h-full">
-      {/* Volume */}
-      <div className="flex items-center gap-1">
+      {/* Débogueur réseau/décodage — réservé au mode développeur (voir SettingsPage) */}
+      {devModeEnabled && (
         <button
-          onClick={toggleMute}
-          className="text-neutral-400 hover:text-white transition-colors"
-          title={isMuted ? "Unmute" : "Mute"}
+          onClick={toggleDebugPanel}
+          className={`transition-colors ${showDebugPanel
+            ? "text-accent"
+            : "text-neutral-400 hover:text-white"
+            }`}
+          title="Network & decode debugger"
         >
-          {isMuted || effectiveVolume === 0 ? (
-            <SpeakerX size={18} />
-          ) : (
-            <SpeakerHigh size={18} />
-          )}
+          <Bug size={18} />
         </button>
-        <div className="relative w-24 group">
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={effectiveVolume}
-            onChange={(e) => setVolume(parseFloat(e.target.value))}
-            onPointerDown={() => setIsDragging(true)}
-            onPointerUp={() => setIsDragging(false)}
-            onPointerLeave={() => setIsDragging(false)}
-            className="w-full h-1.5 bg-neutral-700 rounded-full appearance-none cursor-pointer accent-white"
-          />
-          {isDragging && (
-            <div
-              className="absolute -top-8 transform -translate-x-1/2 bg-neutral-800 text-white text-xs px-2 py-1 rounded shadow pointer-events-none whitespace-nowrap"
-              style={{ left: `${effectiveVolume * 100}%` }}
-            >
-              {volumePercent}%
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Pitch / vitesse */}
       <div className="relative" ref={pitchMenuRef}>
@@ -110,18 +87,6 @@ export function PlayerSectionRight() {
         {showPitchMenu && <PitchMenu />}
       </div>
 
-      {/* Queue */}
-      <button
-        onClick={toggleQueue}
-        className={`transition-colors ${showQueue
-          ? "text-accent"
-          : "text-neutral-400 hover:text-white"
-          }`}
-        title="Queue"
-      >
-        <Playlist size={18} />
-      </button>
-
       {/* Lyrics */}
       <button
         onClick={toggleLyrics}
@@ -132,6 +97,18 @@ export function PlayerSectionRight() {
         title="Lyrics"
       >
         <Lyrics size={18} />
+      </button>
+
+      {/* Queue */}
+      <button
+        onClick={toggleQueue}
+        className={`transition-colors ${showQueue
+          ? "text-accent"
+          : "text-neutral-400 hover:text-white"
+          }`}
+        title="Queue"
+      >
+        <Playlist size={18} />
       </button>
 
       {/* Connect */}
@@ -149,19 +126,43 @@ export function PlayerSectionRight() {
         {showConnect && <ConnectMenu />}
       </div>
 
-      {/* Débogueur réseau/décodage — réservé au mode développeur (voir SettingsPage) */}
-      {devModeEnabled && (
+      {/* Volume */}
+      <div className="flex items-center gap-1">
         <button
-          onClick={toggleDebugPanel}
-          className={`transition-colors ${showDebugPanel
-            ? "text-accent"
-            : "text-neutral-400 hover:text-white"
-            }`}
-          title="Network & decode debugger"
+          onClick={toggleMute}
+          className="text-neutral-400 hover:text-white transition-colors"
+          title={isMuted ? "Unmute" : "Mute"}
         >
-          <Bug size={18} />
+          {isMuted || effectiveVolume === 0 ? (
+            <SpeakerX size={18} />
+          ) : (
+            <SpeakerHigh size={18} />
+          )}
         </button>
-      )}
+        <div className="relative w-[104px] group">
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={effectiveVolume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            onPointerDown={() => setIsDragging(true)}
+            onPointerUp={() => setIsDragging(false)}
+            onPointerLeave={() => setIsDragging(false)}
+            className="vol-range"
+            style={{ "--p": `${volumePercent}%` } as React.CSSProperties}
+          />
+          {isDragging && (
+            <div
+              className="absolute -top-8 transform -translate-x-1/2 bg-neutral-800 text-white text-xs px-2 py-1 rounded shadow pointer-events-none whitespace-nowrap"
+              style={{ left: `${effectiveVolume * 100}%` }}
+            >
+              {volumePercent}%
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

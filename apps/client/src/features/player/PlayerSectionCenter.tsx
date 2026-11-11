@@ -219,6 +219,14 @@ export function PlayerSectionCenter() {
             onMouseDown={() => setIsDragging(true)}
             onMouseUp={() => setIsDragging(false)}
           >
+            {hoverProgress !== null && duration > 0 && (
+              <span
+                className="pointer-events-none absolute bottom-full z-20 mb-2 -translate-x-1/2 rounded bg-surface-3 px-1.5 py-0.5 text-xs tabular-nums text-white shadow-e1"
+                style={{ left: `${toPercent(hoverProgress)}%` }}
+              >
+                {formatTime(hoverProgress)}
+              </span>
+            )}
             <WaveformBar
               waveform={waveform}
               style={waveformStyle}
@@ -237,6 +245,14 @@ export function PlayerSectionCenter() {
           onMouseDown={() => setIsDragging(true)}
           onMouseUp={() => setIsDragging(false)}
         >
+          {hoverProgress !== null && duration > 0 && (
+            <span
+              className="pointer-events-none absolute bottom-full z-20 mb-2 -translate-x-1/2 rounded bg-surface-3 px-1.5 py-0.5 text-xs tabular-nums text-white shadow-e1"
+              style={{ left: `${toPercent(hoverProgress)}%` }}
+            >
+              {formatTime(hoverProgress)}
+            </span>
+          )}
           {/* Plages et pastille déplacées par `transform` uniquement (jamais width/left, voir
               RangeWindow) : le tick de lecture (4×/s) ne déclenche ni layout ni repaint, seulement
               une recomposition GPU. Le conteneur de la pastille fait toute la largeur de la barre :

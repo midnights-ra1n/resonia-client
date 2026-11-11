@@ -1,4 +1,6 @@
 import { Play } from "../../components/icons";
+import { PlayingBars } from "../../components/PlayingBars";
+import { LikeButton } from "../player/LikeButton";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";
@@ -105,11 +107,17 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-600">♪</div>
         )}
+        {isCurrent && isPlaying && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 group-hover:hidden">
+            <PlayingBars />
+          </div>
+        )}
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
           <Play size={16} fill="white" className="text-white" />
         </div>
       </div>
 
+      <div className="flex min-w-0 flex-1 items-center gap-2">
       <div className="min-w-0 flex-1">
         <MarqueeText
           text={song.title}
@@ -123,6 +131,8 @@ export function TrackResultRow({ song, songs, index, isSelected, onSelectClick, 
           onClick={(e) => e.stopPropagation()}
           className="text-item-sub text-neutral-400 hover:text-white hover:underline"
         />
+      </div>
+      <LikeButton row track={song} />
       </div>
 
       {showAlbum && (

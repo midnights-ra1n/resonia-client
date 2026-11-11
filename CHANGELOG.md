@@ -16,6 +16,16 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+
+## 1.1.0-beta.1
+
+- New default icon set inspired by Spotify's, completed so every icon of the app matches (other icon packs are still available in Settings → Appearance)
+- Waveform progress bar: new style option in Settings → Appearance (three bands or amplitude only)
+- Progress bar: the small hover marker is gone and the bar now gets a lighter background on hover, like Spotify
+- Animated equalizer next to the track that is playing in track lists
+- "+" / "✓" button at the end of the title column in track lists to add a song to (or see it in) your liked songs
+- First groundwork for the iOS mobile app: home, album page, background playback, cache
+
 ## 1.0.1
 
 - Fixed the progress bar not filling up to the new position after clicking on it: it now jumps right to where you clicked, like Spotify

@@ -32,6 +32,8 @@ interface SettingsState {
   devModeEnabled: boolean;
   /** Forme d'onde dans la barre de lecture (voir lib/audio/waveform). */
   showWaveform: boolean;
+  /** Rendu de la forme d'onde : 3 bandes (graves/médiums/aigus) ou amplitude seule. */
+  waveformStyle: WaveformStyle;
   checkUpdatesOnLaunch: boolean;
   betaUpdatesEnabled: boolean;
   /** Version que l'utilisateur a explicitement choisi de reporter ("Plus tard" dans la pop-up
@@ -52,6 +54,7 @@ interface SettingsState {
   ) => Promise<void>;
   setDevModeEnabled: (enabled: boolean) => Promise<void>;
   setShowWaveform: (enabled: boolean) => Promise<void>;
+  setWaveformStyle: (style: WaveformStyle) => Promise<void>;
   setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
   setBetaUpdatesEnabled: (enabled: boolean) => Promise<void>;
   setDismissedUpdateVersion: (version: string | null) => Promise<void>;
@@ -71,6 +74,8 @@ const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
 const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
 const SHOW_WAVEFORM_STORAGE_KEY = "resonia:settings:showWaveform";
+const WAVEFORM_STYLE_STORAGE_KEY = "resonia:settings:waveformStyle";
+export type WaveformStyle = "bands" | "simple";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
   "resonia:settings:checkUpdatesOnLaunch";
 // Ancien format (booléen seul, sans le canal sur lequel le choix a été fait) : repris une fois,
@@ -132,6 +137,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   playlistSortDirection: "asc",
   devModeEnabled: false,
   showWaveform: false,
+  waveformStyle: "bands",
   checkUpdatesOnLaunch: true,
   betaUpdatesEnabled: false,
   dismissedUpdateVersion: null,
@@ -154,6 +160,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       spotifyClientId,
       spotifyClientSecret,
       showWaveform,
+      waveformStyle,
     ] = [
       storage.getSync<string>(STORAGE_KEY),
       storage.getSync<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -169,6 +176,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
       storage.getSync<EncryptedPassword>(SPOTIFY_CLIENT_SECRET_STORAGE_KEY),
       storage.getSync<boolean>(SHOW_WAVEFORM_STORAGE_KEY),
+      storage.getSync<WaveformStyle>(WAVEFORM_STYLE_STORAGE_KEY),
     ] as const;
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -189,6 +197,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortDirection: playlistSortDirection ?? "asc",
       devModeEnabled: devModeEnabled ?? false,
       showWaveform: showWaveform ?? false,
+      waveformStyle: waveformStyle === "simple" ? "simple" : "bands",
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
       betaUpdatesEnabled: resolveBetaUpdatesEnabled(readBetaUpdatesChoice(betaUpdatesChoice), currentReleaseChannel()),
       dismissedUpdateVersion: dismissedUpdateVersion ?? null,
@@ -260,6 +269,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setShowWaveform: async (enabled) => {
     await storage.set(SHOW_WAVEFORM_STORAGE_KEY, enabled);
     set({ showWaveform: enabled });
+  },
+
+  setWaveformStyle: async (style) => {
+    await storage.set(WAVEFORM_STYLE_STORAGE_KEY, style);
+    set({ waveformStyle: style });
   },
 
   setCheckUpdatesOnLaunch: async (enabled) => {

@@ -127,6 +127,7 @@ export function PlayerSectionCenter() {
     const [isDragging, setIsDragging] = useState(false);
     const barRef = useRef<HTMLDivElement>(null);
     const showWaveform = useSettingsStore((s) => s.showWaveform);
+    const waveformStyle = useSettingsStore((s) => s.waveformStyle);
     // Option désactivée : aucune lecture ni calcul de forme d'onde.
     const waveform = useTrackWaveform(showWaveform ? currentTrack?.id : undefined);
 
@@ -211,7 +212,7 @@ export function PlayerSectionCenter() {
           // que la barre de lecture garde exactement la même hauteur.
           <div
             ref={barRef}
-            className="relative -my-[10px] h-6 flex-1 cursor-pointer group"
+            className="relative -my-[10px] h-6 flex-1 cursor-pointer group rounded bg-white/5 transition-colors hover:bg-white/10"
             onClick={handleClickBar}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setHoverProgress(null)}
@@ -220,23 +221,16 @@ export function PlayerSectionCenter() {
           >
             <WaveformBar
               waveform={waveform}
+              style={waveformStyle}
               played={played}
               buffered={buffered}
               pulsing={isBuffering && Boolean(currentTrack)}
             />
-            {!isScrubbing && hoverProgress !== null && (
-              <div
-                className="pointer-events-none absolute inset-y-0 left-0 w-full"
-                style={{ transform: `translateX(${(hoverProgress / (duration || 1)) * 100}%)` }}
-              >
-                <div className="h-full w-px bg-white/60" />
-              </div>
-            )}
           </div>
         ) : (
         <div
           ref={barRef}
-          className="relative flex-1 h-1 bg-neutral-700 rounded-full cursor-pointer group"
+          className="relative flex-1 h-1 bg-neutral-700 hover:bg-neutral-600 transition-colors rounded-full cursor-pointer group"
           onClick={handleClickBar}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverProgress(null)}
@@ -258,14 +252,6 @@ export function PlayerSectionCenter() {
             </div>
           </div>
 
-          {!isScrubbing && hoverProgress !== null && (
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{ transform: `translateX(${(hoverProgress / (duration || 1)) * 100}%)` }}
-            >
-              <div className="h-full w-px bg-white/60" />
-            </div>
-          )}
 
           <div
             className="pointer-events-none absolute inset-0"

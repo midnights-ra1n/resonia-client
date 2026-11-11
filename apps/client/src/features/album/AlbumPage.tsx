@@ -1,4 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { LikeButton } from "../player/LikeButton";
+import { PlayingBars } from "../../components/PlayingBars";
 import { MarqueeText } from "../../components/MarqueeText";
 import { Check, CircleNotch, Download, Pause, Play, Shuffle } from "../../components/icons";
 import { useAlbum } from "./useAlbum";
@@ -345,11 +347,7 @@ export function AlbumPage() {
 
                 <div className="flex items-center justify-center text-sm text-neutral-400">
                   {isCurrent && isPlaying ? (
-                    <Pause
-                      size={14}
-                      className="text-accent"
-                      fill="currentColor"
-                    />
+<PlayingBars />
                   ) : (
                     <>
                       <span className="group-hover:hidden">{index + 1}</span>
@@ -362,7 +360,8 @@ export function AlbumPage() {
                   )}
                 </div>
 
-                <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="min-w-0 flex-1">
                   <MarqueeText
                     text={song.title}
                     className={`text-item ${isCurrent ? "text-accent" : "text-white"}`}
@@ -377,6 +376,8 @@ export function AlbumPage() {
                       className="text-item-sub text-neutral-400 hover:text-white hover:underline"
                     />
                   )}
+                  </div>
+                  <LikeButton row track={song} />
                 </div>
 
                 <span className="text-right text-xs uppercase text-neutral-400">

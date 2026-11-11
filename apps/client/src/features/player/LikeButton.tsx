@@ -9,10 +9,12 @@ import { useServersStore } from "../../stores/serversStore";
 import type { Track } from "../../stores/playerStore";
 
 interface LikeButtonProps {
-  track: Track;
+  track: Pick<Track, "id">;
+  /** Ligne de liste : « + » visible au survol, « ✓ » toujours visible ; les clics ne remontent pas à la ligne. */
+  row?: boolean;
 }
 
-export function LikeButton({ track }: LikeButtonProps) {
+export function LikeButton({ track, row }: LikeButtonProps) {
   const { t } = useTranslation();
   const servers = useServersStore((s) => s.servers);
   const activeServerId = useServersStore((s) => s.activeServerId);
@@ -34,8 +36,15 @@ export function LikeButton({ track }: LikeButtonProps) {
     setMenu({ x: rect.left, y: rect.bottom + 6 });
   }
 
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const Wrap = row ? "span" : "div";
   return (
-    <>
+    <Wrap
+      className={row ? "shrink-0" : "contents"}
+      onClick={row ? stop : undefined}
+      onDoubleClick={row ? stop : undefined}
+      onContextMenu={row ? stop : undefined}
+    >
       <button
         type="button"
         onClick={handleClick}
@@ -44,7 +53,7 @@ export function LikeButton({ track }: LikeButtonProps) {
           isLiked
             ? "border-accent bg-accent text-on-accent hover:scale-105"
             : "border-neutral-500 text-neutral-400 hover:border-white hover:text-white"
-        }`}
+        } ${row && !isLiked ? "opacity-0 focus-visible:opacity-100 group-hover:opacity-100" : ""}`}
       >
         {isLiked ? <Check size={11} strokeWidth={3} /> : <Plus size={11} strokeWidth={3} />}
       </button>
@@ -73,6 +82,6 @@ export function LikeButton({ track }: LikeButtonProps) {
           ]}
         />
       )}
-    </>
+    </Wrap>
   );
 }

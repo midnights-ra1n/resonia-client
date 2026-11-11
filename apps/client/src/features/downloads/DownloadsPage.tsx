@@ -1,4 +1,6 @@
-import { Pause, Play, Trash } from "../../components/icons";
+import { Play, Trash } from "../../components/icons";
+import { LikeButton } from "../player/LikeButton";
+import { PlayingBars } from "../../components/PlayingBars";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { TrackInfoModal } from "../../components/TrackInfoModal";
@@ -132,7 +134,7 @@ export function DownloadsPage() {
                 >
                   <div className="flex items-center justify-center text-sm text-neutral-400">
                     {isCurrent && isPlaying ? (
-                      <Pause size={14} className="text-accent" fill="currentColor" />
+                      <PlayingBars />
                     ) : (
                       <>
                         <span className="group-hover:hidden">{index + 1}</span>
@@ -140,9 +142,12 @@ export function DownloadsPage() {
                       </>
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="min-w-0 flex-1">
                     <MarqueeText text={meta.track.title} className={`text-item ${isCurrent ? "text-accent" : "text-white"}`} />
                     <MarqueeText text={meta.track.artist} className="text-item-sub text-neutral-400" />
+                    </div>
+                    <LikeButton row track={meta.track} />
                   </div>
                   <div className="min-w-0 truncate text-item-sub text-neutral-400">{meta.track.album}</div>
                   <span className="text-right text-xs text-neutral-400 tabular-nums">{formatTrackDuration(meta.track.duration)}</span>

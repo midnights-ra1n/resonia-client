@@ -34,13 +34,13 @@ Here're some of the project's best features:
 Download the build for your system (all files are also on the [Releases page](https://github.com/midnights-ra1n/resonia-client/releases)):
 
 <!-- downloads:start -->
-Latest version: **[v1.0.0-beta.9](https://github.com/midnights-ra1n/resonia-client/releases/tag/v1.0.0-beta.9)**
+Latest version: **[v1.1.0-beta.1](https://github.com/midnights-ra1n/resonia-client/releases/tag/v1.1.0-beta.1)**
 
 | OS | Download |
 | --- | --- |
-| macOS | [Apple Silicon (.dmg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-arm64.dmg)<br>[Apple Silicon (.pkg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-arm64.pkg) |
-| Windows | [x64 / ARM64 (.exe)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-Setup-1.0.0-beta.9.exe) |
-| Linux | [x86_64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-x86_64.AppImage)<br>[ARM64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-arm64.AppImage)<br>[x86_64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-amd64.deb)<br>[ARM64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-arm64.deb)<br>[x86_64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-x86_64.rpm)<br>[ARM64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.0.0-beta.9/Resonia-1.0.0-beta.9-aarch64.rpm) |
+| macOS | [Apple Silicon (.dmg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-arm64.dmg)<br>[Apple Silicon (.pkg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-arm64.pkg) |
+| Windows | [x64 / ARM64 (.exe)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-Setup-1.1.0-beta.1.exe) |
+| Linux | [x86_64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-x86_64.AppImage)<br>[ARM64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-arm64.AppImage)<br>[x86_64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-amd64.deb)<br>[ARM64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-arm64.deb)<br>[x86_64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-x86_64.rpm)<br>[ARM64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.1/Resonia-1.1.0-beta.1-aarch64.rpm) |
 <!-- downloads:end -->
 
 The desktop app updates itself automatically. You can opt in to beta releases in the settings.
@@ -82,6 +82,10 @@ Don't want to use Docker? Each release also ships a `Resonia-web-X.Y.Z.zip` arch
 > The web version needs a secure context (**HTTPS** or `localhost`) for its service worker and audio cache. If you host it on another machine, put it behind a reverse proxy with TLS.
 > Offline downloads and configurable transcoding are only available in the desktop app. The web version always streams AAC at 256 kbps.
 
+<h3>📱 Mobile app (iOS / Android)</h3>
+
+The Flutter mobile app lives in [`apps/mobile`](apps/mobile). It's in early development and isn't on the App Store or Google Play: build it yourself as an IPA or APK, or sideload it on an iPhone with Xcode. See the [mobile README](apps/mobile/README.md) for the steps.
+
 <h3>🔧 Build from source</h3>
 
 **Prerequisites:** [Node.js 22+](https://nodejs.org/) and [pnpm](https://pnpm.io/) (you can enable it with `corepack enable`).
@@ -111,6 +115,16 @@ Platform-specific targets are also available: `electron:dist:mac`, `electron:dis
 > [!NOTE]
 > - On macOS, packaging needs **Xcode 26+**, which compiles the Liquid Glass app icon with `actool`.
 > - On Linux, building the `.rpm` target needs the `rpm` package (`sudo apt install rpm` on Debian/Ubuntu).
+
+**Mobile app**
+
+Needs [Flutter](https://docs.flutter.dev/get-started/install) 3.47+ (plus Xcode for iOS, Android Studio for Android):
+
+```bash
+cd apps/mobile
+flutter pub get
+flutter run
+```
 
 **Docker image**
 
@@ -143,6 +157,7 @@ Technologies used in the project:
 *   Origin Private File System
 *   Service Worker (app ressources caching)
 *   Electron & electron-builder
+*   Flutter (mobile app)
 *   Navidrome
 *   LRCLIB
 *   Last.fm

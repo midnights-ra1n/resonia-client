@@ -344,6 +344,48 @@ img {
   cursor: pointer;
 }
 
+/* Anneau de chargement autour du bouton Lecture quand une piste tarde à démarrer (comme Spotify).
+   Invisible pendant les 300 premières ms : un démarrage instantané (cache) ne le fait jamais
+   clignoter. N'existe dans le DOM que pendant le chargement — aucun coût le reste du temps. */
+.loading-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  border-top-color: var(--color-text-1);
+  border-right-color: var(--color-text-1);
+  pointer-events: none;
+  animation:
+    loading-ring-spin 0.9s linear infinite,
+    loading-ring-in 200ms 300ms both;
+}
+@keyframes loading-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes loading-ring-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.eq-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scaleY(0.5);
+  animation: eq-bounce 0.9s ease-in-out infinite;
+}
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.2);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
 /* Réglage système « Réduire les animations » : tout mouvement décoratif devient instantané. */
 @media (prefers-reduced-motion: reduce) {
   *,

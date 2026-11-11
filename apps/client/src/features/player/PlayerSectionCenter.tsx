@@ -29,6 +29,8 @@ export function PlayerSectionCenter() {
   const toggleRepeat = usePlayerStore((s) => s.toggleRepeat);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
   const prevTrack = usePlayerStore((s) => s.prevTrack);
+  // Lecture demandée mais pas encore audible (chargement réseau, attente de données).
+  const isLoading = usePlayerStore((s) => s.isPlaying && (s.engineState === "loading" || s.engineState === "buffering"));
 
   return (
     <div className="flex flex-col items-center gap-2 w-full max-w-2xl">
@@ -55,9 +57,11 @@ export function PlayerSectionCenter() {
 
         <button
           onClick={togglePlay}
-          className="w-8 h-8 rounded-full bg-text-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-[transform,translate,scale]"
+          className="relative w-8 h-8 rounded-full bg-text-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-[transform,translate,scale]"
           title={isPlaying ? "Pause" : "Play"}
+          aria-busy={isLoading}
         >
+          {isLoading && <span className="loading-ring" aria-hidden />}
           {isPlaying ? (
             <Pause size={16} fill="currentColor" className="text-bg-base" />
           ) : (
@@ -123,6 +127,7 @@ export function PlayerSectionCenter() {
     const [isDragging, setIsDragging] = useState(false);
     const barRef = useRef<HTMLDivElement>(null);
     const showWaveform = useSettingsStore((s) => s.showWaveform);
+    const waveformStyle = useSettingsStore((s) => s.waveformStyle);
     // Option désactivée : aucune lecture ni calcul de forme d'onde.
     const waveform = useTrackWaveform(showWaveform ? currentTrack?.id : undefined);
 
@@ -139,17 +144,14 @@ export function PlayerSectionCenter() {
     const progress = toPercent(displayTime);
 
     // Trois couches : piste entière (fond), plages chargées (tampon du lecteur + cache, disjointes
-    // après un seek) et plages réellement écoutées — un passage sauté par un seek reste visible.
-    // Le segment en cours court de `playedFrom` à la position affichée (aperçu inclus pendant un
-    // glisser) ; seules ses bornes bougent au fil de la lecture.
+    // après un seek) et remplissage. Le remplissage va toujours du début à la position affichée
+    // (comme Spotify : un clic le déplace aussitôt), plus les plages déjà écoutées au-delà, qui
+    // restent visibles après un retour en arrière.
     const bufferedRanges = usePlayerStore((s) => s.bufferedRanges);
     const playedRanges = usePlayerStore((s) => s.playedRanges);
-    const playedFrom = toPercent(usePlayerStore((s) => s.playedFrom));
     const toPercentRange = ([a, b]: readonly [number, number]): PercentRange => [toPercent(a), toPercent(b)];
     const buffered = currentTrack ? bufferedRanges.map(toPercentRange) : [];
-    const played: PercentRange[] = currentTrack
-      ? [...playedRanges.map(toPercentRange), [playedFrom, Math.max(playedFrom, progress)]]
-      : [];
+    const played: PercentRange[] = currentTrack ? [[0, progress], ...playedRanges.map(toPercentRange)] : [];
 
     const handleClickBar = (e: React.MouseEvent<HTMLDivElement>) => {
       if (!barRef.current || !duration) return;
@@ -210,7 +212,7 @@ export function PlayerSectionCenter() {
           // que la barre de lecture garde exactement la même hauteur.
           <div
             ref={barRef}
-            className="relative -my-[10px] h-6 flex-1 cursor-pointer group"
+            className="relative -my-[10px] h-6 flex-1 cursor-pointer group rounded bg-white/5 transition-colors hover:bg-white/10"
             onClick={handleClickBar}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setHoverProgress(null)}
@@ -219,23 +221,16 @@ export function PlayerSectionCenter() {
           >
             <WaveformBar
               waveform={waveform}
+              style={waveformStyle}
               played={played}
               buffered={buffered}
               pulsing={isBuffering && Boolean(currentTrack)}
             />
-            {!isScrubbing && hoverProgress !== null && (
-              <div
-                className="pointer-events-none absolute inset-y-0 left-0 w-full"
-                style={{ transform: `translateX(${(hoverProgress / (duration || 1)) * 100}%)` }}
-              >
-                <div className="h-full w-px bg-white/60" />
-              </div>
-            )}
           </div>
         ) : (
         <div
           ref={barRef}
-          className="relative flex-1 h-1 bg-neutral-700 rounded-full cursor-pointer group"
+          className="relative flex-1 h-1 bg-neutral-700 hover:bg-neutral-600 transition-colors rounded-full cursor-pointer group"
           onClick={handleClickBar}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverProgress(null)}
@@ -257,14 +252,6 @@ export function PlayerSectionCenter() {
             </div>
           </div>
 
-          {!isScrubbing && hoverProgress !== null && (
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{ transform: `translateX(${(hoverProgress / (duration || 1)) * 100}%)` }}
-            >
-              <div className="h-full w-px bg-white/60" />
-            </div>
-          )}
 
           <div
             className="pointer-events-none absolute inset-0"

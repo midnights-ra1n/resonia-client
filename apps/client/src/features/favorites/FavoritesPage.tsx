@@ -1,4 +1,5 @@
 import { Heart, Pause, Play, Shuffle } from "../../components/icons";
+import { PlayingBars } from "../../components/PlayingBars";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SongDTO } from "@resonia/api-client";
@@ -193,7 +194,7 @@ export function FavoritesPage() {
                   >
                     <div className="flex items-center justify-center text-sm text-neutral-400">
                       {isCurrent && isPlaying ? (
-                        <Pause size={14} className="text-accent" fill="currentColor" />
+                        <PlayingBars />
                       ) : (
                         <>
                           <span className="group-hover:hidden">{index + 1}</span>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { Waveform } from "../../lib/audio/waveform/waveform";
+import type { WaveformStyle } from "../../stores/settingsStore";
 
 // Largeur d'une colonne et espace entre deux, en pixels CSS : rendu « barres » des vues
 // d'ensemble DJ, lisible même sur une barre étroite.
@@ -12,7 +13,7 @@ export type PercentRange = [from: number, to: number];
 /** Dessine la forme d'onde symétrique en blanc, en trois couches d'opacité croissante : amplitude
  *  totale, puis médiums + aigus, puis aigus — même lecture que l'aperçu 3 bandes des logiciels DJ.
  *  Sert de masque : la teinte vient de la couleur de fond de chaque couche (voir WaveformBar). */
-function draw(canvas: HTMLCanvasElement, waveform: Waveform, width: number, height: number): boolean {
+function draw(canvas: HTMLCanvasElement, waveform: Waveform, style: WaveformStyle, width: number, height: number): boolean {
   if (width === 0 || height === 0) return false;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(width * dpr);
@@ -24,11 +25,15 @@ function draw(canvas: HTMLCanvasElement, waveform: Waveform, width: number, heig
 
   const columns = Math.max(1, Math.floor(width / (BAR_WIDTH + BAR_GAP)));
   const middle = height / 2;
-  const layers: Array<{ alpha: number; value: (i: number) => number }> = [
-    { alpha: 0.35, value: (i) => Math.max(waveform.low[i], waveform.mid[i], waveform.high[i]) },
-    { alpha: 0.65, value: (i) => Math.max(waveform.mid[i], waveform.high[i]) },
-    { alpha: 1, value: (i) => waveform.high[i] },
-  ];
+  const full = (i: number) => Math.max(waveform.low[i], waveform.mid[i], waveform.high[i]);
+  const layers: Array<{ alpha: number; value: (i: number) => number }> =
+    style === "simple"
+      ? [{ alpha: 1, value: full }]
+      : [
+          { alpha: 0.35, value: full },
+          { alpha: 0.65, value: (i) => Math.max(waveform.mid[i], waveform.high[i]) },
+          { alpha: 1, value: (i) => waveform.high[i] },
+        ];
   for (const layer of layers) {
     ctx.globalAlpha = layer.alpha;
     for (let c = 0; c < columns; c++) {
@@ -83,11 +88,13 @@ const MASK_STYLE: CSSProperties = {
  *  lecture, ni le tampon, ni un changement de thème ne la redessinent. */
 export function WaveformBar({
   waveform,
+  style,
   played,
   buffered,
   pulsing,
 }: {
   waveform: Waveform;
+  style: WaveformStyle;
   played: readonly PercentRange[];
   buffered: readonly PercentRange[];
   pulsing: boolean;
@@ -99,7 +106,7 @@ export function WaveformBar({
     if (!root) return;
     const canvas = document.createElement("canvas");
     const redraw = () => {
-      if (draw(canvas, waveform, root.clientWidth, root.clientHeight)) {
+      if (draw(canvas, waveform, style, root.clientWidth, root.clientHeight)) {
         root.style.setProperty("--waveform", `url(${canvas.toDataURL()})`);
       }
     };
@@ -107,7 +114,7 @@ export function WaveformBar({
     const resize = new ResizeObserver(redraw);
     resize.observe(root);
     return () => resize.disconnect();
-  }, [waveform]);
+  }, [waveform, style]);
 
   return (
     <div ref={rootRef} className={`absolute inset-0 ${pulsing ? "animate-pulse" : ""}`}>

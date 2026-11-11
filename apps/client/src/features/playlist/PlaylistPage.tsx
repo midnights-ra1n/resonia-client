@@ -1,4 +1,6 @@
 import { CaretDown, Check, CircleNotch, DotsSixVertical, Download, Pause, Play, Shuffle, SortAscending, SortDescending } from "../../components/icons";
+import { LikeButton } from "../player/LikeButton";
+import { PlayingBars } from "../../components/PlayingBars";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PlaylistWithSongsDTO } from "@resonia/api-client";
@@ -503,11 +505,7 @@ export function PlaylistPage() {
 
                     <div className="flex items-center justify-center text-sm text-neutral-400">
                       {isCurrent && isPlaying ? (
-                        <Pause
-                          size={14}
-                          className="text-accent"
-                          fill="currentColor"
-                        />
+<PlayingBars />
                       ) : canReorder ? (
                         <>
                           <span className="group-hover:hidden">
@@ -532,7 +530,8 @@ export function PlaylistPage() {
                       )}
                     </div>
 
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 flex-1">
                       <MarqueeText
                         text={song.title}
                         draggable={false}
@@ -549,6 +548,8 @@ export function PlaylistPage() {
                         draggable={false}
                         className="text-item-sub text-neutral-400 hover:text-white hover:underline"
                       />
+                      </div>
+                      <LikeButton row track={song} />
                     </div>
 
                     <div className="min-w-0">

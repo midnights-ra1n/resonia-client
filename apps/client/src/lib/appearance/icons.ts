@@ -1,13 +1,19 @@
 import { create } from "zustand";
 import { useIconPackStore } from "../../components/icons";
 import { ICON_PACKS } from "../../components/icons/packs";
+import spotify from "../../components/icons/packs/spotify";
 
-/** Packs d'icônes proposés dans Paramètres → Apparence. Le défaut (Material Symbols Rounded) est
- *  dans le bundle principal ; chaque autre pack est un chunk séparé, chargé seulement s'il est
+/** Packs d'icônes proposés dans Paramètres → Apparence. Le défaut (Spotify) et Material Symbols
+ *  Rounded (le repli des icônes manquantes) sont dans le bundle principal ; chaque autre pack est un chunk séparé, chargé seulement s'il est
  *  choisi, et ne contient que les ~50 icônes de l'app (pas le pack entier). Tout est local :
  *  aucune requête vers un CDN. */
-export const DEFAULT_ICON_PACK = "material-rounded";
-export const ICON_PACK_OPTIONS = [{ id: DEFAULT_ICON_PACK, label: "Material Symbols Rounded", coverage: 53 }, ...ICON_PACKS];
+export const DEFAULT_ICON_PACK = "spotify";
+const MATERIAL_PACK = "material-rounded";
+export const ICON_PACK_OPTIONS = [
+  { id: DEFAULT_ICON_PACK, label: "Spotify", coverage: 53 },
+  { id: MATERIAL_PACK, label: "Material Symbols Rounded", coverage: 53 },
+  ...ICON_PACKS,
+];
 
 /** Échelle appliquée à toutes les icônes (`--icon-scale`). Défaut un peu au-dessus de 1 :
  *  les tailles en dur des composants datent d'icônes jugées trop petites. */
@@ -19,7 +25,9 @@ const PACK_KEY = "resonia:appearance:iconPack";
 const SCALE_KEY = "resonia:appearance:iconScale";
 
 type IconPack = NonNullable<ReturnType<typeof useIconPackStore.getState>["pack"]>;
-const loaders = import.meta.glob<{ default: IconPack }>(["../../components/icons/packs/*.ts", "!**/index.ts"]);
+// Packs du bundle principal : appliqués sans chargement (`null` = Material, le repli).
+const bundled: Record<string, IconPack | null> = { [DEFAULT_ICON_PACK]: spotify, [MATERIAL_PACK]: null };
+const loaders = import.meta.glob<{ default: IconPack }>(["../../components/icons/packs/*.ts", "!**/index.ts", "!**/spotify.ts"]);
 const loaderFor = (id: string) => loaders[`../../components/icons/packs/${id}.ts`];
 
 function read(key: string) {
@@ -45,6 +53,7 @@ let loadSeq = 0;
  *  arrivé pendant le chargement gagne. */
 async function applyPack(id: string) {
   const seq = ++loadSeq;
+  if (id in bundled) return useIconPackStore.setState({ pack: bundled[id] });
   const load = loaderFor(id);
   let pack: IconPack | null = null;
   if (load) {
@@ -70,7 +79,7 @@ const storedPack = read(PACK_KEY);
 const storedScale = Number(read(SCALE_KEY));
 
 export const useIconSettingsStore = create<IconSettingsState>((set) => ({
-  iconPack: storedPack && (storedPack === DEFAULT_ICON_PACK || loaderFor(storedPack)) ? storedPack : DEFAULT_ICON_PACK,
+  iconPack: storedPack && (storedPack in bundled || loaderFor(storedPack)) ? storedPack : DEFAULT_ICON_PACK,
   iconScale: storedScale ? clampScale(storedScale) : DEFAULT_ICON_SCALE,
   setIconPack: (id) => {
     write(PACK_KEY, id);
@@ -90,5 +99,5 @@ export const useIconSettingsStore = create<IconSettingsState>((set) => ({
 export function initIcons() {
   const { iconPack, iconScale } = useIconSettingsStore.getState();
   applyScale(iconScale);
-  return iconPack === DEFAULT_ICON_PACK ? Promise.resolve() : applyPack(iconPack);
+  return applyPack(iconPack);
 }

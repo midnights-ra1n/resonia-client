@@ -16,7 +16,7 @@ import {
   useIconSettingsStore,
 } from "../../lib/appearance/icons";
 import { GearSix, Heart, House, MusicNotes, Pause, Play, Playlist, Shuffle, SkipForward, Trash } from "../../components/icons";
-import { useSettingsStore } from "../../stores/settingsStore";
+import { useSettingsStore, type WaveformStyle } from "../../stores/settingsStore";
 
 const PREVIEW_ICONS = [House, Play, Pause, SkipForward, Shuffle, Heart, Playlist, MusicNotes, Trash, GearSix];
 
@@ -40,6 +40,8 @@ export function AppearanceSection() {
   const setIconScale = useIconSettingsStore((s) => s.setIconScale);
   const showWaveform = useSettingsStore((s) => s.showWaveform);
   const setShowWaveform = useSettingsStore((s) => s.setShowWaveform);
+  const waveformStyle = useSettingsStore((s) => s.waveformStyle);
+  const setWaveformStyle = useSettingsStore((s) => s.setWaveformStyle);
 
   const fontLabel = (id: FontId, label: string) =>
     id === DEFAULT_FONT ? `${label} ${t("settings.fontDefaultSuffix")}` : label;
@@ -162,6 +164,23 @@ export function AppearanceSection() {
             />
           </span>
         </button>
+
+        {showWaveform && (
+          <div>
+            <label htmlFor="waveform-style-select" className="block text-sm font-medium text-white">
+              {t("settings.waveformStyle")}
+            </label>
+            <select
+              id="waveform-style-select"
+              value={waveformStyle}
+              onChange={(e) => setWaveformStyle(e.target.value as WaveformStyle)}
+              className={SELECT_CLASS}
+            >
+              <option value="bands">{t("settings.waveformStyleBands")}</option>
+              <option value="simple">{t("settings.waveformStyleSimple")}</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <label htmlFor="ui-font-select" className="block text-sm font-medium text-white">

@@ -16,6 +16,40 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+
+## 1.1.0-beta.1
+
+- New default icon set inspired by Spotify's, completed so every icon of the app matches (other icon packs are still available in Settings → Appearance)
+- Waveform progress bar: new style option in Settings → Appearance (three bands or amplitude only)
+- Progress bar: the small hover marker is gone and the bar now gets a lighter background on hover, like Spotify
+- Animated equalizer next to the track that is playing in track lists
+- "+" / "✓" button at the end of the title column in track lists to add a song to (or see it in) your liked songs
+- First groundwork for the iOS mobile app: home, album page, background playback, cache
+
+## 1.0.1
+
+- Fixed the progress bar not filling up to the new position after clicking on it: it now jumps right to where you clicked, like Spotify
+
+## 1.0.0
+
+The first stable release of Resonia, a fast, Spotify-like desktop and web player for Navidrome.
+
+New since 1.0.0-beta.9:
+- The progress bar now shows every part of the song that is loaded and every part you've already listened to, even after skipping around
+- More Spotify-like look: white play button and progress bar (orange on hover), thinner progress bar, tighter corners and spacing, deeper black background
+- The Spotify Mix font now works everywhere, without having to install it on your system
+- New icon packs (Material, Phosphor, Lucide, Tabler, Remix, Font Awesome and more) and an icon size setting in Settings → Appearance
+
+Everything that came with the betas:
+- Gapless playback, with the next tracks preloaded and cached so songs start instantly and never cut between tracks
+- Home, album, artist, playlist, favorites, search, tracks, genres, folders and statistics pages
+- Synced lyrics, a play queue, shuffle and repeat, and downloads for offline listening
+- Themes (Resonia Orange, Catppuccin, Nord, Monokai, Tokyo Night, Everforest, Spotify, GitHub Dark), custom fonts and a waveform progress bar
+- System media controls and Now Playing on macOS, Windows and Linux
+- Automatic updates that install in the background
+- Scrobbling to your Navidrome server, artist info from Last.fm and optionally Spotify, experimental AirPlay
+- Desktop apps for macOS, Windows and Linux, plus a web version and Docker image
+
 ## 1.0.0-beta.9
 - Media controls now work from the macOS Now Playing menu and the keyboard media keys (play/pause, next, previous)
 - Media controls no longer stop working after the queue ends

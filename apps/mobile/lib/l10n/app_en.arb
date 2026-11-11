@@ -1,0 +1,113 @@
+{
+  "@@locale": "en",
+  "navHome": "Home",
+  "navSearch": "Search",
+  "navLibrary": "Library",
+  "searchPlaceholder": "Search tracks, artists, albums...",
+  "loginTitle": "Log in",
+  "loginServerUrl": "Server address",
+  "loginServerUrlPlaceholder": "https://music.example.com",
+  "loginUsername": "Username",
+  "loginPassword": "Password",
+  "loginSubmit": "Log in",
+  "loginSubmitting": "Logging in...",
+  "loginErrorInvalidUrl": "This server address isn't valid.",
+  "loginErrorInsecureHttp": "http:// only works for addresses on your local network. Use https:// instead.",
+  "loginErrorUnreachable": "Can't reach the server. Check the address and your connection.",
+  "loginErrorNotNavidrome": "This address doesn't look like a Navidrome server.",
+  "loginErrorCredentials": "Wrong username or password.",
+  "loginErrorGeneric": "An unknown error occurred.",
+  "accountMenu": "Account",
+  "accountLogout": "Log out",
+  "homeGreetingMorning": "Good morning, {username}",
+  "homeGreetingAfternoon": "Good afternoon, {username}",
+  "homeGreetingEvening": "Good evening, {username}",
+  "homeResumeListening": "Pick up where you left off",
+  "homeQuickAccess": "Quick access",
+  "homeYourPlaylists": "Your playlists",
+  "homeMostPlayedAlbums": "Most played albums",
+  "homeRecentlyPlayed": "Recently played",
+  "homeNewReleases": "New releases",
+  "homeDiscover": "Discover",
+  "homeNoAlbums": "No albums to show yet",
+  "homeLoadError": "Couldn't load your library.",
+  "retry": "Retry",
+  "trackCount": "{count, plural, =1{1 song} other{{count} songs}}",
+  "back": "Back",
+  "close": "Close",
+  "play": "Play",
+  "pause": "Pause",
+  "next": "Next",
+  "previous": "Previous",
+  "shufflePlay": "Shuffle play",
+  "repeatOff": "Repeat off",
+  "repeatAll": "Repeat all",
+  "repeatOne": "Repeat one",
+  "playbackPosition": "Playback position",
+  "albumLabel": "Album",
+  "albumNotFound": "Album not found",
+  "albumDurationHoursMinutes": "{hours} hr {minutes} min",
+  "albumDurationMinutes": "{minutes} min",
+  "pitchTitle": "Pitch",
+  "pitchRange": "Range",
+  "pitchReset": "Reset (1x)",
+  "pitchMasterTempo": "Master Tempo",
+  "pitchMasterTempoHint": "Keeps the pitch when the speed changes",
+  "pitchHint": "Speed ± pitch, like a turntable",
+  "@homeGreetingMorning": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeGreetingAfternoon": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeGreetingEvening": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "@trackCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@albumDurationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@albumDurationMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "startTime": "Start time",
+  "clearCache": "Clear music cache",
+  "clearCacheBody": "Downloaded songs will be removed from this device. The track playing and the next ones are kept.",
+  "cacheCleared": "Cache cleared ({size})",
+  "@cacheCleared": {
+    "placeholders": { "size": { "type": "String" } }
+  },
+  "cancel": "Cancel",
+  "@startTime": {
+    "description": "Time between tapping a track or Play and the first sound (stopwatch in the full-screen player)."
+  }
+}

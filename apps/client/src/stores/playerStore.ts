@@ -3,7 +3,7 @@ import { cacheStore } from "../lib/audio/cache/cacheStore";
 import { cacheKeyFor } from "../lib/audio/cache/types";
 import { downloadStore } from "../lib/downloads/downloadStore";
 import { prefetchScheduler } from "../lib/audio/cache/prefetchScheduler";
-import { DecodedBufferCache } from "../lib/audio/engine/decodedBufferCache";
+import { DecodedBufferCache, type DecodedTrack } from "../lib/audio/engine/decodedBufferCache";
 import { getGaplessEngine } from "../lib/audio/engine/gaplessEngine";
 import type { EngineState } from "../lib/audio/engine/types";
 import { listOutputDevices, type OutputDevice } from "../lib/audio/outputDevices";
@@ -433,7 +433,9 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       for (const track of tracks.slice(1)) {
         if (abort.signal.aborted || (await loadWaveform(track.id))) continue;
         const bytes = await waitForTrackBytes(track.id, qualityId, abort.signal);
-        if (!bytes || bytes.byteLength === 0 || abort.signal.aborted) return;
+        if (abort.signal.aborted) return;
+        // Piste injoignable : on passe à la suivante au lieu d'abandonner toutes les autres.
+        if (!bytes || bytes.byteLength === 0) continue;
         try {
           await ensureWaveform(track.id, await engine.decode(bytes));
         } catch (err) {
@@ -557,6 +559,35 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     }
     if (!(await cacheStore.waitForComplete(trackId, qualityId, signal))) return null;
     return cacheStore.readCachedFull(trackId, qualityId);
+  }
+
+  /** Octets complets d'une piste déjà sur le disque (téléchargement, sinon cache complet), sans
+   *  attendre : `null` si elle n'y est pas entièrement. */
+  async function readLocalBytes(trackId: string, qualityId: string): Promise<ArrayBuffer | null> {
+    if (await downloadStore.isDownloaded(trackId, qualityId)) return downloadStore.readDownloadedFull(trackId, qualityId);
+    return (await cacheStore.isFullyCached(trackId, qualityId)) ? cacheStore.readCachedFull(trackId, qualityId) : null;
+  }
+
+  // Au-delà, le décodage complet (mémoire, temps) retarderait trop le démarrage : streaming du blob.
+  const DECODE_FIRST_MAX_SECONDS = 15 * 60;
+
+  /** Piste déjà sur le disque : décodée AVANT de démarrer (quelques dizaines de ms), pour jouer
+   *  directement depuis la mémoire. L'ancien chemin (blob lu par l'élément <audio>, puis bascule
+   *  vers le buffer décodé une fraction de seconde plus tard) faisait entendre un accroc juste après
+   *  chaque début de piste — la position native et celle du buffer ne coïncident jamais au sample. */
+  async function decodeLocal(track: Track, qualityId: string): Promise<DecodedTrack | null> {
+    if (!(track.duration > 0 && track.duration <= DECODE_FIRST_MAX_SECONDS)) return null;
+    try {
+      const bytes = await readLocalBytes(track.id, qualityId);
+      if (!bytes || bytes.byteLength === 0) return null;
+      const decoded = await engine.decodeAndTrim(bytes);
+      decodedCache.set(decodedCacheKey(track.id, qualityId), decoded);
+      prepareWaveform(track.id, decoded.buffer);
+      return decoded;
+    } catch (err) {
+      console.warn("[player] Décodage de la piste en cache impossible, lecture du fichier en flux", err);
+      return null;
+    }
   }
 
   /** Décode (une fois en cache complet) la piste active en tâche de fond, puis fait
@@ -964,7 +995,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     prefetchScheduler.stop();
 
     const key = decodedCacheKey(track.id, resolved.qualityId);
-    const decoded = decodedCache.get(key);
+    const decoded = decodedCache.get(key) ?? (await decodeLocal(track, resolved.qualityId));
+    if (myGeneration !== loadGeneration) return;
     // Le fichier téléchargé (permanent, choix explicite de l'utilisateur) est toujours
     // préféré au cache (LRU transitoire) quand les deux existent pour cette piste/qualité.
     const localUrl = decoded
@@ -1459,7 +1491,22 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       const track = get().currentTrack;
       if (!track) return;
       const decoded = decodedCache.get(decodedCacheKey(track.id, getActiveQualityId()));
-      if (decoded) void ensureWaveform(track.id, decoded.buffer);
+      if (decoded) {
+        void ensureWaveform(track.id, decoded.buffer);
+        return;
+      }
+      // Pas de buffer décodé (évincé, lecture en flux) mais octets déjà sur disque : on les décode
+      // pour la forme d'onde plutôt que de la laisser absente jusqu'à la piste suivante.
+      const trackId = track.id;
+      void (async () => {
+        try {
+          const bytes = await readLocalBytes(trackId, getActiveQualityId());
+          if (!bytes || bytes.byteLength === 0 || get().currentTrack?.id !== trackId) return;
+          await ensureWaveform(trackId, await engine.decode(bytes));
+        } catch (err) {
+          console.warn("[player] Forme d'onde de la piste active impossible", err);
+        }
+      })();
     },
   };
 });

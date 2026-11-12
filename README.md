@@ -34,13 +34,13 @@ Here're some of the project's best features:
 Download the build for your system (all files are also on the [Releases page](https://github.com/midnights-ra1n/resonia-client/releases)):
 
 <!-- downloads:start -->
-Latest version: **[v1.1.0-beta.2](https://github.com/midnights-ra1n/resonia-client/releases/tag/v1.1.0-beta.2)**
+Latest version: **[v1.1.0-beta.3](https://github.com/midnights-ra1n/resonia-client/releases/tag/v1.1.0-beta.3)**
 
 | OS | Download |
 | --- | --- |
-| macOS | [Apple Silicon (.dmg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-arm64.dmg)<br>[Apple Silicon (.pkg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-arm64.pkg) |
-| Windows | [x64 / ARM64 (.exe)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-Setup-1.1.0-beta.2.exe) |
-| Linux | [x86_64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-x86_64.AppImage)<br>[ARM64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-arm64.AppImage)<br>[x86_64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-amd64.deb)<br>[ARM64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-arm64.deb)<br>[x86_64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-x86_64.rpm)<br>[ARM64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.2/Resonia-1.1.0-beta.2-aarch64.rpm) |
+| macOS | [Apple Silicon (.dmg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-arm64.dmg)<br>[Apple Silicon (.pkg)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-arm64.pkg) |
+| Windows | [x64 / ARM64 (.exe)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-Setup-1.1.0-beta.3.exe) |
+| Linux | [x86_64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-x86_64.AppImage)<br>[ARM64 (.AppImage)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-arm64.AppImage)<br>[x86_64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-amd64.deb)<br>[ARM64 (.deb)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-arm64.deb)<br>[x86_64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-x86_64.rpm)<br>[ARM64 (.rpm)](https://github.com/midnights-ra1n/resonia-client/releases/download/v1.1.0-beta.3/Resonia-1.1.0-beta.3-aarch64.rpm) |
 <!-- downloads:end -->
 
 The desktop app updates itself automatically. You can opt in to beta releases in the settings.

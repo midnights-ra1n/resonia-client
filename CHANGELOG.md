@@ -16,6 +16,13 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.1.0-beta.3
+
+- Fixed preloading of upcoming songs getting stuck when one of them fails to download
+- Pressing play now gives instant visual feedback
+- Previous/next buttons in the playback bar are slightly smaller
+- Home: new "Because you listened to {artist}" recommendations
+
 ## 1.1.0-beta.2
 
 - Fixed songs restarting their download from scratch when you leave them and come back: the part already downloaded is now kept (desktop)

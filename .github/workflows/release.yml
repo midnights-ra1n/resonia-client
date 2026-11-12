@@ -5,7 +5,7 @@ name: Release
 #
 #   - push sur `beta`   : la version DOIT être une préversion, sinon échec immédiat.
 #   - push sur `stable` : la version NE DOIT PAS être une préversion.
-#   - chaque nuit (schedule) : build NIGHTLY de la branche `nightly`, version X.Y.Z-nightly.N
+#   - push sur `nightly` ET chaque nuit (schedule) : build NIGHTLY de la branche `nightly`, version X.Y.Z-nightly.N
 #     (X.Y.Z tiré de son package.json, N = numéro de run : le « numéro de build » affiché dans
 #     l'app). Aucun commit de version : elle n'est fixée qu'au moment du build. Ignoré si
 #     `nightly` n'a pas bougé depuis la dernière nightly. Notes = commits depuis la précédente.
@@ -47,7 +47,7 @@ name: Release
 # minutes au lieu d'occuper le runner jusqu'au timeout global.
 on:
   push:
-    branches: [beta, stable]
+    branches: [beta, stable, nightly]
   schedule:
     - cron: "0 3 * * *" # 03:00 UTC
   workflow_dispatch:
@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT" == "schedule" || "$INPUT_NIGHTLY" == "true" ]]; then
+          if [[ "$EVENT" == "schedule" || "$INPUT_NIGHTLY" == "true" || ( "$EVENT" == "push" && "$BRANCH" == "nightly" ) ]]; then
             git fetch --no-tags --depth=1 origin nightly
             SHA=$(git rev-parse FETCH_HEAD)
             BASE=$(git show FETCH_HEAD:package.json | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(JSON.parse(s).version.split("-")[0]))')

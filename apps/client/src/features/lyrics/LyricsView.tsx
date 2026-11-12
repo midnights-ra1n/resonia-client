@@ -77,7 +77,8 @@ function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3;
 }
 
-export function LyricsView() {
+/** `bare` : fond transparent (intégrée à la vue plein écran, qui fournit son propre fond). */
+export function LyricsView({ bare = false }: { bare?: boolean }) {
   const { t } = useTranslation();
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
@@ -225,7 +226,7 @@ export function LyricsView() {
     <div
       className="on-media flex flex-1 min-h-0 flex-col items-center overflow-hidden transition-colors duration-700"
       // Police des paroles (Paramètres → Apparence) : par défaut, celle de l'interface.
-      style={{ backgroundColor: bgColor, fontFamily: "var(--font-lyrics, var(--font-sans))" }}
+      style={{ backgroundColor: bare ? undefined : bgColor, fontFamily: "var(--font-lyrics, var(--font-sans))" }}
     >
       <div
         ref={scrollContainerRef}

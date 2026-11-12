@@ -427,6 +427,11 @@
     "indicatorTracks": "{{done}}/{{total}} titres",
     "viewAll": "Voir tous les téléchargements"
   },
+  "fullscreen": {
+    "open": "Plein écran",
+    "close": "Fermer",
+    "lyrics": "Paroles"
+  },
   "lyrics": {
     "noTrack": "Aucune lecture en cours",
     "loading": "Chargement des paroles...",

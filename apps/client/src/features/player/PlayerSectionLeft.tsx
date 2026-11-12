@@ -78,13 +78,21 @@ export function PlayerSectionLeft() {
 
   return (
     <div className="flex items-center gap-3 h-full min-w-0">
-      <CoverImage
-        key={currentTrack?.id ?? "empty"}
-        src={coverUrl}
-        alt="Cover"
-        className="w-12 h-12 rounded object-cover shrink-0 bg-surface-3"
-        decoding="async"
-      />
+      <button
+        type="button"
+        disabled={!currentTrack}
+        onClick={() => usePlayerStore.getState().setFullscreen(true)}
+        title={t("fullscreen.open")}
+        className="shrink-0 rounded transition-transform hover:scale-105 active:scale-95"
+      >
+        <CoverImage
+          key={currentTrack?.id ?? "empty"}
+          src={coverUrl}
+          alt="Cover"
+          className="w-12 h-12 rounded object-cover bg-surface-3"
+          decoding="async"
+        />
+      </button>
 
       <div
         ref={containerRef}

@@ -5,6 +5,7 @@ import { AccountMenu } from "../../features/account/AccountMenu";
 import { DownloadsIndicator } from "../../features/downloads/DownloadsIndicator";
 import { UpdateIndicator } from "./UpdateIndicator";
 import { LyricsView } from "../../features/lyrics/LyricsView";
+import { FullscreenPlayer } from "../../features/player/FullscreenPlayer";
 import { PlayerBar } from "../../features/player/PlayerBar";
 import { QueuePanel } from "../../features/player/QueuePanel";
 import { DebugPanel } from "../../features/player/debug/DebugPanel";
@@ -33,6 +34,7 @@ export function AppLayout() {
   const debouncedQuery = useDebouncedValue(query, 300);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const showLyrics = usePlayerStore((s) => s.showLyrics);
+  const showFullscreen = usePlayerStore((s) => s.showFullscreen);
   const showQueue = usePlayerStore((s) => s.showQueue);
   // La file d'attente reste affichable par-dessus la vue paroles (seule la sidebar se replie).
   const queueOpen = showQueue;
@@ -139,13 +141,10 @@ export function AppLayout() {
   };
 
   return (
-    // Cartes flottantes sur fond `bg-sunken`, séparées par 8px : sidebar (2 cartes), contenu,
-    // file d'attente (si ouverte). La barre de lecture ne prend AUCUNE place dans la mise en
-    // page : elle flotte par-dessus le bas de la colonne de contenu, qui défile dessous (le
-    // `pb` de <main> garantit que la dernière ligne reste atteignable au-dessus d'elle).
-    // `overflow-hidden` + `isolate` sur le panneau de contenu : le rayon découpe le scroll, et
-    // le panneau forme son propre contexte d'empilement (aucun z-index de page ne déborde).
-    <div className="flex h-screen bg-bg-sunken p-2">
+    <>
+    {showFullscreen && <FullscreenPlayer />}
+    {/* `inert` : l'app derrière la vue plein écran sort du parcours clavier/lecteur d'écran. */}
+    <div inert={showFullscreen} className="flex h-screen bg-bg-sunken p-2">
       {/* Sidebar et file d'attente REPLIÉES (largeur animée) plutôt que démontées à l'ouverture
           des paroles : la colonne de contenu — et le lecteur flottant qui y est ancré —
           s'élargit en douceur au lieu de sauter. Marges plutôt que `gap` : elles s'animent
@@ -270,5 +269,6 @@ export function AppLayout() {
       </div>
       <DebugPanel />
     </div>
+    </>
   );
 }

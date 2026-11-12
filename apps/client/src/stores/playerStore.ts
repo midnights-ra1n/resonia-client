@@ -287,6 +287,9 @@ export interface PlayerState {
   reorderQueue: (dragIndex: number, hoverIndex: number) => void;
   addToQueue: (tracks: Track | Track[], position?: "next" | "end") => void;
   showLyrics: boolean;
+  /** Vue « Lecture en cours » plein écran (voir FullscreenPlayer). */
+  showFullscreen: boolean;
+  setFullscreen: (open: boolean) => void;
   toggleLyrics: () => void;
   showConnect: boolean;
   toggleConnect: () => void;
@@ -1476,6 +1479,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       refreshUpcomingPrefetch();
       rescheduleNext();
     },
+    showFullscreen: false,
+    setFullscreen: (open) => set({ showFullscreen: open }),
     showLyrics: false,
     toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
     showConnect: false,

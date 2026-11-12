@@ -427,6 +427,11 @@
     "indicatorTracks": "{{done}}/{{total}} tracks",
     "viewAll": "See all downloads"
   },
+  "fullscreen": {
+    "open": "Full screen",
+    "close": "Close",
+    "lyrics": "Lyrics"
+  },
   "lyrics": {
     "noTrack": "Nothing playing",
     "loading": "Loading lyrics...",

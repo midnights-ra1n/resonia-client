@@ -375,6 +375,8 @@
     "spotifyTestOk": "Connexion réussie ({{artist}})",
     "spotifyTestError": "Échec : {{error}}",
     "waveform": "Forme d'onde dans la barre de lecture",
+    "animatedBackground": "Fond animé en plein écran",
+    "animatedBackgroundDescription": "Dégradé qui dérive lentement, tiré des couleurs de la pochette. Ne s'anime que pendant la lecture ; consomme un peu plus de GPU et de batterie.",
     "waveformStyle": "Style de la forme d'onde",
     "waveformStyleBands": "Trois bandes (graves, médiums, aigus)",
     "waveformStyleSimple": "Amplitude seule",
@@ -430,6 +432,8 @@
   "fullscreen": {
     "open": "Plein écran",
     "close": "Fermer",
+    "windowEnter": "Passer en plein écran système",
+    "windowExit": "Quitter le plein écran système",
     "lyrics": "Paroles"
   },
   "lyrics": {

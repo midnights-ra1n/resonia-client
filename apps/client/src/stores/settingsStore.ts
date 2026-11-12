@@ -43,6 +43,8 @@ interface SettingsState {
   devModeEnabled: boolean;
   /** Forme d'onde dans la barre de lecture (voir lib/audio/waveform). */
   showWaveform: boolean;
+  /** Fond animé teinté de la pochette dans la vue plein écran (voir FullscreenPlayer). */
+  animatedBackground: boolean;
   /** Rendu de la forme d'onde : 3 bandes (graves/médiums/aigus) ou amplitude seule. */
   waveformStyle: WaveformStyle;
   checkUpdatesOnLaunch: boolean;
@@ -67,6 +69,7 @@ interface SettingsState {
   ) => Promise<void>;
   setDevModeEnabled: (enabled: boolean) => Promise<void>;
   setShowWaveform: (enabled: boolean) => Promise<void>;
+  setAnimatedBackground: (enabled: boolean) => Promise<void>;
   setWaveformStyle: (style: WaveformStyle) => Promise<void>;
   setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
   setUpdateChannel: (channel: ReleaseChannel) => Promise<void>;
@@ -89,6 +92,7 @@ const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
 const DEV_MODE_ENABLED_STORAGE_KEY = "resonia:settings:devModeEnabled";
 const SHOW_WAVEFORM_STORAGE_KEY = "resonia:settings:showWaveform";
+const ANIMATED_BACKGROUND_STORAGE_KEY = "resonia:settings:animatedBackground";
 const WAVEFORM_STYLE_STORAGE_KEY = "resonia:settings:waveformStyle";
 export type WaveformStyle = "bands" | "simple";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
@@ -160,6 +164,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   playlistSortDirection: "asc",
   devModeEnabled: false,
   showWaveform: false,
+  animatedBackground: false,
   waveformStyle: "bands",
   checkUpdatesOnLaunch: true,
   updateChannel: currentReleaseChannel(),
@@ -183,6 +188,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       spotifyClientId,
       spotifyClientSecret,
       showWaveform,
+      animatedBackground,
       waveformStyle,
       prefetchCount,
     ] = [
@@ -200,6 +206,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
       storage.getSync<EncryptedPassword>(SPOTIFY_CLIENT_SECRET_STORAGE_KEY),
       storage.getSync<boolean>(SHOW_WAVEFORM_STORAGE_KEY),
+      storage.getSync<boolean>(ANIMATED_BACKGROUND_STORAGE_KEY),
       storage.getSync<WaveformStyle>(WAVEFORM_STYLE_STORAGE_KEY),
       storage.getSync<number>(PREFETCH_COUNT_STORAGE_KEY),
     ] as const;
@@ -226,6 +233,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortDirection: playlistSortDirection ?? "asc",
       devModeEnabled: devModeEnabled ?? false,
       showWaveform: showWaveform ?? false,
+      animatedBackground: animatedBackground ?? false,
       waveformStyle: waveformStyle === "simple" ? "simple" : "bands",
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
       updateChannel: resolveUpdateChannel(readUpdateChannelChoice(updateChannelChoice), currentReleaseChannel()),
@@ -305,6 +313,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setShowWaveform: async (enabled) => {
     await storage.set(SHOW_WAVEFORM_STORAGE_KEY, enabled);
     set({ showWaveform: enabled });
+  },
+
+  setAnimatedBackground: async (enabled) => {
+    await storage.set(ANIMATED_BACKGROUND_STORAGE_KEY, enabled);
+    set({ animatedBackground: enabled });
   },
 
   setWaveformStyle: async (style) => {

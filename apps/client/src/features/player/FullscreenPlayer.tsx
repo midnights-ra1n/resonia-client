@@ -1,15 +1,66 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CoverImage } from "../../components/CoverImage";
 import { MarqueeText } from "../../components/MarqueeText";
 import { CaretDown, Lyrics } from "../../components/icons";
 import { useCachedDominantColor } from "../../hooks/useCachedDominantColor";
 import { useCoverArt } from "../../hooks/useCoverArt";
 import { useTranslation } from "../../lib/i18n";
+import { isElectron } from "../../lib/platform";
+import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { DEFAULT_COVER_URL, usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { LyricsView } from "../lyrics/LyricsView";
 import { LikeButton } from "./LikeButton";
 import { PlayerSectionCenter } from "./PlayerSectionCenter";
+
+const HI_RES = 1200;
+
+type FsDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void };
+type FsEl = HTMLElement & { webkitRequestFullscreen?: () => void };
+
+/** Plein écran de la fenêtre du système : IPC côté desktop (l'API Fullscreen du navigateur
+ *  n'y suit pas le plein écran natif), API Fullscreen (préfixe webkit pour Safari) sur le web. */
+function useSystemFullscreen() {
+  const [on, setOn] = useState(false);
+  const onRef = useRef(false);
+  useEffect(() => {
+    onRef.current = on;
+  }, [on]);
+
+  useEffect(() => {
+    if (isElectron()) return window.resonia!.fullscreen.onChange(setOn);
+    const sync = () => setOn(Boolean(document.fullscreenElement ?? (document as FsDoc).webkitFullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+    };
+  }, []);
+
+  const set = (enabled: boolean) => {
+    if (isElectron()) {
+      void window.resonia!.fullscreen.set(enabled);
+    } else if (enabled) {
+      const el = document.documentElement as FsEl;
+      void (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.());
+    } else {
+      const doc = document as FsDoc;
+      void (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
+    }
+  };
+
+  // En quittant la vue, on rend aussi la fenêtre à sa taille normale.
+  useEffect(
+    () => () => {
+      if (onRef.current) set(false);
+    },
+    [],
+  );
+
+  return [on, set] as const;
+}
 
 /** Vue « Lecture en cours » plein écran, façon Spotify : grande pochette sur un fond teinté de
  *  sa couleur dominante, contrôles de lecture, et bouton paroles qui ouvre les paroles à côté.
@@ -22,8 +73,18 @@ export function FullscreenPlayer() {
   const setFullscreen = usePlayerStore((s) => s.setFullscreen);
   const activeServerId = useServersStore((s) => s.activeServerId);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const animated = useSettingsStore((s) => s.animatedBackground);
+  const [windowFs, setWindowFs] = useSystemFullscreen();
+  const server = useServersStore((s) => s.servers.find((x) => x.id === activeServerId));
 
-  const cover = useCoverArt(activeServerId ?? undefined, currentTrack?.coverArtId, 800, currentTrack?.coverUrl);
+  // `currentTrack.coverUrl` est une miniature 300 px : elle servirait de source à une pochette
+  // affichée à ~600 px (donc floue). On redemande l'image en haute résolution au serveur.
+  const coverArtId = currentTrack?.coverArtId;
+  const hiResUrl = useMemo(
+    () => (server && coverArtId ? getClientForServer(server).getCoverArtUrl(coverArtId, HI_RES) : undefined),
+    [server, coverArtId],
+  );
+  const cover = useCoverArt(activeServerId ?? undefined, coverArtId, HI_RES, hiResUrl);
   const coverUrl = cover ?? DEFAULT_COVER_URL;
   const dominant = useCachedDominantColor(
     activeServerId ?? undefined,
@@ -33,7 +94,7 @@ export function FullscreenPlayer() {
 
   // Échap ferme ; sans piste il n'y a rien à montrer.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFullscreen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFullscreen(false); // le démontage quitte aussi le plein écran fenêtre
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setFullscreen]);
@@ -53,11 +114,28 @@ export function FullscreenPlayer() {
       style={{ backgroundColor: dominant ?? "var(--color-surface-1)" }}
     >
       {/* Voile : fond sombre en bas pour la lisibilité, la teinte de la pochette reste en haut. */}
+      {animated && dominant && (
+        <div aria-hidden className="fs-aurora" data-paused={!isPlaying} style={{ "--c": dominant } as React.CSSProperties} />
+      )}
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/40 to-black/85" />
 
       <header className="relative z-10 flex items-center justify-between p-4">
         <button autoFocus type="button" onClick={() => setFullscreen(false)} className={iconBtn} title={t("fullscreen.close")} aria-label={t("fullscreen.close")}>
           <CaretDown size={22} />
+        </button>
+        <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setWindowFs(!windowFs)}
+          className={iconBtn}
+          title={windowFs ? t("fullscreen.windowExit") : t("fullscreen.windowEnter")}
+          aria-label={windowFs ? t("fullscreen.windowExit") : t("fullscreen.windowEnter")}
+          aria-pressed={windowFs}
+        >
+          {/* Pas d'icône « agrandir » dans les packs d'icônes : coins dessinés en ligne. */}
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {windowFs ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+          </svg>
         </button>
         <button
           type="button"
@@ -69,6 +147,7 @@ export function FullscreenPlayer() {
         >
           <Lyrics size={20} />
         </button>
+        </div>
       </header>
 
       <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center gap-[6vw] px-[5vw] pb-8">

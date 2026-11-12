@@ -40,6 +40,8 @@ export function AppearanceSection() {
   const setIconScale = useIconSettingsStore((s) => s.setIconScale);
   const showWaveform = useSettingsStore((s) => s.showWaveform);
   const setShowWaveform = useSettingsStore((s) => s.setShowWaveform);
+  const animatedBackground = useSettingsStore((s) => s.animatedBackground);
+  const setAnimatedBackground = useSettingsStore((s) => s.setAnimatedBackground);
   const waveformStyle = useSettingsStore((s) => s.waveformStyle);
   const setWaveformStyle = useSettingsStore((s) => s.setWaveformStyle);
 
@@ -140,6 +142,30 @@ export function AppearanceSection() {
             ))}
           </div>
         </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={animatedBackground}
+          onClick={() => setAnimatedBackground(!animatedBackground)}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <span>
+            <span className="block text-sm font-medium text-white">{t("settings.animatedBackground")}</span>
+            <span className="mt-1 block text-xs text-neutral-500">{t("settings.animatedBackgroundDescription")}</span>
+          </span>
+          <span
+            className={`relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors ${
+              animatedBackground ? "bg-accent" : "bg-neutral-700"
+            }`}
+          >
+            <span
+              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                animatedBackground ? "translate-x-4" : "translate-x-0"
+              }`}
+            />
+          </span>
+        </button>
 
         <button
           type="button"

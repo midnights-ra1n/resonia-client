@@ -42,6 +42,15 @@ contextBridge.exposeInMainWorld("resonia", {
   ): Promise<{ status: number; statusText: string; ok: boolean; headers: Record<string, string>; body: Uint8Array }> =>
     ipcRenderer.invoke("net:fetch", url, init),
 
+  fullscreen: {
+    set: (enabled: boolean): Promise<void> => ipcRenderer.invoke("window:setFullScreen", enabled),
+    onChange: (cb: (enabled: boolean) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, enabled: boolean) => cb(enabled);
+      ipcRenderer.on("window:fullscreen", listener);
+      return () => ipcRenderer.removeListener("window:fullscreen", listener);
+    },
+  },
+
   powerSave: {
     start: (): Promise<void> => ipcRenderer.invoke("powersave:start"),
     stop: (): Promise<void> => ipcRenderer.invoke("powersave:stop"),

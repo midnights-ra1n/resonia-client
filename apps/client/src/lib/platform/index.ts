@@ -27,6 +27,11 @@ export interface ResoniaBridge {
     url: string,
     init?: { method?: string; headers?: Record<string, string>; body?: string },
   ): Promise<{ status: number; statusText: string; ok: boolean; headers: Record<string, string>; body: Uint8Array }>;
+  /** Plein écran de la fenêtre du système (vue « Lecture en cours »). */
+  fullscreen: {
+    set(enabled: boolean): Promise<void>;
+    onChange(cb: (enabled: boolean) => void): () => void;
+  };
   powerSave: {
     start(): Promise<void>;
     stop(): Promise<void>;

@@ -423,3 +423,31 @@ img {
     scroll-behavior: auto !important;
   }
 }
+
+/* Fond animé de la vue plein écran (réglage « Fond animé ») : calque surdimensionné de dégradés
+   radiaux dérivés d'une couleur (--c), dérivant lentement. Seul `transform` est animé (composité
+   par le GPU, rastérisé une fois), sans blur ; suspendu en pause et sous « réduire les animations ». */
+.fs-aurora {
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--c) 85%, white) 0, transparent 45%),
+    radial-gradient(circle at 80% 20%, var(--c) 0, transparent 50%),
+    radial-gradient(circle at 60% 85%, color-mix(in srgb, var(--c) 65%, black) 0, transparent 55%);
+  will-change: transform;
+  animation: fs-drift 24s ease-in-out infinite alternate;
+}
+.fs-aurora[data-paused="true"] {
+  animation-play-state: paused;
+}
+@keyframes fs-drift {
+  to {
+    transform: translate3d(6%, -5%, 0) rotate(12deg) scale(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fs-aurora {
+    animation: none;
+  }
+}

@@ -204,6 +204,8 @@ async function createWindow() {
     // Première fenêtre après une mise à jour : ferme la fenêtre « Installation… » du système.
     closeInstallProgress();
   });
+  mainWindow.on("enter-full-screen", () => mainWindow?.webContents.send("window:fullscreen", true));
+  mainWindow.on("leave-full-screen", () => mainWindow?.webContents.send("window:fullscreen", false));
   mainWindow.on("resize", scheduleSaveWindowState);
   mainWindow.on("move", scheduleSaveWindowState);
 
@@ -930,6 +932,7 @@ function registerIpcHandlers() {
   // uniquement pendant une lecture active — jamais en idle. Démarré/arrêté par le renderer
   // sur les événements de lecture réels du moteur gapless (voir gaplessEngine.ts). ----
   let powerSaveBlockerId: number | null = null;
+  ipcMain.handle("window:setFullScreen", (_e, enabled: boolean) => mainWindow?.setFullScreen(Boolean(enabled)));
   ipcMain.handle("powersave:start", () => {
     if (powerSaveBlockerId === null) powerSaveBlockerId = powerSaveBlocker.start("prevent-app-suspension");
   });

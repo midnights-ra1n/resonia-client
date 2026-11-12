@@ -17,7 +17,7 @@ import {
   updateNowPlayingMetadata,
 } from "../lib/audio/nowPlaying";
 import { getQualityById } from "../lib/audio/qualityOptions";
-import { estimateBufferedRanges, mergeRanges, sameRanges, type TimeRange } from "../lib/audio/bufferedTime";
+import { estimateBufferedRanges, sameRanges, type TimeRange } from "../lib/audio/bufferedTime";
 import { getCachedCoverUrl, loadAndCacheCover } from "../lib/image/coverCache";
 import { prefetchDominantColor } from "../lib/image/dominantColorCache";
 import { prefetchLyrics } from "../lib/lyrics/lyricsService";
@@ -134,6 +134,19 @@ function canPlayOriginal(track: Track, format: "aac" | "opus" | "mp3", maxBitRat
   return maxBitRate <= 0 || track.bitRate <= maxBitRate * ORIGINAL_BITRATE_TOLERANCE;
 }
 
+/** Type MIME du fichier mis en cache pour `track` s'il peut être lu au fil de son téléchargement
+ *  (MediaSource, voir GaplessEngine.loadAndPlayProgressive) : flux sans conteneur indexé — AAC brut
+ *  (ADTS, sortie du transcodage « aac » de Navidrome) ou MP3. Un M4A original (index en fin de
+ *  fichier) ou un Ogg ne le peut pas : `null`, lecture réseau classique. */
+function progressiveMimeType(track: Track): string | null {
+  if (typeof MediaSource === "undefined" || !cacheStore.supportsProgressiveReads) return null;
+  const quality = getQualityById(getActiveQualityId());
+  if (!quality || quality.format === "raw") return null;
+  const container = canPlayOriginal(track, quality.format, quality.maxBitRate) ? track.suffix?.toLowerCase() : quality.format;
+  const mime = container === "mp3" ? "audio/mpeg" : container === "aac" ? "audio/aac" : null;
+  return mime && MediaSource.isTypeSupported(mime) ? mime : null;
+}
+
 /** URL de LECTURE immédiate : toujours le flux au format de la qualité choisie. L'original n'y
  *  est pas utilisé même quand il est compatible : la plupart des M4A placent leur index (`moov`)
  *  en fin de fichier — parfois plusieurs Mo avec une pochette intégrée — et le lecteur doit le
@@ -220,10 +233,6 @@ export interface PlayerState {
   setCurrentTime: (time: number) => void;
   /** Plages de la piste déjà chargées (secondes) — barre de tampon façon YouTube. */
   bufferedRanges: TimeRange[];
-  /** Plages déjà écoutées de la piste en cours, hors segment courant (voir `playedFrom`). */
-  playedRanges: TimeRange[];
-  /** Début du segment en cours d'écoute : il court jusqu'à `currentTime`, un seek le clôt. */
-  playedFrom: number;
 
   /** Durée RÉELLE côté moteur (`engine.duration`), pas la métadonnée serveur de
    *  `currentTrack.duration` : les deux peuvent diverger (rognage du silence de bord une
@@ -392,6 +401,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   // suspendre tickProgress() : sans ça, sa lecture de engine.currentTime à chaque frame
   // écraserait la position optimiste affichée avant même que le seek débouncé parte.
   const SEEK_DEBOUNCE_MS = 80;
+  let lastSeekAt = 0;
   let seekDebounceTimer: number | null = null;
   let pendingSeekTime: number | null = null;
 
@@ -574,12 +584,31 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
   // Au-delà, le décodage complet (mémoire, temps) retarderait trop le démarrage : streaming du blob.
   const DECODE_FIRST_MAX_SECONDS = 15 * 60;
+  // Attente maximale du décodage d'une piste locale avant de la démarrer sans lui (voir loadAndPlay).
+  const DECODE_START_BUDGET_MS = 40;
+  // Décodages de pistes locales en cours, partagés : celui lancé au clic sert aussi à la bascule
+  // en mémoire (ensureActiveDecoded) au lieu d'être refait.
+  const localDecodes = new Map<string, Promise<DecodedTrack | null>>();
+
+  function withinBudget<T>(task: Promise<T | null>, ms: number): Promise<T | null> {
+    return Promise.race([task, new Promise<null>((resolve) => window.setTimeout(() => resolve(null), ms))]);
+  }
 
   /** Piste déjà sur le disque : décodée AVANT de démarrer (quelques dizaines de ms), pour jouer
    *  directement depuis la mémoire. L'ancien chemin (blob lu par l'élément <audio>, puis bascule
    *  vers le buffer décodé une fraction de seconde plus tard) faisait entendre un accroc juste après
    *  chaque début de piste — la position native et celle du buffer ne coïncident jamais au sample. */
-  async function decodeLocal(track: Track, qualityId: string): Promise<DecodedTrack | null> {
+  function decodeLocal(track: Track, qualityId: string): Promise<DecodedTrack | null> {
+    const key = decodedCacheKey(track.id, qualityId);
+    let task = localDecodes.get(key);
+    if (!task) {
+      task = decodeLocalOnce(track, qualityId).finally(() => localDecodes.delete(key));
+      localDecodes.set(key, task);
+    }
+    return task;
+  }
+
+  async function decodeLocalOnce(track: Track, qualityId: string): Promise<DecodedTrack | null> {
     if (!(track.duration > 0 && track.duration <= DECODE_FIRST_MAX_SECONDS)) return null;
     try {
       const bytes = await readLocalBytes(track.id, qualityId);
@@ -603,6 +632,15 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     if (cached) {
       engine.attachDecodedActive(cached);
       return;
+    }
+    const inflight = localDecodes.get(key);
+    if (inflight) {
+      const decoded = await inflight;
+      if (decoded && get().currentTrack?.id === track.id) {
+        engine.attachDecodedActive(decoded);
+        set({ duration: engine.duration });
+      }
+      if (decoded) return;
     }
 
     const bytes = await waitForTrackBytes(track.id, resolved.qualityId, playbackAbort.signal);
@@ -691,6 +729,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       // Passage gapless : la nouvelle piste joue depuis son AudioBuffer décodé, l'élément natif
       // ne lit plus l'URL locale de la précédente — on la libère.
       releaseActiveLocalUrl(null);
+      prefetchScheduler.setFeed(null);
       scrobbledNowPlaying = false;
       scrobbledSubmission = false;
       scheduledNextKey = null;
@@ -703,8 +742,6 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
         duration: engine.duration,
         // Piste décodée d'avance (gapless) : entièrement en mémoire.
         bufferedRanges: [[0, engine.duration]],
-        playedRanges: [],
-        playedFrom: 0,
       });
       updateNowPlayingMetadata(nextTrackData);
       setNowPlayingPlaybackState("playing");
@@ -1013,14 +1050,24 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     updateNowPlayingMetadata(track);
 
     const key = decodedCacheKey(track.id, resolved.qualityId);
-    const decoded = decodedCache.get(key) ?? (await decodeLocal(track, resolved.qualityId));
+    // Décodage complet attendu seulement s'il est quasi immédiat : une piste de quelques minutes
+    // prend plusieurs centaines de ms à décoder — l'ancienne piste continuait pendant ce temps et
+    // la nouvelle semblait figée. Au-delà, elle démarre depuis le fichier local et passe en mémoire
+    // dès la fin du décodage, qui continue en tâche de fond (voir ensureActiveDecoded).
+    const decoded =
+      decodedCache.get(key) ?? (await withinBudget(decodeLocal(track, resolved.qualityId), DECODE_START_BUDGET_MS));
     if (myGeneration !== loadGeneration) return;
     // Le fichier téléchargé (permanent, choix explicite de l'utilisateur) est toujours
     // préféré au cache (LRU transitoire) quand les deux existent pour cette piste/qualité.
-    const localUrl = decoded
+    const downloadedUrl = decoded
       ? null
-      : (await downloadStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format)) ??
-        (await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format));
+      : await downloadStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format);
+    // Cache lisible progressivement (complet ou non) : lu par MediaSource depuis le disque, sans
+    // recopier tout le fichier en mémoire pour une URL `blob:`.
+    const progressiveMime = decoded || downloadedUrl ? null : progressiveMimeType(track);
+    const localUrl =
+      downloadedUrl ??
+      (decoded || progressiveMime ? null : await cacheStore.resolvePlaybackUrl(track.id, resolved.qualityId, resolved.format));
 
     // Un appel plus récent a déjà pris le dessus pendant cette attente : ne rien committer,
     // engine et Now Playing reflètent déjà la piste voulue — et libérer l'URL devenue inutile.
@@ -1034,9 +1081,24 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     // repli MediaSource ne s'applique qu'au vrai flux réseau.
     const mimeType = localUrl ? undefined : MSE_MIME_TYPE[resolved.format];
 
+    // Ni décodée ni entièrement sur le disque : lecture progressive depuis le cache si le format
+    // s'y prête — la partie déjà téléchargée joue sans attendre le réseau, la suite arrive par le
+    // téléchargement du cache, démarré tout de suite (seule connexion pour cette piste).
+    const progressive = progressiveMime
+      ? await cacheStore.progressiveSource(track.id, resolved.qualityId, progressiveMime)
+      : null;
+    if (myGeneration !== loadGeneration) return;
+
     engine.trackDurationHint = track.duration;
-    // Un fichier local accepte les positionnements libres ; un flux transcodé, non (voir seek).
-    engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType, Boolean(localUrl));
+    if (progressive) {
+      engine.loadAndPlayProgressive(progressive, offset, resolved.streamUrl, mimeType);
+      prefetchScheduler.setQuality(resolved.qualityId);
+      prefetchScheduler.setFeed(track.id);
+      prefetchScheduler.setActive({ trackId: track.id, streamUrl: resolved.cacheUrl });
+    } else {
+      // Un fichier local accepte les positionnements libres ; un flux transcodé, non (voir seek).
+      engine.loadAndPlay(instantUrl, offset, decoded ?? undefined, mimeType, Boolean(localUrl));
+    }
     // Le moteur a remplacé la source : l'URL locale de la piste précédente n'est plus lue.
     releaseActiveLocalUrl(localUrl);
 
@@ -1049,8 +1111,6 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       currentTime: offset,
       duration: engine.duration,
       bufferedRanges: [],
-      playedRanges: [],
-      playedFrom: offset,
       isPlaying: true,
     });
     updateNowPlayingMetadata(track);
@@ -1146,8 +1206,6 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     currentTime: 0,
     duration: 0,
     bufferedRanges: [],
-    playedRanges: [],
-    playedFrom: 0,
     setCurrentTime: (time) => {
       // Le swap gapless est désormais planifié à l'avance (horloge exacte), pas déclenché
       // en réaction à un événement : un seek à l'intérieur de la piste courante n'invalide
@@ -1166,25 +1224,27 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
       // n'entende la fin.
       const engineDuration = get().duration;
       const clamped = engineDuration > 0 ? Math.max(0, Math.min(time, engineDuration)) : Math.max(0, time);
-      // Le seek clôt le segment écouté — une seule fois par rafale de clics débouncés (les suivants
-      // ne déplacent que son point de départ). Fenêtre masquée : currentTime n'y est pas tenu à jour.
-      if (pendingSeekTime === null) {
-        const { playedFrom, playedRanges, currentTime } = get();
-        const end = document.hidden ? engine.currentTime : currentTime;
-        set({ playedRanges: mergeRanges([...playedRanges, [playedFrom, end]], 1) });
+      const applySeek = (target: number) => {
+        lastSeekAt = performance.now();
+        engine.seek(target);
+        seekSettleTarget = target;
+        seekSettleUntil = performance.now() + SEEK_SETTLE_MS;
+      };
+      // Clic isolé : appliqué tout de suite (aucune attente avant le son). Seule une rafale de clics
+      // rapprochés est regroupée — le dernier l'emporte, envoyé à la fin de la rafale.
+      if (seekDebounceTimer === null && performance.now() - lastSeekAt >= SEEK_DEBOUNCE_MS) {
+        set({ currentTime: clamped });
+        applySeek(clamped);
+        return;
       }
       pendingSeekTime = clamped;
-      set({ currentTime: clamped, playedFrom: clamped });
+      set({ currentTime: clamped });
       if (seekDebounceTimer !== null) window.clearTimeout(seekDebounceTimer);
       seekDebounceTimer = window.setTimeout(() => {
         seekDebounceTimer = null;
         const target = pendingSeekTime;
         pendingSeekTime = null;
-        if (target !== null) {
-          engine.seek(target);
-          seekSettleTarget = target;
-          seekSettleUntil = performance.now() + SEEK_SETTLE_MS;
-        }
+        if (target !== null) applySeek(target);
       }, SEEK_DEBOUNCE_MS);
     },
 

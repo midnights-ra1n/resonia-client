@@ -27,6 +27,7 @@ const MAX_SEGMENTS = 3;
 // réseau (événement "online") les relance aussitôt.
 const SLOT_RETRY_DELAY_MS = 5000;
 const SLOT_RETRY_MAX_DELAY_MS = 60000;
+const FEED_RETRY_DELAY_MS = 1000;
 
 // Tant que le flux lu télécharge encore ("shared") : une connexion sans découpage pour la piste
 // active ET une pour la suivante. En strict séquentiel, la suivante n'était prête qu'une fois la
@@ -76,6 +77,8 @@ class PrefetchScheduler {
   // Workers en attente de la fin d'une pause (voir waitUntilResumed).
   private resumeWaiters = new Set<() => void>();
   private limits = LIMITS.free;
+  // Piste dont le téléchargement alimente la lecture en cours (voir setFeed) : jamais suspendue.
+  private feedTrackId: string | null = null;
   // Dernier mode demandé par le moteur, combiné à l'activité de premier plan (voir applyMode).
   private engineMode: NetworkMode = "free";
 
@@ -99,23 +102,28 @@ class PrefetchScheduler {
   private retryAttempt = 0;
   private retryScheduled = false;
 
-  private scheduleRetry(generation: number) {
+  private scheduleRetry(generation: number, fast = false) {
     if (this.retryScheduled) return;
     this.retryScheduled = true;
-    void this.waitRetry(this.retryAttempt++).then(() => {
+    // Source de la lecture en cours : relancée vite (la lecture attend ces octets).
+    void (fast ? this.waitRetryMs(FEED_RETRY_DELAY_MS) : this.waitRetry(this.retryAttempt++)).then(() => {
       this.retryScheduled = false;
       if (generation === this.generation) this.restart();
     });
   }
 
   private waitRetry(retry: number): Promise<void> {
+    return this.waitRetryMs(Math.min(SLOT_RETRY_DELAY_MS * 2 ** retry, SLOT_RETRY_MAX_DELAY_MS));
+  }
+
+  private waitRetryMs(delayMs: number): Promise<void> {
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer);
         this.retryWaiters.delete(done);
         resolve();
       };
-      const timer = setTimeout(done, Math.min(SLOT_RETRY_DELAY_MS * 2 ** retry, SLOT_RETRY_MAX_DELAY_MS));
+      const timer = setTimeout(done, delayMs);
       this.retryWaiters.add(done);
     });
   }
@@ -140,7 +148,7 @@ class PrefetchScheduler {
     // l'octet près, une requête) pour en profiter — sinon ils finissaient sur une seule connexion.
     if (changed && limits.segments > this.limits.segments) {
       for (const trackId of [...this.inFlight]) {
-        if (!cacheStore.isRangeResumable(trackId, this.qualityId)) continue;
+        if (trackId === this.feedTrackId || !cacheStore.isRangeResumable(trackId, this.qualityId)) continue;
         cacheStore.pause(trackId, this.qualityId);
         this.inFlight.delete(trackId);
       }
@@ -154,6 +162,12 @@ class PrefetchScheduler {
     if (qualityId === this.qualityId) return;
     this.dropLeftovers();
     this.qualityId = qualityId;
+  }
+
+  /** La lecture en cours lit ce fichier au fil de son téléchargement (lecture progressive) : il
+   *  n'est jamais suspendu par la pression réseau — c'est lui que la pression protège. */
+  setFeed(trackId: string | null) {
+    this.feedTrackId = trackId;
   }
 
   setPrefetchCount(count: number) {
@@ -247,6 +261,7 @@ class PrefetchScheduler {
    *  serait à retélécharger depuis l'octet 0 : il est seulement suspendu (pause douce). */
   private yieldInFlight() {
     for (const trackId of [...this.inFlight]) {
+      if (trackId === this.feedTrackId) continue;
       if (cacheStore.isRangeResumable(trackId, this.qualityId)) {
         cacheStore.pause(trackId, this.qualityId);
         this.inFlight.delete(trackId);
@@ -304,7 +319,7 @@ class PrefetchScheduler {
 
   private async runWorker(generation: number) {
     while (generation === this.generation && this.cursor < this.slots.length) {
-      await this.waitUntilResumed();
+      if (this.slots[this.cursor].trackId !== this.feedTrackId) await this.waitUntilResumed();
       if (generation !== this.generation || this.cursor >= this.slots.length) return;
       const slot = this.slots[this.cursor++];
 
@@ -312,7 +327,7 @@ class PrefetchScheduler {
       if (generation !== this.generation) return;
       if (alreadyCached) continue;
       // Pause survenue pendant la vérification : ne pas ouvrir de connexion maintenant.
-      if (this.paused) {
+      if (this.paused && slot.trackId !== this.feedTrackId) {
         await this.waitUntilResumed();
         if (generation !== this.generation) return;
       }
@@ -337,7 +352,7 @@ class PrefetchScheduler {
         // figée, forme d'onde et enchaînement gapless jamais prêts.
         // Le worker n'attend PAS la relance : bloqué sur une piste en échec, il empêchait les
         // suivantes (B, C, D) de se télécharger. La relance repart de la file entière (restart).
-        if (task.error && !task.isComplete) this.scheduleRetry(generation);
+        if (task.error && !task.isComplete) this.scheduleRetry(generation, slot.trackId === this.feedTrackId);
         break;
       }
       // Fini ou budget atteint : on passe à la suivante.
@@ -351,6 +366,7 @@ class PrefetchScheduler {
     this.resumeWaiters.forEach((wake) => wake());
     this.resumeWaiters.clear();
     // La fenêtre quittée garde ses flux transcodés partiels (voir setWindow) ; le reste est coupé.
+    this.feedTrackId = null;
     const left = this.window;
     this.setWindow([]);
     const leftovers = new Set(this.leftovers.map((s) => s.trackId));

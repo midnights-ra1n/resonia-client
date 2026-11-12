@@ -1,3 +1,4 @@
+import type { ReleaseChannel } from "../lib/app/appVersion";
 import { create } from "zustand";
 import {
   checkForUpdate,
@@ -37,7 +38,7 @@ interface UpdateState {
    *  store en "available" (avec la mise à jour prête à être installée) ou "up-to-date". Ignore
    *  l'appel si une vérification ou une installation est déjà en cours, pour ne jamais
    *  chevaucher deux téléchargements ou perdre une mise à jour déjà prête à redémarrer. */
-  check: (beta: boolean) => Promise<boolean>;
+  check: (channel: ReleaseChannel) => Promise<boolean>;
   /** Télécharge la mise à jour trouvée par check(), sans relancer l'app : elle s'installera à la
    *  prochaine fermeture, ou tout de suite via relaunch(). Passe le store en "ready" une fois le
    *  téléchargement terminé : c'est ce statut que la barre supérieure surveille pour afficher le
@@ -45,7 +46,7 @@ interface UpdateState {
   install: (adminPrompt: string) => Promise<void>;
   /** Enchaîne check() puis install() si une mise à jour est trouvée — dès qu'une mise à jour est
    *  détectée (vérification au lancement, quotidienne ou manuelle), elle est téléchargée. */
-  checkAndInstall: (beta: boolean, adminPrompt: string) => Promise<void>;
+  checkAndInstall: (channel: ReleaseChannel, adminPrompt: string) => Promise<void>;
   relaunch: (installingText: string) => Promise<void>;
 }
 
@@ -59,7 +60,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   pendingUpdate: null,
   errorMessage: null,
 
-  check: async (beta) => {
+  check: async (channel) => {
     const current = get().status;
     if (
       current === "checking" ||
@@ -70,7 +71,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
     set({ status: "checking", errorMessage: null });
     try {
-      const update = await checkForUpdate(beta);
+      const update = await checkForUpdate(channel);
       if (!update) {
         set({
           status: "up-to-date",
@@ -109,8 +110,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
 
-  checkAndInstall: async (beta, adminPrompt) => {
-    const available = await get().check(beta);
+  checkAndInstall: async (channel, adminPrompt) => {
+    const available = await get().check(channel);
     if (available && get().status === "available") await get().install(adminPrompt);
   },
 

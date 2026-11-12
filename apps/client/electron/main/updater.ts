@@ -443,10 +443,13 @@ export function registerUpdater(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle(
     "update:check",
-    async (_e, beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null> => {
-      // Le canal beta cible les releases GitHub marquées prerelease (voir le workflow de release).
-      updater.channel = beta ? "beta" : "latest";
-      updater.allowPrerelease = beta;
+    async (_e, channel: unknown): Promise<{ version: string; currentVersion: string; notes: string | null } | null> => {
+      // stable : dernière release GitHub non-prerelease. beta / nightly : releases prerelease dont la
+      // version porte ce suffixe (-beta.N / -nightly.N) — electron-updater traite "nightly" comme un
+      // canal personnalisé : un abonné nightly ne reçoit que des nightlies, un abonné bêta jamais.
+      const target = channel === "beta" || channel === "nightly" ? channel : "stable";
+      updater.channel = target === "stable" ? "latest" : target;
+      updater.allowPrerelease = target !== "stable";
       // Le setter de `channel` autorise les retours en arrière : jamais voulu ici, surtout avec
       // une installation automatique (une beta récente « mise à jour » vers une stable plus ancienne).
       updater.allowDowngrade = false;

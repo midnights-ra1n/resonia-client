@@ -66,6 +66,8 @@ export default defineConfig({
   ],
   define: {
     __APP_VERSION__: JSON.stringify(rootPackageJson.version),
+    // Horodatage du build (ms) : affiché pour les nightlies (voir nightlyBuildLabel).
+    __BUILD_TIME__: JSON.stringify(Date.now()),
   },
   build: {
     target: "es2022",

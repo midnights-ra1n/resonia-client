@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("resonia", {
       ipcRenderer.invoke("blobstore:stat", baseDir, path),
     readFile: (baseDir: DesktopBaseDir, path: string): Promise<Uint8Array | null> =>
       ipcRenderer.invoke("blobstore:readFile", baseDir, path),
+    readRange: (baseDir: DesktopBaseDir, path: string, start: number, end: number): Promise<Uint8Array | null> =>
+      ipcRenderer.invoke("blobstore:readRange", baseDir, path, start, end),
     remove: (baseDir: DesktopBaseDir, path: string): Promise<void> =>
       ipcRenderer.invoke("blobstore:remove", baseDir, path),
   },
@@ -82,9 +84,9 @@ contextBridge.exposeInMainWorld("resonia", {
 
   update: {
     check: (
-      beta: boolean,
+      channel: "stable" | "beta" | "nightly",
     ): Promise<{ version: string; currentVersion: string; notes: string | null } | null> =>
-      ipcRenderer.invoke("update:check", beta),
+      ipcRenderer.invoke("update:check", channel),
     download: (adminPrompt: string): Promise<void> => ipcRenderer.invoke("update:download", adminPrompt),
     install: (installingText: string): Promise<void> => ipcRenderer.invoke("update:install", installingText),
     // Pop-up native (boîte de dialogue du système) ; résout à true si l'utilisateur choisit de

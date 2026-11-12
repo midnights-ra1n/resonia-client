@@ -330,7 +330,7 @@
     "updates": "Mises à jour",
     "updatesDescription": "Les mises à jour sont téléchargées automatiquement en arrière-plan et installées à la prochaine fermeture de Resonia — aucun téléchargement manuel depuis GitHub n'est nécessaire. Pour en installer une tout de suite, utilise le bouton de redémarrage en haut de l'écran.",
     "updatesCurrentVersion": "Version actuelle : {{version}}",
-    "updatesBetaBadge": "bêta",
+    "nightlyBuild": "build {{number}} - publié le {{date}}",
     "updatesCheckButton": "Vérifier les mises à jour",
     "updatesChecking": "Vérification des mises à jour...",
     "updatesUpToDate": "Ton application est à jour.",
@@ -341,8 +341,6 @@
     "updatesCheckError": "Impossible de vérifier les mises à jour. Réessaie plus tard.",
     "checkOnLaunch": "Vérifier les mises à jour automatiquement",
     "checkOnLaunchDescription": "Recherche une nouvelle version au démarrage, puis une fois par jour tant que l'application reste ouverte.",
-    "betaUpdates": "Recevoir les mises à jour bêta",
-    "betaUpdatesDescription": "Accède aux versions en avant-première avant qu'elles n'atteignent le canal stable. Elles peuvent être moins stables. Activé par défaut sur les versions bêta de Resonia.",
     "appearance": "Apparence",
     "theme": "Thème",
     "themeDescription": "Couleurs de toute l'application. Le changement s'applique immédiatement.",
@@ -385,7 +383,18 @@
     "iconPackDescription": "Les icônes absentes d'un pack sont remplacées par celles de Material Symbols.",
     "iconPackPartial": "(partiel)",
     "iconSize": "Taille des icônes",
-    "iconSizeDescription": "S'applique à toutes les icônes de l'application."
+    "iconSizeDescription": "S'applique à toutes les icônes de l'application.",
+    "updateChannel": "Canal de mise à jour",
+    "updateChannels": {
+      "stable": "Stable",
+      "beta": "Bêta",
+      "nightly": "Nightly"
+    },
+    "updateChannelDescriptions": {
+      "stable": "Versions finalisées et testées. Recommandé.",
+      "beta": "Versions en avant-première, avant le canal stable. Elles peuvent être moins stables.",
+      "nightly": "Builds quotidiens avec les toutes dernières nouveautés, avant les bêtas. Peuvent contenir des bugs."
+    }
   },
   "update": {
     "promptTitle": "Mise à jour",
@@ -401,7 +410,6 @@
     "restartButton": "Redémarrer pour installer la mise à jour",
     "restartTooltip": "La version {{version}} a été téléchargée et est prête à être installée."
   },
-
   "downloads": {
     "title": "Téléchargements",
     "emptyTitle": "Aucun téléchargement pour le moment",

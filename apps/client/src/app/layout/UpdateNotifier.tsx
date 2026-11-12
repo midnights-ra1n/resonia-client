@@ -37,7 +37,7 @@ export function UpdateNotifier() {
   const { t } = useTranslation();
   const hydrated = useSettingsStore((s) => s.hydrated);
   const checkUpdatesOnLaunch = useSettingsStore((s) => s.checkUpdatesOnLaunch);
-  const betaUpdatesEnabled = useSettingsStore((s) => s.betaUpdatesEnabled);
+  const updateChannel = useSettingsStore((s) => s.updateChannel);
   const dismissedUpdateVersion = useSettingsStore((s) => s.dismissedUpdateVersion);
   const setDismissedUpdateVersion = useSettingsStore((s) => s.setDismissedUpdateVersion);
 
@@ -73,7 +73,7 @@ export function UpdateNotifier() {
       if (cancelled) return;
 
       await storage.set(LAST_CHECK_STORAGE_KEY, Date.now());
-      await useUpdateStore.getState().checkAndInstall(betaUpdatesEnabled, t("update.adminPrompt"));
+      await useUpdateStore.getState().checkAndInstall(updateChannel, t("update.adminPrompt"));
     }
 
     if (!startedOnLaunch.current) {
@@ -86,7 +86,7 @@ export function UpdateNotifier() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [hydrated, checkUpdatesOnLaunch, betaUpdatesEnabled, t]);
+  }, [hydrated, checkUpdatesOnLaunch, updateChannel, t]);
 
   useEffect(() => {
     if (status !== "ready" || !version || version === dismissedUpdateVersion) return;

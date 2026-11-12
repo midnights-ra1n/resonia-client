@@ -1,3 +1,4 @@
+import type { ReleaseChannel } from "../app/appVersion";
 import { isElectron } from "../platform";
 
 export interface UpdateProgress {
@@ -20,17 +21,15 @@ export interface AppUpdate {
 }
 
 /** Vérifie s'il existe une mise à jour disponible sur le canal demandé, via `electron-updater`
- *  côté process principal (voir `update:check` dans `electron/main/index.ts`) — `beta`
- *  détermine à l'exécution quel canal cibler (releases GitHub marquées prerelease pour le
- *  canal beta), même intention que le double endpoint stable/beta de l'ancien
- *  tauri.conf.json/tauri.beta.conf.json. Ne fait rien côté web : le client web est toujours
+ *  côté process principal (voir `update:check` dans `electron/main/updater.ts`) — `channel`
+ *  détermine à l'exécution quelles releases GitHub cibler (stables, bêtas ou nightlies). Ne fait rien côté web : le client web est toujours
  *  servi à jour, seule l'app de bureau a besoin de vérifier et d'installer une mise à jour
  *  elle-même. */
-export async function checkForUpdate(beta: boolean): Promise<AppUpdate | null> {
+export async function checkForUpdate(channel: ReleaseChannel): Promise<AppUpdate | null> {
   if (!isElectron()) return null;
   const api = window.resonia!;
 
-  const info = await api.update.check(beta);
+  const info = await api.update.check(channel);
   if (!info) return null;
 
   return {

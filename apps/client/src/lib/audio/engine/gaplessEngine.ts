@@ -45,6 +45,23 @@ const NATIVE_HEALTHY_PLAYBACK_MS = 1000;
  *  - "free" : la lecture ne dépend plus du réseau (fichier local, tampon complet, mode buffer). */
 export type NetworkMode = "exclusive" | "shared" | "free";
 
+/** Fichier de piste lisible au fil de son téléchargement (cache disque, même partiel) — voir
+ *  `loadAndPlayProgressive`. Les octets sont un préfixe contigu qui grandit jusqu'à `complete`. */
+export interface ProgressiveSource {
+  readonly mimeType: string;
+  available(): number;
+  complete(): boolean;
+  read(start: number, end: number): Promise<ArrayBuffer | null>;
+  onGrow(cb: () => void): () => void;
+}
+
+// Premier lot lu sur disque pour un démarrage progressif : assez pour démarrer (plusieurs secondes
+// d'audio), assez petit pour être lu et ajouté en quelques ms. Les suivants sont plus gros.
+const PROGRESSIVE_FIRST_BYTES = 256 * 1024;
+const PROGRESSIVE_CHUNK_BYTES = 1024 * 1024;
+// Quota du SourceBuffer atteint : on libère ce qui est déjà joué au-delà de cette marge.
+const PROGRESSIVE_KEEP_BEHIND_SECONDS = 30;
+
 // Flux natif bloqué (chargement initial ou attente en cours de piste) depuis ce délai : la requête
 // est relancée sur une connexion neuve. Mesuré sur un serveur réel : environ une connexion TCP sur
 // sept à dix y tombe à ~40-50 Ko/s au lieu de 0,4 à 1,4 Mo/s, quel que soit le protocole — et une
@@ -294,6 +311,10 @@ export class GaplessEngine {
   // jouait déjà normalement — perçu comme une lecture "cassée" par intermittence alors que
   // seul le compte-rendu d'erreur était trompeur.
   private loadToken = 0;
+
+  // Lecture progressive en cours (voir loadAndPlayProgressive) : l'élément natif lit un MediaSource
+  // alimenté depuis le cache disque, pas le réseau.
+  private progressiveActive = false;
 
   private _state: EngineState = "idle";
   private _error: EngineError | null = null;
@@ -727,6 +748,10 @@ export class GaplessEngine {
       if (this.trackState?.mode !== "native" || audio !== this.nativeAudio) return;
       const mediaError = audio.error;
       const offset = this.trackState.pauseOffset;
+      if (this.progressiveActive) {
+        this.progressiveFailed(this.loadToken, mediaError);
+        return;
+      }
 
       // Coupure réseau en cours de flux : on retente (voir armNativeStallWatchdog) au lieu
       // d'arrêter la lecture — la piste reprend d'elle-même quand la connexion revient.
@@ -1208,6 +1233,7 @@ export class GaplessEngine {
    *  — sans lui, l'appelant ne peut recevoir que le repli `onNativePlaybackUnsupported`. */
   loadAndPlay(url: string, offset = 0, decoded?: DecodedTrack, mimeType?: string, rangeSeekable = true) {
     const token = ++this.loadToken;
+    this.progressiveActive = false;
     this.nativeRangeSeekable = rangeSeekable;
     this.nativeTimeBase = 0;
     this.nativeReconnects = 0;
@@ -1412,6 +1438,186 @@ export class GaplessEngine {
     this.trackState = { mode: "native", contextStartTime: now, pauseOffset: 0, isPaused: false };
   }
 
+  /** Démarre une piste depuis son fichier en cache, même PARTIEL, via MediaSource : la partie déjà
+   *  sur disque joue aussitôt (aucune requête réseau au démarrage), la suite est ajoutée au fil du
+   *  téléchargement en cours. Le flux lu EST le téléchargement du cache : une seule connexion (et un
+   *  seul transcodage côté serveur) par piste. En cas d'échec (format refusé, lecture disque), repli
+   *  sur le flux réseau `fallbackUrl` à la même position. */
+  loadAndPlayProgressive(source: ProgressiveSource, offset: number, fallbackUrl: string, fallbackMimeType?: string) {
+    const token = ++this.loadToken;
+    this.nativeRangeSeekable = false;
+    this.nativeTimeBase = 0;
+    this.nativeReconnects = 0;
+    this.nativePlayingSince = 0;
+    this.clearNativeStallWatchdog();
+    if (this.context.state === "suspended") this.resumeContextWithRetry();
+    this.discardPending();
+    this.teardownCurrent();
+    this.setState("loading");
+    this.nativeFallbackAttempted = false;
+    this.nativeInstantEndFallbackAttempted = false;
+    this.pendingStreamUrl = fallbackUrl;
+    this.pendingMimeType = fallbackMimeType ?? null;
+    this.progressiveActive = true;
+
+    const mediaSource = new MediaSource();
+    const objectUrl = URL.createObjectURL(mediaSource);
+    mediaSource.addEventListener(
+      "sourceopen",
+      () => {
+        URL.revokeObjectURL(objectUrl);
+        if (token === this.loadToken) void this.pumpProgressive(token, mediaSource, source);
+      },
+      { once: true },
+    );
+
+    this.nativeAudio.pause();
+    const now = this.context.currentTime;
+    this.nativeGain.gain.cancelScheduledValues(now);
+    this.nativeGain.gain.setValueAtTime(1, now);
+    networkDebugLog("native:load", { source: "cache progressif", offset, cachedBytes: source.available() });
+    // Le téléchargement de cette piste alimente la lecture (il n'est jamais suspendu, voir
+    // PrefetchScheduler.setFeed) ; les autres attendent qu'elle ait de l'avance.
+    this.setNetworkMode("exclusive", true);
+    this.nativeAudio.src = objectUrl;
+    this.nativeAudio.currentTime = offset;
+    this.applyRateToNativeAudio();
+    this.nativeAudio.play().catch((err) => {
+      if (token !== this.loadToken) return;
+      this.context
+        .resume()
+        .then(() => {
+          if (token !== this.loadToken) return;
+          this.nativeAudio.play().catch((e) => {
+            if (token === this.loadToken) this.reportError("Lecture impossible après reprise du contexte audio", e);
+          });
+        })
+        .catch(() => {
+          if (token === this.loadToken) this.reportError("Lecture instantanée impossible", err);
+        });
+    });
+    this.trackState = { mode: "native", contextStartTime: now, pauseOffset: offset, isPaused: false };
+  }
+
+  private async pumpProgressive(token: number, mediaSource: MediaSource, source: ProgressiveSource) {
+    let sourceBuffer: SourceBuffer;
+    try {
+      sourceBuffer = mediaSource.addSourceBuffer(source.mimeType);
+      // Durée connue d'avance : la barre et les positionnements fonctionnent avant la fin du
+      // téléchargement. Corrigée par endOfStream() une fois le fichier complet.
+      if (this.trackDurationHint > 0) mediaSource.duration = this.trackDurationHint;
+    } catch (err) {
+      this.progressiveFailed(token, err);
+      return;
+    }
+    let appended = 0;
+    let wake: (() => void) | null = null;
+    const unsubscribe = source.onGrow(() => {
+      const resume = wake;
+      wake = null;
+      resume?.();
+    });
+    try {
+      while (token === this.loadToken) {
+        const available = source.available();
+        // `null` : fichier absent alors que des octets étaient annoncés — repli réseau.
+        const data =
+          appended < available
+            ? await source.read(appended, Math.min(available, appended + (appended === 0 ? PROGRESSIVE_FIRST_BYTES : PROGRESSIVE_CHUNK_BYTES)))
+            : undefined;
+        if (token !== this.loadToken) return;
+        if (data === null) throw new Error("Lecture du cache impossible");
+        // Vide : le disque est en retard sur la progression annoncée (reprise d'un téléchargement
+        // interrompu) — on attend la suite comme si rien n'était encore disponible.
+        if (data && data.byteLength > 0) {
+          await this.appendProgressive(sourceBuffer, data, token);
+          if (token !== this.loadToken) return;
+          appended += data.byteLength;
+          this.updateNativePressure(this.nativeAudio);
+          this.onBufferedChange?.();
+          continue;
+        }
+        if (source.complete()) {
+          if (mediaSource.readyState === "open" && !sourceBuffer.updating) mediaSource.endOfStream();
+          this.updateNativePressure(this.nativeAudio);
+          this.onBufferedChange?.();
+          return;
+        }
+        // Attend de nouveaux octets ; réveil périodique pour s'arrêter si la piste a changé.
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+          window.setTimeout(resolve, 1000);
+        });
+      }
+    } catch (err) {
+      this.progressiveFailed(token, err);
+    } finally {
+      unsubscribe();
+    }
+  }
+
+  private waitUpdateEnd(sourceBuffer: SourceBuffer, start: () => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        sourceBuffer.removeEventListener("updateend", onEnd);
+        sourceBuffer.removeEventListener("error", onError);
+      };
+      const onEnd = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("SourceBuffer en erreur"));
+      };
+      sourceBuffer.addEventListener("updateend", onEnd);
+      sourceBuffer.addEventListener("error", onError);
+      try {
+        start();
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  }
+
+  /** Ajoute `data` ; quota atteint (piste longue) : libère ce qui est déjà joué, sinon attend. */
+  private async appendProgressive(sourceBuffer: SourceBuffer, data: ArrayBuffer, token: number) {
+    for (;;) {
+      try {
+        await this.waitUpdateEnd(sourceBuffer, () => sourceBuffer.appendBuffer(data));
+        return;
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === "QuotaExceededError")) throw err;
+        const behind = this.nativeAudio.currentTime - PROGRESSIVE_KEEP_BEHIND_SECONDS;
+        if (behind > 0 && sourceBuffer.buffered.length > 0 && sourceBuffer.buffered.start(0) < behind) {
+          await this.waitUpdateEnd(sourceBuffer, () => sourceBuffer.remove(0, behind));
+        } else {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
+        if (token !== this.loadToken) return;
+      }
+    }
+  }
+
+  /** Lecture progressive impossible : repli sur le flux réseau, à la même position. */
+  private progressiveFailed(token: number, err: unknown) {
+    if (token !== this.loadToken || !this.progressiveActive || !this.pendingStreamUrl) return;
+    console.warn("[audio] Lecture progressive depuis le cache impossible, repli sur le flux réseau", err);
+    networkDebugLog("native:progressive-failed", { error: String((err as Error)?.message ?? err) });
+    const wasPaused = this.trackState?.mode === "native" && this.trackState.isPaused;
+    this.loadAndPlay(this.pendingStreamUrl, this.currentTime, undefined, this.pendingMimeType ?? undefined, false);
+    if (wasPaused) this.pause();
+  }
+
+  private isNativeBufferedAt(time: number): boolean {
+    const ranges = this.nativeAudio.buffered;
+    for (let i = 0; i < ranges.length; i++) {
+      if (ranges.start(i) <= time && time < ranges.end(i) - 0.25) return true;
+    }
+    return false;
+  }
+
   /** Bascule la piste active du streaming natif vers un AudioBufferSourceNode dès que son
    *  décodage complet est prêt : à partir de là, la durée exacte de la piste est connue,
    *  et la transition vers la piste suivante devient planifiable au sample près. */
@@ -1427,6 +1633,9 @@ export class GaplessEngine {
     const position = Math.max(0, this.currentTime - decoded.trim.start);
 
     const nativeAudioRef = this.nativeAudio;
+    this.progressiveActive = false;
+    // Le pompage progressif s'arrête au changement de jeton.
+    this.loadToken++;
     const now = this.context.currentTime;
     this.nativeGain.gain.cancelScheduledValues(now);
     this.nativeGain.gain.setValueAtTime(this.nativeGain.gain.value, now);
@@ -1504,7 +1713,10 @@ export class GaplessEngine {
     const clamped = duration > 0 ? Math.max(0, Math.min(time, duration)) : Math.max(0, time);
 
     if (this.trackState.mode === "native") {
-      if (!this.nativeRangeSeekable && this.reloadNativeAt(clamped)) return;
+      // Lecture progressive : instantané dans la partie déjà en cache ; au-delà, le serveur
+      // reprend directement à la position voulue (reloadNativeAt) plutôt que d'attendre le cache.
+      const local = this.progressiveActive && this.isNativeBufferedAt(clamped);
+      if (!local && !this.nativeRangeSeekable && this.reloadNativeAt(clamped)) return;
       this.nativeAudio.currentTime = clamped;
       this.trackState.pauseOffset = clamped;
       this.trackState.contextStartTime = this.context.currentTime - clamped;
@@ -1563,7 +1775,7 @@ export class GaplessEngine {
   get bufferedRanges(): Array<[number, number]> {
     if (!this.trackState) return [];
     if (this.trackState.mode === "buffer") return [[0, this.duration]];
-    if (this.nativeAudio.src.startsWith("blob:")) return [[0, this.duration]];
+    if (!this.progressiveActive && this.nativeAudio.src.startsWith("blob:")) return [[0, this.duration]];
     // Taille inconnue : `buffered` ne suit que la position (~2 s, voir NATIVE_HEALTHY_PLAYBACK_MS),
     // seul le cache renseigne alors l'avance réelle.
     if (!Number.isFinite(this.nativeAudio.duration)) return [];
@@ -1603,6 +1815,7 @@ export class GaplessEngine {
     if (!resolved) return false;
     const wasPaused = this.trackState.isPaused;
     const token = ++this.loadToken;
+    this.progressiveActive = false;
     this.nativeTimeBase = resolved.offset;
     this.setNetworkMode("shared");
     this.trackState.pauseOffset = resolved.offset;

@@ -330,7 +330,7 @@
     "updates": "Updates",
     "updatesDescription": "Updates download automatically in the background and install the next time you quit Resonia — no manual download from GitHub needed. To install one right away, use the restart button in the top bar.",
     "updatesCurrentVersion": "Current version: {{version}}",
-    "updatesBetaBadge": "beta",
+    "nightlyBuild": "build {{number}} - released {{date}}",
     "updatesCheckButton": "Check for updates",
     "updatesChecking": "Checking for updates...",
     "updatesUpToDate": "You're up to date.",
@@ -341,8 +341,6 @@
     "updatesCheckError": "Couldn't check for updates. Try again later.",
     "checkOnLaunch": "Check for updates automatically",
     "checkOnLaunchDescription": "Looks for a new version on launch, then once a day while the app stays open.",
-    "betaUpdates": "Receive beta updates",
-    "betaUpdatesDescription": "Get early access releases before they reach the stable channel. These may be less stable. Enabled by default on beta versions of Resonia.",
     "appearance": "Appearance",
     "theme": "Theme",
     "themeDescription": "Colors used across the whole app. Changes apply instantly.",
@@ -385,7 +383,18 @@
     "iconPackDescription": "Icons missing from a pack are replaced with Material Symbols ones.",
     "iconPackPartial": "(partial)",
     "iconSize": "Icon size",
-    "iconSizeDescription": "Applies to every icon in the app."
+    "iconSizeDescription": "Applies to every icon in the app.",
+    "updateChannel": "Update channel",
+    "updateChannels": {
+      "stable": "Stable",
+      "beta": "Beta",
+      "nightly": "Nightly"
+    },
+    "updateChannelDescriptions": {
+      "stable": "Finished, tested releases. Recommended.",
+      "beta": "Early access releases, before they reach the stable channel. They may be less stable.",
+      "nightly": "Daily builds with the very latest changes, ahead of betas. They may contain bugs."
+    }
   },
   "update": {
     "promptTitle": "Software Update",
@@ -401,7 +410,6 @@
     "restartButton": "Restart to install update",
     "restartTooltip": "Version {{version}} has been downloaded and is ready to install."
   },
-
   "downloads": {
     "title": "Downloads",
     "emptyTitle": "No downloads yet",

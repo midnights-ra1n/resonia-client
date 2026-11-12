@@ -21,7 +21,14 @@ import { useSettingsStore, GIGABYTE, PREFETCH_COUNT_OPTIONS } from "../../stores
 import { useUpdateStore } from "../../stores/updateStore";
 import { electronFetch } from "../../lib/net/electronFetch";
 import { getPlatform, isElectron } from "../../lib/platform";
-import { getAppVersion, isBetaVersion } from "../../lib/app/appVersion";
+import {
+  buildTime,
+  formatBuildTime,
+  getAppVersion,
+  nightlyBuildNumber,
+  releaseChannelOf,
+  RELEASE_CHANNELS,
+} from "../../lib/app/appVersion";
 import { cacheStore } from "../../lib/audio/cache/cacheStore";
 import { downloadStore } from "../../lib/downloads/downloadStore";
 import {
@@ -95,10 +102,8 @@ export function SettingsPage() {
   const setCheckUpdatesOnLaunch = useSettingsStore(
     (s) => s.setCheckUpdatesOnLaunch,
   );
-  const betaUpdatesEnabled = useSettingsStore((s) => s.betaUpdatesEnabled);
-  const setBetaUpdatesEnabled = useSettingsStore(
-    (s) => s.setBetaUpdatesEnabled,
-  );
+  const updateChannel = useSettingsStore((s) => s.updateChannel);
+  const setUpdateChannel = useSettingsStore((s) => s.setUpdateChannel);
 
   const updateStatus = useUpdateStore((s) => s.status);
   const updateVersion = useUpdateStore((s) => s.version);
@@ -621,12 +626,20 @@ export function SettingsPage() {
                           version: appVersion,
                         })}
                   </span>
-                  {appVersion !== null && isBetaVersion(appVersion) && (
+                  {appVersion !== null && releaseChannelOf(appVersion) !== "stable" && (
                     <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold uppercase text-amber-400">
-                      {t("settings.updatesBetaBadge")}
+                      {t(`settings.updateChannels.${releaseChannelOf(appVersion)}`)}
                     </span>
                   )}
                 </div>
+                {appVersion !== null && nightlyBuildNumber(appVersion) !== null && (
+                  <p className="-mt-4 text-xs tabular-nums text-neutral-500">
+                    {t("settings.nightlyBuild", {
+                      number: nightlyBuildNumber(appVersion)!,
+                      date: formatBuildTime(buildTime()),
+                    })}
+                  </p>
+                )}
 
                 {isDesktop && (
                   <div>
@@ -634,7 +647,7 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() =>
-                          void checkAndInstallUpdate(betaUpdatesEnabled, t("update.adminPrompt"))
+                          void checkAndInstallUpdate(updateChannel, t("update.adminPrompt"))
                         }
                         disabled={
                           updateStatus === "checking" ||
@@ -723,35 +736,31 @@ export function SettingsPage() {
                       </span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setBetaUpdatesEnabled(!betaUpdatesEnabled)}
-                      className="flex w-full items-center justify-between gap-2"
-                    >
-                      <span>
-                        <span className="block text-sm font-medium text-white">
-                          {t("settings.betaUpdates")}
-                        </span>
-                        <span className="mt-1 block text-xs text-neutral-500">
-                          {t("settings.betaUpdatesDescription")}
-                        </span>
-                      </span>
-                      <span
-                        className={`relative inline-block shrink-0 w-9 h-5 rounded-full transition-colors ${
-                          betaUpdatesEnabled
-                            ? "bg-accent"
-                            : "bg-neutral-700"
-                        }`}
+                    <div>
+                      <label
+                        htmlFor="update-channel-select"
+                        className="block text-sm font-medium text-white"
                       >
-                        <span
-                          className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                            betaUpdatesEnabled
-                              ? "translate-x-4"
-                              : "translate-x-0"
-                          }`}
-                        />
-                      </span>
-                    </button>
+                        {t("settings.updateChannel")}
+                      </label>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {t(`settings.updateChannelDescriptions.${updateChannel}`)}
+                      </p>
+                      <select
+                        id="update-channel-select"
+                        value={updateChannel}
+                        onChange={(e) =>
+                          void setUpdateChannel(e.target.value as typeof updateChannel)
+                        }
+                        className="select-pill mt-2 w-full rounded-full bg-neutral-900 border border-neutral-700 pl-4 pr-10 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]"
+                      >
+                        {RELEASE_CHANNELS.map((channel) => (
+                          <option key={channel} value={channel}>
+                            {t(`settings.updateChannels.${channel}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </>
                 )}
               </div>

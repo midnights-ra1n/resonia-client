@@ -61,6 +61,12 @@ export function createElectronFsBlobStore(rootDir: string, baseDir: DesktopBaseD
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     },
 
+    async readRange(key, start, end) {
+      const bytes = await bridge().blobStore.readRange(baseDir, pathFor(key), start, end);
+      if (!bytes) return null;
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    },
+
     async readAsBlob(key, type) {
       // Pas de fichier adossé au disque côté renderer (lecture via IPC) : copie en mémoire,
       // que l'appelant DOIT libérer (URL.revokeObjectURL) dès que la piste n'est plus lue.

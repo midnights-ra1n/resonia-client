@@ -53,6 +53,12 @@ export function createOpfsBlobStore(rootDir: string): BlobStore {
       return file.arrayBuffer();
     },
 
+    async readRange(key, start, end) {
+      const handle = await getFileHandle(key);
+      if (!handle) return null;
+      return (await handle.getFile()).slice(start, end).arrayBuffer();
+    },
+
     async readAsBlob(key, type) {
       const handle = await getFileHandle(key);
       if (!handle) return null;

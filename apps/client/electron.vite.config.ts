@@ -71,6 +71,7 @@ export default defineConfig({
     },
     define: {
       __APP_VERSION__: JSON.stringify(rootPackageJson.version),
+      __BUILD_TIME__: JSON.stringify(Date.now()),
     },
     plugins: [react(), tailwindcss(), svgr()],
   },

@@ -5,6 +5,13 @@ name: Release
 #
 #   - push sur `beta`   : la version DOIT être une préversion, sinon échec immédiat.
 #   - push sur `stable` : la version NE DOIT PAS être une préversion.
+#   - chaque nuit (schedule) : build NIGHTLY de la branche `nightly`, version X.Y.Z-nightly.N
+#     (X.Y.Z tiré de son package.json, N = numéro de run : le « numéro de build » affiché dans
+#     l'app). Aucun commit de version : elle n'est fixée qu'au moment du build. Ignoré si
+#     `nightly` n'a pas bougé depuis la dernière nightly. Notes = commits depuis la précédente.
+#     Publiée en prerelease, jamais « latest » ; seules les NIGHTLY_KEEP dernières sont gardées
+#     (le flux Atom des releases, lu par electron-updater pour le canal bêta, ne liste que les
+#     ~10 dernières : des nightlies quotidiennes en chasseraient les bêtas).
 #   - Si le tag vX.Y.Z existe déjà (version non bumpée), rien n'est construit ni publié.
 #   - Lancement manuel (Actions → Release → Run workflow), depuis n'importe quelle branche :
 #     construit TOUTES les plateformes et garde les fichiers en artefacts du run, sans rien
@@ -41,10 +48,16 @@ name: Release
 on:
   push:
     branches: [beta, stable]
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publier la release (uniquement depuis beta ou stable)"
+        description: "Publier la release (beta/stable : uniquement depuis ces branches)"
+        type: boolean
+        default: false
+      nightly:
+        description: "Build nightly (branche nightly), quelle que soit la branche choisie ci-dessus"
         type: boolean
         default: false
 
@@ -60,6 +73,7 @@ concurrency:
 env:
   NODE_VERSION: 22
   IMAGE: ghcr.io/${{ github.repository }}-web
+  NIGHTLY_KEEP: 3
   # Restauration de cache (actions/cache, setup-node) : abandon après 5 min au lieu de 10 si le
   # téléchargement d'un segment stagne — le job continue alors sans cache.
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: 5
@@ -72,6 +86,8 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
       channel: ${{ steps.resolve.outputs.channel }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      previous_nightly: ${{ steps.resolve.outputs.previous_nightly }}
       build: ${{ steps.resolve.outputs.build }}
       publish: ${{ steps.resolve.outputs.publish }}
     steps:
@@ -84,8 +100,47 @@ jobs:
           EVENT: ${{ github.event_name }}
           BRANCH: ${{ github.ref_name }}
           INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_NIGHTLY: ${{ inputs.nightly }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+
+          if [[ "$EVENT" == "schedule" || "$INPUT_NIGHTLY" == "true" ]]; then
+            git fetch --no-tags --depth=1 origin nightly
+            SHA=$(git rev-parse FETCH_HEAD)
+            BASE=$(git show FETCH_HEAD:package.json | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(JSON.parse(s).version.split("-")[0]))')
+            VERSION="${BASE}-nightly.${GITHUB_RUN_NUMBER}"
+            TAG="v${VERSION}"
+            # Dernière nightly publiée (la plus récente d'abord) et son commit.
+            PREVIOUS=$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+              --jq '[.[] | select(.tagName | test("-nightly\\."))] | sort_by(.createdAt) | reverse | .[0].tagName // ""')
+            PREVIOUS_SHA=""
+            if [[ -n "$PREVIOUS" ]]; then
+              PREVIOUS_SHA=$(git ls-remote origin "refs/tags/${PREVIOUS}" "refs/tags/${PREVIOUS}^{}" | awk '{print $1}' | tail -1)
+            fi
+            BUILD=true
+            PUBLISH=true
+            if [[ "$EVENT" == "workflow_dispatch" ]]; then
+              PUBLISH="$INPUT_PUBLISH"
+            elif [[ "$SHA" == "$PREVIOUS_SHA" ]]; then
+              echo "::notice::nightly n'a pas changé depuis ${PREVIOUS} : rien à construire."
+              BUILD=false
+              PUBLISH=false
+            fi
+            {
+              echo "version=$VERSION"
+              echo "tag=$TAG"
+              echo "channel=nightly"
+              echo "sha=$SHA"
+              echo "previous_nightly=$PREVIOUS"
+              echo "build=$BUILD"
+              echo "publish=$PUBLISH"
+            } >> "$GITHUB_OUTPUT"
+            echo "### ${TAG} — canal nightly (${SHA:0:7}) — build=${BUILD} publish=${PUBLISH}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
 
@@ -136,6 +191,8 @@ jobs:
             echo "version=$VERSION"
             echo "tag=$TAG"
             echo "channel=$CHANNEL"
+            echo "sha=$GITHUB_SHA"
+            echo "previous_nightly="
             echo "build=$BUILD"
             echo "publish=$PUBLISH"
           } >> "$GITHUB_OUTPUT"
@@ -143,7 +200,7 @@ jobs:
 
       # Échoue en 10 secondes plutôt qu'après tous les builds si les notes manquent.
       - name: Vérifier les notes de version (CHANGELOG.md)
-        if: steps.resolve.outputs.publish == 'true'
+        if: steps.resolve.outputs.publish == 'true' && steps.resolve.outputs.channel != 'nightly'
         run: node scripts/extract-changelog.mjs "${{ steps.resolve.outputs.version }}" > /dev/null
 
   # Lint + tests + build web (et archive du site statique), en parallèle des builds desktop.
@@ -154,6 +211,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -208,6 +267,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -302,6 +363,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
@@ -319,7 +382,8 @@ jobs:
           file: apps/client/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ needs.prepare.outputs.publish == 'true' }}
-          tags: ${{ env.IMAGE }}:${{ needs.prepare.outputs.version }}
+          # Nightly : seul le tag flottant :nightly (une image versionnée par jour encombrerait le registre).
+          tags: ${{ env.IMAGE }}:${{ needs.prepare.outputs.channel == 'nightly' && 'nightly' || needs.prepare.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
@@ -342,8 +406,13 @@ jobs:
       TAG: ${{ needs.prepare.outputs.tag }}
       VERSION: ${{ needs.prepare.outputs.version }}
       CHANNEL: ${{ needs.prepare.outputs.channel }}
+      PREVIOUS_NIGHTLY: ${{ needs.prepare.outputs.previous_nightly }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          # Historique complet : notes d'une nightly = commits depuis la précédente.
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         timeout-minutes: 10
@@ -373,10 +442,28 @@ jobs:
       # Les liens de téléchargement du README (régénérés par `pnpm bump`) doivent viser cette
       # version et des fichiers réellement construits, sinon ils mèneraient à des 404.
       - name: Vérifier les liens de téléchargement du README
+        if: env.CHANNEL != 'nightly'
         run: node scripts/readme-downloads.mjs check release
 
       - name: Notes de version
-        run: node scripts/extract-changelog.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
+        run: |
+          set -euo pipefail
+          if [[ "$CHANNEL" != "nightly" ]]; then
+            node scripts/extract-changelog.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
+            exit 0
+          fi
+          {
+            echo "Nightly build ${GITHUB_RUN_NUMBER} (commit $(git rev-parse --short HEAD) de la branche nightly)."
+            echo
+            if [[ -n "$PREVIOUS_NIGHTLY" ]] && git rev-parse -q --verify "refs/tags/$PREVIOUS_NIGHTLY" >/dev/null; then
+              echo "Changes since ${PREVIOUS_NIGHTLY}:"
+              git log --no-merges --pretty='- %s' "refs/tags/$PREVIOUS_NIGHTLY..HEAD" | head -60
+            else
+              echo "Latest changes:"
+              git log --no-merges --pretty='- %s' -20 HEAD
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
 
       # Relance du job après une release déjà publiée (ex. : seule la promotion Docker avait
       # échoué) : on ne recrée rien, sinon `gh release create` échouerait sur le tag existant.
@@ -410,12 +497,14 @@ jobs:
         run: |
           set -euo pipefail
           flags=()
-          if [[ "$CHANNEL" == "beta" ]]; then
+          if [[ "$CHANNEL" == "nightly" ]]; then
+            flags+=(--prerelease --title "Resonia $TAG (nightly)")
+          elif [[ "$CHANNEL" == "beta" ]]; then
             flags+=(--prerelease --title "Resonia $TAG (beta)")
           else
             flags+=(--title "Resonia $TAG")
           fi
-          gh release create "$TAG" --draft --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
+          gh release create "$TAG" --draft --target "${{ needs.prepare.outputs.sha }}" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
 
       # Fichier par fichier, chacun avec son propre timeout : un upload qui pend est relancé après
       # 5 min au lieu de bloquer tout le lot (un fichier de 150 Mo monte en moins d'une minute).
@@ -440,7 +529,7 @@ jobs:
         if: steps.state.outputs.published != 'true'
         timeout-minutes: 2
         run: |
-          if [[ "$CHANNEL" == "beta" ]]; then
+          if [[ "$CHANNEL" != "stable" ]]; then
             gh release edit "$TAG" --draft=false --latest=false
           else
             gh release edit "$TAG" --draft=false --latest
@@ -457,8 +546,23 @@ jobs:
       # :latest suit toujours la dernière version publiée, beta comprise (c'est le tag donné dans
       # le README) ; :beta n'est déplacé que par les préversions.
       - name: Promouvoir l'image web (tags flottants :latest et :beta)
+        # Nightly : déjà poussée sous :nightly par le job web-image, jamais :latest.
+        if: env.CHANNEL != 'nightly'
         timeout-minutes: 5
         run: |
           tags=(-t "$IMAGE:latest")
           if [[ "$CHANNEL" == "beta" ]]; then tags+=(-t "$IMAGE:beta"); fi
           docker buildx imagetools create "${tags[@]}" "$IMAGE:$VERSION"
+
+      # Seules les NIGHTLY_KEEP dernières nightlies restent (voir l'en-tête) : release ET tag supprimés.
+      - name: Nettoyer les anciennes nightlies
+        if: env.CHANNEL == 'nightly'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+            --jq "[.[] | select(.tagName | test(\"-nightly\\\\.\"))] | sort_by(.createdAt) | reverse | .[${NIGHTLY_KEEP}:] | .[].tagName" |
+          while read -r tag; do
+            echo "Suppression de $tag"
+            gh release delete "$tag" --cleanup-tag --yes
+          done

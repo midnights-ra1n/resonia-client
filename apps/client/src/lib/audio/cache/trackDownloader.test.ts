@@ -25,6 +25,7 @@ function memoryStore(initial: number[] = []) {
       };
     },
     readAll: async () => file.buffer,
+    readRange: async () => null,
     readAsBlob: async () => null,
     deleteFile: async () => {
       file = new Uint8Array();

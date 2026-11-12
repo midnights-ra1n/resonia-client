@@ -52,6 +52,7 @@ interface TaskSnapshot {
   complete: boolean;
   protected: boolean;
   error: string | null;
+  state: "running" | "suspended" | "idle";
 }
 
 /** Bande passante réseau ET décodage ("ffmpeg-like", voir decode:throughput dans
@@ -205,7 +206,7 @@ function NetworkTab() {
     <div className="flex flex-col gap-3 p-3">
       <div className="grid grid-cols-2 gap-2">
         <Stat label="Live speed" value={formatRate(bandwidth)} live />
-        <Stat label="Active transfers" value={String(tasks.filter((t) => !t.complete).length)} />
+        <Stat label="Active transfers" value={String(tasks.filter((t) => !t.complete && t.state === "running").length)} />
         <Stat label="Chunks read" value={String(readCount)} />
         <Stat label="Chunks lost" value={String(lostCount)} tone={lostCount > 0 ? "warn" : undefined} />
         <Stat
@@ -244,7 +245,9 @@ function NetworkTab() {
                 <div className="flex items-center justify-between text-neutral-300">
                   <span className="truncate font-mono">{formatKey(t.key)}</span>
                   <span className="shrink-0 tabular-nums text-neutral-500">
-                    {t.error ? "error" : t.complete ? "cached" : `${Math.round(pct)}%`}
+                    {t.complete
+                      ? "cached"
+                      : `${t.totalBytes > 0 ? `${Math.round(pct)}%` : formatBytes(t.bytesCached)}${t.error ? " · error" : t.state === "suspended" ? " · suspended" : t.state === "idle" ? " · paused" : ""}`}
                   </span>
                 </div>
                 <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-neutral-800">
@@ -253,6 +256,11 @@ function NetworkTab() {
                     style={{ width: `${pct}%` }}
                   />
                 </div>
+                {t.error && !t.complete && (
+                  <p className="mt-0.5 truncate text-[10px] text-red-400" title={t.error}>
+                    {t.error}
+                  </p>
+                )}
               </div>
             );
           })}

@@ -3,6 +3,7 @@ import { TrackDownloader } from "./trackDownloader";
 import { cacheKeyFor, type CacheEntryMeta, type DownloadPriority, type ProgressListener } from "./types";
 import { audioCacheBlobStore, opfsDelete, opfsReadAll } from "./opfsStore";
 import { isElectron } from "../../platform";
+import type { ProgressiveSource } from "../engine/gaplessEngine";
 
 // Ancien format (un seul tableau sous une seule clé) — encore lu pour migrer les installations
 // existantes vers le format par-entrée ci-dessous, jamais plus écrit (voir `loadMeta`).
@@ -309,6 +310,27 @@ class CacheStore {
     return blob ? URL.createObjectURL(blob) : null;
   }
 
+  /** Lecture progressive possible (voir GaplessEngine.loadAndPlayProgressive) : sur bureau, le
+   *  téléchargement écrit directement dans le fichier, lisible au fil de l'eau. Sur le web, OPFS
+   *  n'expose les écritures qu'à la fermeture du fichier — pas de lecture pendant le téléchargement. */
+  get supportsProgressiveReads(): boolean {
+    return Boolean(audioCacheBlobStore.download);
+  }
+
+  /** Fichier en cache (même partiel, même pas encore commencé) lu au fil de son téléchargement. */
+  async progressiveSource(trackId: string, qualityId: string, mimeType: string): Promise<ProgressiveSource> {
+    const key = cacheKeyFor(trackId, qualityId);
+    const meta = await this.loadMeta();
+    return {
+      mimeType,
+      // Préfixe contigu : progression du téléchargement en cours, sinon ce qui a été persisté.
+      available: () => Math.max(this.tasks.get(key)?.progress.bytesCached ?? 0, meta.get(key)?.bytesCached ?? 0),
+      complete: () => Boolean(this.tasks.get(key)?.isComplete || meta.get(key)?.complete),
+      read: (start, end) => audioCacheBlobStore.readRange(key, start, end),
+      onGrow: (cb) => this.onTaskProgress((k) => k === key && cb()),
+    };
+  }
+
   /** Éviction LRU : ne touche jamais aux clés protégées (piste active + fenêtre de préchargement). */
   private async enforceLimit() {
     const meta = await this.loadMeta();
@@ -352,13 +374,18 @@ class CacheStore {
     complete: boolean;
     protected: boolean;
     error: string | null;
+    state: "running" | "suspended" | "idle";
   }> {
-    return Array.from(this.tasks.entries()).map(([key, task]) => ({
-      key,
-      ...task.progress,
-      protected: this.protectedKeys.has(key),
-      error: task.error?.message ?? null,
-    }));
+    // Téléchargements arrêtés avant leur premier octet (piste passée aussitôt) : rien à montrer.
+    return Array.from(this.tasks.entries())
+      .filter(([, task]) => task.isRunning || task.progress.bytesCached > 0 || task.error)
+      .map(([key, task]) => ({
+        key,
+        ...task.progress,
+        protected: this.protectedKeys.has(key),
+        error: task.error?.message ?? null,
+        state: !task.isRunning ? "idle" : task.isSuspended ? "suspended" : "running",
+      }));
   }
 
   async clearAll() {

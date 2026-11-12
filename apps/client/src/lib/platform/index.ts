@@ -20,6 +20,7 @@ export interface ResoniaBridge {
     close(handleId: number): Promise<void>;
     stat(baseDir: DesktopBaseDir, path: string): Promise<{ size: number } | null>;
     readFile(baseDir: DesktopBaseDir, path: string): Promise<Uint8Array | null>;
+    readRange(baseDir: DesktopBaseDir, path: string, start: number, end: number): Promise<Uint8Array | null>;
     remove(baseDir: DesktopBaseDir, path: string): Promise<void>;
   };
   netFetch(
@@ -55,7 +56,7 @@ export interface ResoniaBridge {
     onEvent(cb: (event: { event: string; message?: string; detail?: unknown }) => void): () => void;
   };
   update: {
-    check(beta: boolean): Promise<{ version: string; currentVersion: string; notes: string | null } | null>;
+    check(channel: "stable" | "beta" | "nightly"): Promise<{ version: string; currentVersion: string; notes: string | null } | null>;
     download(adminPrompt: string): Promise<void>;
     install(installingText: string): Promise<void>;
     prompt(strings: { title: string; message: string; detail: string; restart: string; later: string }): Promise<boolean>;

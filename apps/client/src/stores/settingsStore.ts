@@ -4,7 +4,15 @@ import {
   getAvailableQualities,
   getQualityById,
 } from "../lib/audio/qualityOptions";
-import { currentReleaseChannel, resolveBetaUpdatesEnabled, type BetaUpdatesChoice } from "../lib/app/appVersion";
+import {
+  currentReleaseChannel,
+  isReleaseChannel,
+  migrateBetaUpdatesChoice,
+  resolveUpdateChannel,
+  type BetaUpdatesChoice,
+  type ReleaseChannel,
+  type UpdateChannelChoice,
+} from "../lib/app/appVersion";
 import { getPlatform } from "../lib/platform";
 import { storage } from "../lib/storage";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
@@ -38,7 +46,8 @@ interface SettingsState {
   /** Rendu de la forme d'onde : 3 bandes (graves/médiums/aigus) ou amplitude seule. */
   waveformStyle: WaveformStyle;
   checkUpdatesOnLaunch: boolean;
-  betaUpdatesEnabled: boolean;
+  /** Canal de mise à jour suivi (voir resolveUpdateChannel). */
+  updateChannel: ReleaseChannel;
   /** Version que l'utilisateur a explicitement choisi de reporter ("Plus tard" dans la pop-up
    *  de mise à jour, voir UpdateNotifier.tsx) — évite de la re-proposer à chaque lancement tant
    *  qu'aucune version plus récente n'est sortie. */
@@ -60,7 +69,7 @@ interface SettingsState {
   setShowWaveform: (enabled: boolean) => Promise<void>;
   setWaveformStyle: (style: WaveformStyle) => Promise<void>;
   setCheckUpdatesOnLaunch: (enabled: boolean) => Promise<void>;
-  setBetaUpdatesEnabled: (enabled: boolean) => Promise<void>;
+  setUpdateChannel: (channel: ReleaseChannel) => Promise<void>;
   setDismissedUpdateVersion: (version: string | null) => Promise<void>;
 }
 
@@ -84,18 +93,25 @@ const WAVEFORM_STYLE_STORAGE_KEY = "resonia:settings:waveformStyle";
 export type WaveformStyle = "bands" | "simple";
 const CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY =
   "resonia:settings:checkUpdatesOnLaunch";
-// Ancien format (booléen seul, sans le canal sur lequel le choix a été fait) : repris une fois,
-// comme un choix fait sur le canal actuel, puis remplacé par BETA_UPDATES_CHOICE_STORAGE_KEY.
+// Anciens formats de la case « Recevoir les mises à jour bêta » (booléen seul, puis booléen +
+// canal) : repris une fois vers UPDATE_CHANNEL_CHOICE_STORAGE_KEY, puis supprimés.
 const LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY = "resonia:settings:betaUpdatesEnabled";
-const BETA_UPDATES_CHOICE_STORAGE_KEY = "resonia:settings:betaUpdatesChoice";
+const LEGACY_BETA_UPDATES_CHOICE_STORAGE_KEY = "resonia:settings:betaUpdatesChoice";
+const UPDATE_CHANNEL_CHOICE_STORAGE_KEY = "resonia:settings:updateChannelChoice";
 
-/** Choix bêta enregistré, en migrant l'ancien booléen (voir LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY). */
-function readBetaUpdatesChoice(stored: BetaUpdatesChoice | null): BetaUpdatesChoice | null {
-  if (stored) return stored;
-  const legacy = storage.getSync<boolean>(LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY);
-  if (legacy === null) return null;
-  const migrated: BetaUpdatesChoice = { enabled: legacy, channel: currentReleaseChannel() };
-  void storage.set(BETA_UPDATES_CHOICE_STORAGE_KEY, migrated).then(() => storage.remove(LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY));
+/** Canal choisi enregistré, en migrant les anciens réglages bêta s'il n'y en a pas encore. */
+function readUpdateChannelChoice(stored: UpdateChannelChoice | null): UpdateChannelChoice | null {
+  if (stored && isReleaseChannel(stored.channel) && isReleaseChannel(stored.installedChannel)) return stored;
+  const legacyChoice = storage.getSync<BetaUpdatesChoice>(LEGACY_BETA_UPDATES_CHOICE_STORAGE_KEY);
+  const legacyBool = legacyChoice ? null : storage.getSync<boolean>(LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY);
+  const legacy = legacyChoice ?? (legacyBool === null ? null : { enabled: legacyBool, channel: currentReleaseChannel() });
+  if (!legacy) return null;
+  const migrated = migrateBetaUpdatesChoice(legacy);
+  void storage
+    .set(UPDATE_CHANNEL_CHOICE_STORAGE_KEY, migrated)
+    .then(() =>
+      Promise.all([storage.remove(LEGACY_BETA_UPDATES_CHOICE_STORAGE_KEY), storage.remove(LEGACY_BETA_UPDATES_ENABLED_STORAGE_KEY)]),
+    );
   return migrated;
 }
 const DISMISSED_UPDATE_VERSION_STORAGE_KEY = "resonia:settings:dismissedUpdateVersion";
@@ -146,7 +162,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   showWaveform: false,
   waveformStyle: "bands",
   checkUpdatesOnLaunch: true,
-  betaUpdatesEnabled: false,
+  updateChannel: currentReleaseChannel(),
   dismissedUpdateVersion: null,
   hydrated: false,
 
@@ -161,7 +177,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       playlistSortDirection,
       devModeEnabled,
       checkUpdatesOnLaunch,
-      betaUpdatesChoice,
+      updateChannelChoice,
       dismissedUpdateVersion,
       spotifyMode,
       spotifyClientId,
@@ -178,7 +194,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<PlaylistSortDirection>(PLAYLIST_SORT_DIRECTION_STORAGE_KEY),
       storage.getSync<boolean>(DEV_MODE_ENABLED_STORAGE_KEY),
       storage.getSync<boolean>(CHECK_UPDATES_ON_LAUNCH_STORAGE_KEY),
-      storage.getSync<BetaUpdatesChoice>(BETA_UPDATES_CHOICE_STORAGE_KEY),
+      storage.getSync<UpdateChannelChoice>(UPDATE_CHANNEL_CHOICE_STORAGE_KEY),
       storage.getSync<string>(DISMISSED_UPDATE_VERSION_STORAGE_KEY),
       storage.getSync<string>(SPOTIFY_MODE_STORAGE_KEY),
       storage.getSync<string>(SPOTIFY_CLIENT_ID_STORAGE_KEY),
@@ -212,7 +228,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       showWaveform: showWaveform ?? false,
       waveformStyle: waveformStyle === "simple" ? "simple" : "bands",
       checkUpdatesOnLaunch: checkUpdatesOnLaunch ?? true,
-      betaUpdatesEnabled: resolveBetaUpdatesEnabled(readBetaUpdatesChoice(betaUpdatesChoice), currentReleaseChannel()),
+      updateChannel: resolveUpdateChannel(readUpdateChannelChoice(updateChannelChoice), currentReleaseChannel()),
       dismissedUpdateVersion: dismissedUpdateVersion ?? null,
       spotifyMetadataMode: isSpotifyMode(spotifyMode) ? spotifyMode : "off",
       spotifyClientId: spotifyClientId ?? "",
@@ -301,10 +317,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ checkUpdatesOnLaunch: enabled });
   },
 
-  setBetaUpdatesEnabled: async (enabled) => {
-    const choice: BetaUpdatesChoice = { enabled, channel: currentReleaseChannel() };
-    await storage.set(BETA_UPDATES_CHOICE_STORAGE_KEY, choice);
-    set({ betaUpdatesEnabled: enabled });
+  setUpdateChannel: async (channel) => {
+    if (!isReleaseChannel(channel)) return;
+    const choice: UpdateChannelChoice = { channel, installedChannel: currentReleaseChannel() };
+    await storage.set(UPDATE_CHANNEL_CHOICE_STORAGE_KEY, choice);
+    set({ updateChannel: channel });
   },
   setDismissedUpdateVersion: async (version) => {
     if (version === null) await storage.remove(DISMISSED_UPDATE_VERSION_STORAGE_KEY);

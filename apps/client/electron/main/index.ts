@@ -472,6 +472,21 @@ function registerIpcHandlers() {
       return null;
     }
   });
+  // Lecture d'une plage (lecture progressive d'un fichier en cache encore en téléchargement).
+  ipcMain.handle("blobstore:readRange", async (_e, baseDir: DesktopBaseDir, relativePath: string, start: number, end: number) => {
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) return null;
+    let fh: FileHandle | null = null;
+    try {
+      fh = await fsOpen(resolvePath(baseDir, relativePath), "r");
+      const buffer = Buffer.alloc(Math.min(end - start, 16 * 1024 * 1024));
+      const { bytesRead } = await fh.read(buffer, 0, buffer.length, start);
+      return buffer.subarray(0, bytesRead);
+    } catch {
+      return null;
+    } finally {
+      await fh?.close().catch(() => {});
+    }
+  });
   ipcMain.handle("blobstore:remove", async (_e, baseDir: DesktopBaseDir, relativePath: string) => {
     try {
       await unlink(resolvePath(baseDir, relativePath));
@@ -526,7 +541,8 @@ function registerIpcHandlers() {
   const DOWNLOAD_CHUNK_BYTES = 512 * 1024;
   const DOWNLOAD_STALL_TIMEOUT_MS = 20_000;
   const DOWNLOAD_MAX_RETRIES = 3;
-  const DOWNLOAD_PROGRESS_INTERVAL_MS = 250;
+  // Court : la lecture progressive (voir loadAndPlayProgressive côté renderer) avance à ce rythme.
+  const DOWNLOAD_PROGRESS_INTERVAL_MS = 100;
   // Connexion lente : mesuré sur un serveur réel, environ une connexion TCP sur sept à dix tombe à
   // ~40-50 Ko/s au lieu de 0,4 à 1,4 Mo/s, et le reste. Après SLOW_CHECK_AFTER_MS de réception,
   // une plage nettement plus lente que le meilleur débit déjà vu sur ce serveur est relancée :

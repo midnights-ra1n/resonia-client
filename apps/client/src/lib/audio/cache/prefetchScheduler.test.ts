@@ -391,6 +391,36 @@ describe("prefetchScheduler — flux transcodé partiel quitté", () => {
   });
 });
 
+describe("prefetchScheduler — source de la lecture progressive", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requestedOrder.length = 0;
+    rangeResumable.clear();
+    partial.clear();
+    completed.clear();
+    tasks.clear();
+    vi.resetModules();
+  });
+
+  it("pression réseau : la piste lue démarre et n'est jamais suspendue, les suivantes attendent", async () => {
+    const { prefetchScheduler } = await import("./prefetchScheduler");
+    const { cacheStore } = await import("./cacheStore");
+    prefetchScheduler.setQuality("aac-256");
+    prefetchScheduler.setNetworkMode("exclusive");
+    prefetchScheduler.setFeed("active");
+    prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
+    prefetchScheduler.setUpcoming([{ trackId: "next1", streamUrl: "https://x/1" }]);
+    await flush();
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active"]);
+
+    prefetchScheduler.setNetworkMode("shared");
+    await flush();
+    prefetchScheduler.setNetworkMode("exclusive");
+    expect(cacheStore.setSuspended).not.toHaveBeenCalledWith("active", "aac-256", true);
+    expect(cacheStore.pause).not.toHaveBeenCalledWith("active", "aac-256");
+  });
+});
+
 describe("prefetchScheduler — relance après échec", () => {
   beforeEach(() => {
     requestedOrder.length = 0;

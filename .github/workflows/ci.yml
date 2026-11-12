@@ -10,7 +10,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [development, beta, stable]
+    branches: [development, nightly, beta, stable]
   workflow_dispatch:
 
 permissions:

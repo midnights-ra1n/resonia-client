@@ -693,6 +693,9 @@ export class GaplessEngine {
     });
     audio.addEventListener("suspend", checkPressure);
     audio.addEventListener("canplaythrough", checkPressure);
+    // Après un seek ("seeking" pose la pression), un flux déjà entièrement reçu n'émet plus de
+    // "progress" : sans ce relevé, la mise en cache de fond restait bloquée jusqu'à la piste suivante.
+    audio.addEventListener("seeked", checkPressure);
     audio.addEventListener("playing", () => {
       if (this.trackState?.mode === "native") {
         this.clearNativeStallWatchdog();

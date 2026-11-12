@@ -17,7 +17,7 @@ import {
   type AnimatedArtworkHealthFailureReason,
 } from "@resonia/api-client";
 import { useTranslation, type Locale } from "../../lib/i18n";
-import { useSettingsStore, GIGABYTE } from "../../stores/settingsStore";
+import { useSettingsStore, GIGABYTE, PREFETCH_COUNT_OPTIONS } from "../../stores/settingsStore";
 import { useUpdateStore } from "../../stores/updateStore";
 import { electronFetch } from "../../lib/net/electronFetch";
 import { getPlatform, isElectron } from "../../lib/platform";
@@ -87,6 +87,8 @@ export function SettingsPage() {
   );
   const cacheMaxBytes = useSettingsStore((s) => s.cacheMaxBytes);
   const setCacheMaxBytes = useSettingsStore((s) => s.setCacheMaxBytes);
+  const prefetchCount = useSettingsStore((s) => s.prefetchCount);
+  const setPrefetchCount = useSettingsStore((s) => s.setPrefetchCount);
   const devModeEnabled = useSettingsStore((s) => s.devModeEnabled);
   const setDevModeEnabled = useSettingsStore((s) => s.setDevModeEnabled);
   const checkUpdatesOnLaunch = useSettingsStore((s) => s.checkUpdatesOnLaunch);
@@ -516,6 +518,30 @@ export function SettingsPage() {
                     {CACHE_LIMIT_OPTIONS_GB.map((gb) => (
                       <option key={gb} value={gb}>
                         {gb} {unitGb}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="prefetch-count-select"
+                    className="block text-sm font-medium text-white"
+                  >
+                    {t("settings.prefetchCount")}
+                  </label>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {t("settings.prefetchCountDescription")}
+                  </p>
+                  <select
+                    id="prefetch-count-select"
+                    value={prefetchCount}
+                    onChange={(e) => setPrefetchCount(Number(e.target.value))}
+                    className="select-pill mt-2 w-full rounded-full bg-neutral-900 border border-neutral-700 pl-4 pr-10 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-[color,background-color,border-color,box-shadow]"
+                  >
+                    {PREFETCH_COUNT_OPTIONS.map((count) => (
+                      <option key={count} value={count}>
+                        {t(count === 1 ? "settings.prefetchCountOptionOne" : "settings.prefetchCountOption", { count })}
                       </option>
                     ))}
                   </select>

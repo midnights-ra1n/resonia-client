@@ -159,6 +159,8 @@ function LiveChunkStrip({ events, trackId }: { events: DebugLogEntry[]; trackId:
 function NetworkTab() {
   const events = useDebugEvents("network");
   const currentTrackId = usePlayerStore((s) => s.currentTrack?.id ?? null);
+  const startLatencyMs = usePlayerStore((s) => s.startLatencyMs);
+  const { t } = useTranslation();
   const [now, setNow] = useState(() => performance.now());
   const [cacheUsed, setCacheUsed] = useState(0);
   const [cacheMax, setCacheMax] = useState(cacheStore.maxCacheBytes);
@@ -206,6 +208,11 @@ function NetworkTab() {
         <Stat label="Active transfers" value={String(tasks.filter((t) => !t.complete).length)} />
         <Stat label="Chunks read" value={String(readCount)} />
         <Stat label="Chunks lost" value={String(lostCount)} tone={lostCount > 0 ? "warn" : undefined} />
+        <Stat
+          label={t("debug.startLatency")}
+          value={startLatencyMs === null ? "—" : `${startLatencyMs} ms`}
+          tone={startLatencyMs !== null && startLatencyMs > 1000 ? "warn" : undefined}
+        />
       </div>
 
       <LiveChunkStrip events={events} trackId={currentTrackId} />

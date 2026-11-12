@@ -5,7 +5,13 @@ import type { NetworkMode } from "../engine/gaplessEngine";
 import { isElectron } from "../../platform";
 import { isForegroundBusy, onForegroundBusyChange } from "../../network/foregroundActivity";
 
-const PREFETCH_COUNT = 3;
+// Pistes suivantes mises en cache par défaut (réglable, voir setPrefetchCount).
+export const DEFAULT_PREFETCH_COUNT = 3;
+// Pistes quittées dont le téléchargement d'un flux transcodé est resté partiel : leur connexion est
+// gardée (suspendue) pour être terminée après la fenêtre, au lieu d'être coupée — un flux transcodé
+// ne se reprend pas à l'octet près (le serveur repart de l'octet 0, voir rangeFetcher), si bien que
+// revenir sur la piste retéléchargeait tout depuis le début.
+const MAX_LEFTOVERS = 2;
 
 // Téléchargements simultanés : la piste active ET la suivante démarrent ensemble. Les serveurs
 // derrière un proxy plafonnent souvent le débit PAR connexion (mesuré : ~50 Ko/s chacune, qui
@@ -51,6 +57,12 @@ interface QueueSlot {
  *  (pause()/resume(), pilotés par la pression réseau du moteur). */
 class PrefetchScheduler {
   private qualityId = "aac-256";
+  private prefetchCount = DEFAULT_PREFETCH_COUNT;
+  // Piste active + suivantes (fenêtre demandée par le lecteur).
+  private window: QueueSlot[] = [];
+  // Voir MAX_LEFTOVERS : terminées après la fenêtre, la plus récemment quittée d'abord.
+  private leftovers: QueueSlot[] = [];
+  // Ordre de travail des workers : fenêtre puis restes.
   private slots: QueueSlot[] = [];
   private cursor = 0;
   private paused = false;
@@ -139,7 +151,48 @@ class PrefetchScheduler {
   }
 
   setQuality(qualityId: string) {
+    if (qualityId === this.qualityId) return;
+    this.dropLeftovers();
     this.qualityId = qualityId;
+  }
+
+  setPrefetchCount(count: number) {
+    this.prefetchCount = Math.max(1, Math.floor(count));
+  }
+
+  /** Téléchargement partiel d'un flux transcodé (non reprenable à l'octet près) encore ouvert. */
+  private isUnresumablePartial(trackId: string): boolean {
+    const task = cacheStore.getTask(trackId, this.qualityId);
+    return !!task && task.isRunning && !task.isComplete && !task.isRangeResumable && task.progress.bytesCached > 0;
+  }
+
+  /** Cède le réseau sans perdre un flux transcodé partiel : suspendu (connexion gardée) plutôt
+   *  que coupé. Les fichiers à plages, eux, reprennent à l'octet près : coupés net. */
+  private release(trackId: string) {
+    if (this.isUnresumablePartial(trackId)) cacheStore.setSuspended(trackId, this.qualityId, true);
+    else cacheStore.pause(trackId, this.qualityId);
+  }
+
+  private dropLeftovers() {
+    this.leftovers.forEach((s) => cacheStore.pause(s.trackId, this.qualityId));
+    this.leftovers = [];
+  }
+
+  /** Nouvelle fenêtre : les pistes qui en sortent avec un flux transcodé partiel passent en restes. */
+  private setWindow(window: QueueSlot[]) {
+    const kept = new Set(window.map((s) => s.trackId));
+    const leaving = this.window.filter((s) => !kept.has(s.trackId) && this.isUnresumablePartial(s.trackId));
+    const leftovers = [...leaving.map((s) => ({ ...s, priority: "prefetch" as const })), ...this.leftovers].filter(
+      (s, i, all) => !kept.has(s.trackId) && all.findIndex((o) => o.trackId === s.trackId) === i,
+    );
+    leftovers.slice(MAX_LEFTOVERS).forEach((s) => cacheStore.pause(s.trackId, this.qualityId));
+    this.leftovers = leftovers.slice(0, MAX_LEFTOVERS);
+    // Hors des workers jusqu'à leur tour : gardés suspendus, sans compter dans les connexions actives.
+    for (const s of this.leftovers) {
+      if (this.inFlight.delete(s.trackId)) cacheStore.setSuspended(s.trackId, this.qualityId, true);
+    }
+    this.window = window;
+    this.slots = [...window, ...this.leftovers];
   }
 
   private syncProtectedKeys() {
@@ -149,7 +202,7 @@ class PrefetchScheduler {
   /** Remplace la piste active (`null` : aucune à télécharger, ex. piste déjà téléchargée). Le
    *  téléchargement d'une piste quittée est interrompu — inutile de continuer à la mettre en cache. */
   setActive(track: UpcomingTrack | null) {
-    const upcoming = this.slots.slice(this.activeSlot ? 1 : 0);
+    const upcoming = this.window.slice(this.activeSlot ? 1 : 0);
     this.replaceSlots(
       track ? [{ trackId: track.trackId, streamUrl: track.streamUrl, priority: "active" }, ...upcoming] : upcoming,
     );
@@ -157,7 +210,7 @@ class PrefetchScheduler {
 
   setUpcoming(tracks: UpcomingTrack[]) {
     const active = this.activeSlot;
-    const upcoming: QueueSlot[] = tracks.slice(0, PREFETCH_COUNT).map((t) => ({
+    const upcoming: QueueSlot[] = tracks.slice(0, this.prefetchCount).map((t) => ({
       trackId: t.trackId,
       streamUrl: t.streamUrl,
       priority: "prefetch",
@@ -166,11 +219,11 @@ class PrefetchScheduler {
   }
 
   private get activeSlot(): QueueSlot | undefined {
-    return this.slots[0]?.priority === "active" ? this.slots[0] : undefined;
+    return this.window[0]?.priority === "active" ? this.window[0] : undefined;
   }
 
   private replaceSlots(slots: QueueSlot[]) {
-    this.slots = slots;
+    this.setWindow(slots);
     this.retryAttempt = 0;
     this.syncProtectedKeys();
     this.restart();
@@ -178,7 +231,7 @@ class PrefetchScheduler {
 
   private pauseInFlight(keep: Set<string> = new Set()) {
     for (const trackId of this.inFlight) {
-      if (!keep.has(trackId)) cacheStore.pause(trackId, this.qualityId);
+      if (!keep.has(trackId)) this.release(trackId);
     }
     this.inFlight = new Set([...this.inFlight].filter((id) => keep.has(id)));
   }
@@ -297,12 +350,15 @@ class PrefetchScheduler {
     this.wakeRetries();
     this.resumeWaiters.forEach((wake) => wake());
     this.resumeWaiters.clear();
-    this.slots.forEach((s) => cacheStore.pause(s.trackId, this.qualityId));
+    // La fenêtre quittée garde ses flux transcodés partiels (voir setWindow) ; le reste est coupé.
+    const left = this.window;
+    this.setWindow([]);
+    const leftovers = new Set(this.leftovers.map((s) => s.trackId));
+    left.forEach((s) => leftovers.has(s.trackId) || cacheStore.pause(s.trackId, this.qualityId));
     this.pauseInFlight();
-    this.slots = [];
     this.cursor = 0;
     this.paused = false;
-    cacheStore.setProtectedKeys([]);
+    this.syncProtectedKeys();
   }
 }
 

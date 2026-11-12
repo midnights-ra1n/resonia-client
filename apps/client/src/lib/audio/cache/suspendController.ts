@@ -21,12 +21,23 @@ export class SuspendController implements SuspendSignal {
   }
 }
 
-/** Se résout dès que `suspension` n'est plus suspendue — immédiatement si elle ne l'est pas — ou
- *  rejette (AbortError) si `signal` est annulé pendant l'attente. */
-export function whenNotSuspended(suspension: SuspendSignal | undefined, signal: AbortSignal): Promise<void> {
+/** Pendant une pause douce, un morceau du flux est quand même lu à cet intervalle : une connexion
+ *  sans aucun transfert est coupée par les proxys (nginx : 60 s par défaut, Cloudflare : 100 s),
+ *  et un flux transcodé ainsi coupé repartirait de l'octet 0. Quelques Ko toutes les 15 s. */
+export const SUSPEND_KEEPALIVE_MS = 15_000;
+
+/** Se résout dès que `suspension` n'est plus suspendue — immédiatement si elle ne l'est pas, ou au
+ *  bout de `maxWaitMs` s'il est donné — ou rejette (AbortError) si `signal` est annulé pendant
+ *  l'attente. */
+export function whenNotSuspended(suspension: SuspendSignal | undefined, signal: AbortSignal, maxWaitMs?: number): Promise<void> {
   if (!suspension?.suspended) return Promise.resolve();
   return new Promise((resolve, reject) => {
+    const timer = maxWaitMs === undefined ? null : setTimeout(() => {
+      cleanup();
+      resolve();
+    }, maxWaitMs);
     const cleanup = () => {
+      if (timer !== null) clearTimeout(timer);
       unsubscribe();
       signal.removeEventListener("abort", onAbort);
     };

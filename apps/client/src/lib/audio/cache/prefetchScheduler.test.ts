@@ -16,6 +16,8 @@ interface FakeTask {
 const requestedOrder: Array<{ trackId: string; priority: string; budgetBytes?: number }> = [];
 const requestedSegments: Array<number | undefined> = [];
 const rangeResumable = new Set<string>();
+// Pistes dont des octets sont déjà en cache (voir isUnresumablePartial côté planificateur).
+const partial = new Set<string>();
 // Pistes intégralement téléchargées : comme le vrai cache, `isFullyCached` les signale.
 const completed = new Set<string>();
 const tasks = new Map<string, FakeTask>();
@@ -60,6 +62,17 @@ vi.mock("./cacheStore", () => ({
       protectedKeysHistory.push(keys);
     }),
     pause: vi.fn((trackId: string) => tasks.get(trackId)?.stop()),
+    getTask: vi.fn((trackId: string) => {
+      const task = tasks.get(trackId);
+      return task
+        ? {
+            isRunning: task.isRunning,
+            isComplete: completed.has(trackId),
+            isRangeResumable: rangeResumable.has(trackId),
+            progress: { bytesCached: partial.has(trackId) ? 1 : 0 },
+          }
+        : null;
+    }),
     setSuspended: vi.fn(),
     isRangeResumable: vi.fn((trackId: string) => rangeResumable.has(trackId)),
     isFullyCached: vi.fn(async (trackId: string) => completed.has(trackId)),
@@ -331,6 +344,50 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
     await flush();
     expect(requestedOrder.filter((r) => r.trackId === "next1")).toHaveLength(2);
     expect(requestedOrder.filter((r) => r.trackId === "active")).toHaveLength(1);
+  });
+});
+
+describe("prefetchScheduler — flux transcodé partiel quitté", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requestedOrder.length = 0;
+    rangeResumable.clear();
+    partial.clear();
+    completed.clear();
+    tasks.clear();
+    vi.resetModules();
+  });
+
+  it("garde la connexion (suspendue) puis la reprend au retour, sans nouvelle requête", async () => {
+    const { prefetchScheduler } = await import("./prefetchScheduler");
+    const { cacheStore } = await import("./cacheStore");
+    prefetchScheduler.setQuality("aac-256");
+    prefetchScheduler.setActive({ trackId: "a", streamUrl: "https://x/a" });
+    await flush();
+    partial.add("a");
+
+    prefetchScheduler.stop();
+    expect(cacheStore.pause).not.toHaveBeenCalledWith("a", "aac-256");
+    expect(cacheStore.setSuspended).toHaveBeenCalledWith("a", "aac-256", true);
+
+    prefetchScheduler.setActive({ trackId: "b", streamUrl: "https://x/b" });
+    await flush();
+    prefetchScheduler.stop();
+    prefetchScheduler.setActive({ trackId: "a", streamUrl: "https://x/a" });
+    await flush();
+    expect(requestedOrder.filter((r) => r.trackId === "a")).toHaveLength(1);
+  });
+
+  it("un fichier à plages quitté est coupé net (reprise à l'octet près)", async () => {
+    const { prefetchScheduler } = await import("./prefetchScheduler");
+    const { cacheStore } = await import("./cacheStore");
+    prefetchScheduler.setQuality("aac-256");
+    prefetchScheduler.setActive({ trackId: "a", streamUrl: "https://x/a" });
+    await flush();
+    partial.add("a");
+    rangeResumable.add("a");
+    prefetchScheduler.stop();
+    expect(cacheStore.pause).toHaveBeenCalledWith("a", "aac-256");
   });
 });
 

@@ -26,6 +26,13 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
+// Écart minimal entre un menu et le bord de la fenêtre (le menu ne colle jamais au bord).
+const MENU_EDGE_MARGIN = 12;
+
+function clampToWindow(pos: number, size: number, viewport: number): number {
+  return Math.max(MENU_EDGE_MARGIN, Math.min(pos, viewport - size - MENU_EDGE_MARGIN));
+}
+
 function useClampedPosition(
   x: number,
   y: number,
@@ -42,15 +49,10 @@ function useClampedPosition(
     // repousser le panneau plutôt que de le laisser déborder de la fenêtre.
     function recompute() {
       const rect = el!.getBoundingClientRect();
-      const clampedX =
-        x + rect.width > window.innerWidth
-          ? Math.max(0, window.innerWidth - rect.width)
-          : x;
-      const clampedY =
-        y + rect.height > window.innerHeight
-          ? Math.max(0, window.innerHeight - rect.height)
-          : y;
-      setPos({ x: clampedX, y: clampedY });
+      setPos({
+        x: clampToWindow(x, rect.width, window.innerWidth),
+        y: clampToWindow(y, rect.height, window.innerHeight),
+      });
     }
 
     recompute();
@@ -81,15 +83,12 @@ function useClampedSubmenuPosition(
 
     function recompute() {
       const rect = el!.getBoundingClientRect();
-      const fitsRight = anchorRect!.right + rect.width <= window.innerWidth;
-      const x = fitsRight
-        ? anchorRect!.right
-        : Math.max(0, anchorRect!.left - rect.width);
-      const y =
-        anchorRect!.top + rect.height > window.innerHeight
-          ? Math.max(0, window.innerHeight - rect.height)
-          : anchorRect!.top;
-      setPos({ x, y });
+      const fitsRight = anchorRect!.right + rect.width + MENU_EDGE_MARGIN <= window.innerWidth;
+      const x = fitsRight ? anchorRect!.right : anchorRect!.left - rect.width;
+      setPos({
+        x: clampToWindow(x, rect.width, window.innerWidth),
+        y: clampToWindow(anchorRect!.top, rect.height, window.innerHeight),
+      });
     }
 
     recompute();

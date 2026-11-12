@@ -532,6 +532,9 @@ function registerIpcHandlers() {
   // une plage nettement plus lente que le meilleur débit déjà vu sur ce serveur est relancée :
   // interrompre une réponse HTTP/1.1 en cours ferme sa socket, la reprise part sur une autre.
   const SLOW_CHECK_AFTER_MS = 3000;
+  // Pause douce : un morceau lu à cet intervalle pour que les proxys ne coupent pas la connexion
+  // inactive (même valeur que côté renderer, voir suspendController.ts).
+  const SUSPEND_KEEPALIVE_MS = 15_000;
   const SLOW_MAX_BYTES_PER_SEC = 128 * 1024;
   const SLOW_RATIO = 4;
   const MAX_SLOW_RECONNECTS = 2;
@@ -607,17 +610,22 @@ function registerIpcHandlers() {
     // pour que la taille du fichier ne soit jamais prise pour une progression réelle.
     await fh.truncate(opts.from);
 
-    /** Attend la fin d'une pause douce ; rejette si le téléchargement est annulé entre-temps. */
-    function waitWhileSuspended(): Promise<void> {
+    /** Attend la fin d'une pause douce ; rejette si le téléchargement est annulé entre-temps.
+     *  `maxWaitMs` : connexion ouverte à entretenir — voir SUSPEND_KEEPALIVE_MS. */
+    function waitWhileSuspended(maxWaitMs?: number): Promise<void> {
       if (!suspendedDownloads.has(id)) return Promise.resolve();
       return new Promise((resolve, reject) => {
         let waiters = resumeWaiters.get(id);
         if (!waiters) resumeWaiters.set(id, (waiters = new Set()));
+        const timer = maxWaitMs === undefined ? null : setTimeout(() => wake(), maxWaitMs);
         const onAbort = () => {
+          if (timer) clearTimeout(timer);
           waiters!.delete(wake);
           reject(new Error("aborted"));
         };
         const wake = () => {
+          if (timer) clearTimeout(timer);
+          waiters!.delete(wake);
           internal.signal.removeEventListener("abort", onAbort);
           resolve();
         };
@@ -719,7 +727,7 @@ function registerIpcHandlers() {
           if (suspendedDownloads.has(id)) {
             // Pas de délai d'inactivité pendant une pause volontaire.
             req.disarm();
-            await waitWhileSuspended();
+            await waitWhileSuspended(SUSPEND_KEEPALIVE_MS);
             req.arm();
             windowStart = Date.now();
             windowBytes = 0;

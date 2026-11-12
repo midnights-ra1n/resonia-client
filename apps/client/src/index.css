@@ -33,19 +33,19 @@
   --color-neutral-500: #8a8279; /* text-3 — durées, labels */
   --color-neutral-600: #5c544c;
   --color-neutral-700: #413a33; /* border-strong */
-  --color-neutral-800: #272320; /* surface-3 */
-  --color-neutral-900: #161412; /* surface-1 */
-  --color-neutral-950: #0c0b0a; /* bg-base */
+  --color-neutral-800: #221f1c; /* surface-3 */
+  --color-neutral-900: #100e0d; /* surface-1 */
+  --color-neutral-950: #080706; /* bg-base */
 
   --color-white: #f4efe8;
   /* Fond derrière les panneaux : noir pur, comme Spotify — les panneaux s'en détachent mieux. */
   --color-black: #000000;
 
   --color-bg-sunken: #000000;
-  --color-bg-base: #0c0b0a;
-  --color-surface-1: #161412;
-  --color-surface-2: #1e1b18;
-  --color-surface-3: #272320;
+  --color-bg-base: #080706;
+  --color-surface-1: #100e0d;
+  --color-surface-2: #181614;
+  --color-surface-3: #221f1c;
   --color-border-strong: #413a33;
 
   --color-text-1: #f4efe8;

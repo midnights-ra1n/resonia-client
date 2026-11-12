@@ -63,6 +63,15 @@ interface ResolvedLyrics {
  *  scrollIntoView) pour garder le contrôle total de la durée, et annulable si la ligne
  *  active change à nouveau avant la fin de l'animation en cours. */
 const SCROLL_DURATION_MS = 180;
+// Défilement manuel (molette, tactile) : le suivi automatique se met en retrait, puis reprend
+// tout seul après ce délai sans nouveau geste.
+const MANUAL_SCROLL_HOLD_MS = 5000;
+
+/** Espace insécable avant la ponctuation haute (typographie française) : un « ? » ne se
+ *  retrouve jamais seul en début de ligne. */
+function keepPunctuationAttached(text: string): string {
+  return text.replace(/ ([?!:;»])/g, "\u00a0$1");
+}
 
 function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3;
@@ -149,12 +158,32 @@ export function LyricsView() {
 
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [manualScroll, setManualScroll] = useState(false);
+  const manualScrollTimer = useRef<number | null>(null);
+
+  function onUserScroll() {
+    setManualScroll(true);
+    if (manualScrollTimer.current !== null) window.clearTimeout(manualScrollTimer.current);
+    manualScrollTimer.current = window.setTimeout(() => {
+      manualScrollTimer.current = null;
+      setManualScroll(false);
+    }, MANUAL_SCROLL_HOLD_MS);
+  }
+
+  useEffect(
+    () => () => {
+      if (manualScrollTimer.current !== null) window.clearTimeout(manualScrollTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     // Avant que le chant ne démarre (`activeIndex === -1`), il n'y a pas encore de ligne
     // "active" à centrer — on cadre quand même la première ligne, mais légèrement SOUS le
     // centre plutôt que pile dessus : un centrage strict fait sentir la vue vide/coupée en
     // haut, alors qu'un léger décalage vers le bas se lit naturellement comme "à venir".
+    // Défilement manuel en cours : le nettoyage de l'effet précédent a déjà stoppé l'animation.
+    if (manualScroll) return;
     const isIntro = activeIndex < 0;
     const targetIndex = isIntro ? (lines.length > 0 ? 0 : -1) : activeIndex;
     if (targetIndex < 0) return;
@@ -182,7 +211,7 @@ export function LyricsView() {
     return () => {
       cancelled = true;
     };
-  }, [activeIndex, lines.length]);
+  }, [activeIndex, lines.length, manualScroll]);
 
   if (!currentTrack) {
     return (
@@ -200,7 +229,9 @@ export function LyricsView() {
     >
       <div
         ref={scrollContainerRef}
-        className="lyrics-scrollable w-full max-w-5xl flex-1 min-h-0 overflow-y-auto px-10 py-[35vh] text-center [mask-image:linear-gradient(to_bottom,transparent,black_8%,black_88%,transparent)]"
+        onWheel={onUserScroll}
+        onTouchMove={onUserScroll}
+        className="lyrics-scrollable w-full max-w-7xl flex-1 min-h-0 overflow-y-auto px-4 py-[35vh] text-center [mask-image:linear-gradient(to_bottom,transparent,black_8%,black_88%,transparent)]"
       >
         {lyrics === undefined ? (
           <p className="text-lg text-white/60">{t("lyrics.loading")}</p>
@@ -209,8 +240,8 @@ export function LyricsView() {
         ) : !lyrics?.synced ? (
           <div className="space-y-5">
             {lines.map((line, i) => (
-              <p key={i} className="text-2xl font-medium leading-relaxed text-white/90">
-                {line.text || " "}
+              <p key={i} className="px-[5%] text-2xl font-medium leading-relaxed text-balance text-white/90">
+                {keepPunctuationAttached(line.text) || " "}
               </p>
             ))}
           </div>
@@ -236,11 +267,11 @@ export function LyricsView() {
                   // prochain changement) : sur TOUTES les lignes, il réservait une couche GPU
                   // pleine largeur par ligne pendant toute la vue — des dizaines de Mo de
                   // mémoire graphique pour un texte statique.
-                  className={`block w-full origin-center text-center text-4xl font-bold transition-[transform,translate,scale,color,opacity] duration-[260ms] ease-out ${Math.abs(i - activeIndex) <= 1 ? "will-change-transform" : ""} ${
+                  className={`block w-full origin-center px-[5%] text-center text-4xl font-bold text-balance transition-[transform,translate,scale,color,opacity] duration-[260ms] ease-out ${Math.abs(i - activeIndex) <= 1 ? "will-change-transform" : ""} ${
                     isActive ? "scale-[1.1] text-white opacity-100" : "scale-100 text-white/35 opacity-90 hover:text-white/60"
                   }`}
                 >
-                  {line.text || " "}
+                  {keepPunctuationAttached(line.text) || " "}
                 </button>
               );
             })}

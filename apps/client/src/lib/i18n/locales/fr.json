@@ -309,6 +309,10 @@
     "cacheSize": "Espace utilisé",
     "cacheLimit": "Limite de cache",
     "cacheLimitDescription": "Taille maximale du cache local. Les pistes les moins récemment jouées sont supprimées automatiquement au-delà.",
+    "prefetchCount": "Pistes mises en cache à l'avance",
+    "prefetchCountDescription": "Nombre de pistes suivantes téléchargées à l'avance pour une lecture instantanée et sans coupure. Plus de pistes consomme plus de réseau et d'espace disque.",
+    "prefetchCountOption": "{{count}} pistes",
+    "prefetchCountOptionOne": "1 piste",
     "cacheClear": "Vider le cache",
     "cacheClearing": "Suppression...",
     "unitGb": "Go",
@@ -497,6 +501,7 @@
   },
   "debug": {
     "copyLog": "Copier le journal (à joindre à un rapport de bug)",
-    "logCopied": "Journal copié"
+    "logCopied": "Journal copié",
+    "startLatency": "Clic → lecture"
   }
 }

@@ -95,7 +95,6 @@ export interface Track {
 // Sidebar.tsx : casse sous Electron empaqueté (chargé via `file://`, base relative).
 const DEFAULT_COVER_URL = `${import.meta.env.BASE_URL}default-cover.svg`;
 const SCROBBLE_MIN_DURATION = 30;
-const PREFETCH_COUNT = 3;
 
 function getActiveQualityId(): string {
   return useSettingsStore.getState().audioQualityId;
@@ -214,6 +213,8 @@ export interface PlayerState {
    *  exposé pour l'UI (ex: indicateur de chargement) — additif, `isPlaying` reste la
    *  source de vérité utilisée par les composants existants. */
   engineState: EngineState;
+  /** Délai entre la demande de lecture d'une piste et le début réel du son (panneau de débogage). */
+  startLatencyMs: number | null;
 
   currentTime: number;
   setCurrentTime: (time: number) => void;
@@ -364,6 +365,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   // appel capture le numéro de génération courant et abandonne silencieusement s'il a été
   // dépassé entre-temps par un appel plus récent.
   let loadGeneration = 0;
+  // Instant de la demande de lecture en cours, consommé au premier son (voir onPlaybackStarted).
+  let playRequestedAt: number | null = null;
 
   // Annule les attentes de cache liées à la piste en cours (décodage de la piste active, voir
   // ensureActiveDecoded) à chaque changement de piste : sans ça, chaque piste quittée laissait une
@@ -481,7 +484,8 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
     const upcoming = [];
     const upcomingTracks: Track[] = [];
-    for (let i = 1; i <= PREFETCH_COUNT; i++) {
+    const prefetchCount = useSettingsStore.getState().prefetchCount;
+    for (let i = 1; i <= prefetchCount; i++) {
       const pos = playOrderPosition + i;
       const queueIndex = playOrder[pos];
       if (queueIndex === undefined) break;
@@ -737,6 +741,10 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
    *  en mode buffer pour une piste déjà décodée) : lance les tâches de fond non
    *  critiques, jamais avant. */
   function onPlaybackStarted() {
+    if (playRequestedAt !== null) {
+      set({ startLatencyMs: Math.round(performance.now() - playRequestedAt) });
+      playRequestedAt = null;
+    }
     refreshUpcomingPrefetch();
     activateCurrentTrackCaching();
     const track = get().currentTrack;
@@ -785,6 +793,10 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
   });
 
   engine.onNativePlaying = onPlaybackStarted;
+  // Nombre de pistes à mettre en cache modifié : fenêtre recalculée tout de suite.
+  useSettingsStore.subscribe((s, prev) => {
+    if (s.prefetchCount !== prev.prefetchCount && get().currentTrack) refreshUpcomingPrefetch();
+  });
   engine.onNetworkMode = (mode) => prefetchScheduler.setNetworkMode(mode);
   engine.resolveNativeSeekUrl = (offset) => {
     const track = get().currentTrack;
@@ -979,6 +991,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
 
   async function loadAndPlay(track: Track, queue: Track[], offset = 0) {
     const myGeneration = ++loadGeneration;
+    playRequestedAt = performance.now();
 
     const resolved = resolvePlayableTrack(track);
     if (!resolved) {
@@ -1128,6 +1141,7 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     },
 
     engineState: "idle",
+    startLatencyMs: null,
 
     currentTime: 0,
     duration: 0,

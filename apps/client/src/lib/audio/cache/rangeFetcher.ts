@@ -1,6 +1,6 @@
 import { networkDebugLog } from "../debug/audioDebugLogger";
 import type { SuspendSignal } from "../../storage/blobStore/types";
-import { whenNotSuspended } from "./suspendController";
+import { SUSPEND_KEEPALIVE_MS, whenNotSuspended } from "./suspendController";
 
 // Taille des lots transmis à l'appelant : le corps HTTP arrive par petits morceaux (quelques Ko),
 // on les regroupe pour ne pas multiplier les écritures disque (un aller-retour IPC chacune sur
@@ -158,10 +158,12 @@ export async function streamRange(
     return rate;
   };
 
-  const waitWhileSuspended = async () => {
+  // `keepAlive` : connexion déjà ouverte — l'attente est interrompue périodiquement pour lire un
+  // morceau (voir SUSPEND_KEEPALIVE_MS) ; avant la requête, rien à entretenir.
+  const waitWhileSuspended = async (keepAlive = false) => {
     if (stallTimer !== null) clearTimeout(stallTimer);
     stallTimer = null;
-    await whenNotSuspended(suspension, controller.signal);
+    await whenNotSuspended(suspension, controller.signal, keepAlive ? SUSPEND_KEEPALIVE_MS : undefined);
     armStallTimer();
     windowStart = performance.now();
     windowBytes = 0;
@@ -215,7 +217,7 @@ export async function streamRange(
     for (;;) {
       let result: ReadableStreamReadResult<Uint8Array>;
       try {
-        if (suspension?.suspended) await waitWhileSuspended();
+        if (suspension?.suspended) await waitWhileSuspended(true);
         result = await reader.read();
       } catch (err) {
         // Coupure en cours de route, y compris un abandon volontaire (le planificateur coupe les

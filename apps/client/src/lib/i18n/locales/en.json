@@ -309,6 +309,10 @@
     "cacheSize": "Space used",
     "cacheLimit": "Cache limit",
     "cacheLimitDescription": "Maximum size of the local cache. Least recently played tracks are automatically removed once it's exceeded.",
+    "prefetchCount": "Tracks cached ahead",
+    "prefetchCountDescription": "Number of upcoming tracks downloaded in advance for instant, gapless playback. More tracks use more network and disk space.",
+    "prefetchCountOption": "{{count}} tracks",
+    "prefetchCountOptionOne": "1 track",
     "cacheClear": "Clear cache",
     "cacheClearing": "Clearing...",
     "unitGb": "GB",
@@ -497,6 +501,7 @@
   },
   "debug": {
     "copyLog": "Copy log (to attach to a bug report)",
-    "logCopied": "Log copied"
+    "logCopied": "Log copied",
+    "startLatency": "Click → playback"
   }
 }

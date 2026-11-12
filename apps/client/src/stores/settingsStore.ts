@@ -10,6 +10,7 @@ import { storage } from "../lib/storage";
 import { cacheStore } from "../lib/audio/cache/cacheStore";
 import { setCoverCacheMaxBytes } from "../lib/image/coverCache";
 import { setAudioDebugEnabled } from "../lib/audio/debug/audioDebugLogger";
+import { DEFAULT_PREFETCH_COUNT, prefetchScheduler } from "../lib/audio/cache/prefetchScheduler";
 import { decryptPassword, encryptPassword, type EncryptedPassword } from "../lib/security/passwordVault";
 
 export type PlaylistSortBy = "default" | "title" | "artist" | "album";
@@ -27,6 +28,8 @@ interface SettingsState {
   spotifyClientSecret: string;
   animatedArtworkBaseUrl: string;
   cacheMaxBytes: number;
+  /** Nombre de pistes suivantes mises en cache à l'avance. */
+  prefetchCount: number;
   playlistSortBy: PlaylistSortBy;
   playlistSortDirection: PlaylistSortDirection;
   devModeEnabled: boolean;
@@ -48,6 +51,7 @@ interface SettingsState {
   setSpotifyCredentials: (clientId: string, clientSecret: string) => Promise<void>;
   setAnimatedArtworkBaseUrl: (url: string) => Promise<void>;
   setCacheMaxBytes: (bytes: number) => Promise<void>;
+  setPrefetchCount: (count: number) => Promise<void>;
   setPlaylistSort: (
     by: PlaylistSortBy,
     direction: PlaylistSortDirection,
@@ -69,6 +73,8 @@ const SPOTIFY_CLIENT_SECRET_STORAGE_KEY = "resonia:settings:spotifyClientSecret"
 const ANIMATED_ARTWORK_BASE_URL_STORAGE_KEY =
   "resonia:settings:animatedArtworkBaseUrl";
 const CACHE_MAX_BYTES_STORAGE_KEY = "resonia:settings:cacheMaxBytes";
+const PREFETCH_COUNT_STORAGE_KEY = "resonia:settings:prefetchCount";
+export const PREFETCH_COUNT_OPTIONS = [1, 2, 3, 5, 10];
 const PLAYLIST_SORT_BY_STORAGE_KEY = "resonia:settings:playlistSortBy";
 const PLAYLIST_SORT_DIRECTION_STORAGE_KEY =
   "resonia:settings:playlistSortDirection";
@@ -133,6 +139,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   spotifyClientSecret: "",
   animatedArtworkBaseUrl: "",
   cacheMaxBytes: DEFAULT_CACHE_MAX_BYTES,
+  prefetchCount: DEFAULT_PREFETCH_COUNT,
   playlistSortBy: "default",
   playlistSortDirection: "asc",
   devModeEnabled: false,
@@ -161,6 +168,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       spotifyClientSecret,
       showWaveform,
       waveformStyle,
+      prefetchCount,
     ] = [
       storage.getSync<string>(STORAGE_KEY),
       storage.getSync<string>(LASTFM_API_KEY_STORAGE_KEY),
@@ -177,6 +185,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       storage.getSync<EncryptedPassword>(SPOTIFY_CLIENT_SECRET_STORAGE_KEY),
       storage.getSync<boolean>(SHOW_WAVEFORM_STORAGE_KEY),
       storage.getSync<WaveformStyle>(WAVEFORM_STYLE_STORAGE_KEY),
+      storage.getSync<number>(PREFETCH_COUNT_STORAGE_KEY),
     ] as const;
     const platform = getPlatform();
     const available = getAvailableQualities(platform);
@@ -186,6 +195,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const resolvedCacheMaxBytes = cacheMaxBytes ?? DEFAULT_CACHE_MAX_BYTES;
 
     applyCacheMaxBytes(resolvedCacheMaxBytes);
+    const resolvedPrefetchCount =
+      prefetchCount !== null && PREFETCH_COUNT_OPTIONS.includes(prefetchCount) ? prefetchCount : DEFAULT_PREFETCH_COUNT;
+    prefetchScheduler.setPrefetchCount(resolvedPrefetchCount);
     setAudioDebugEnabled(devModeEnabled ?? false);
 
     set({
@@ -193,6 +205,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       lastfmApiKey: lastfmApiKey ?? "",
       animatedArtworkBaseUrl: animatedArtworkBaseUrl ?? "",
       cacheMaxBytes: resolvedCacheMaxBytes,
+      prefetchCount: resolvedPrefetchCount,
       playlistSortBy: playlistSortBy ?? "default",
       playlistSortDirection: playlistSortDirection ?? "asc",
       devModeEnabled: devModeEnabled ?? false,
@@ -250,6 +263,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     await storage.set(CACHE_MAX_BYTES_STORAGE_KEY, bytes);
     applyCacheMaxBytes(bytes);
     set({ cacheMaxBytes: bytes });
+  },
+
+  setPrefetchCount: async (count) => {
+    if (!PREFETCH_COUNT_OPTIONS.includes(count)) return;
+    await storage.set(PREFETCH_COUNT_STORAGE_KEY, count);
+    prefetchScheduler.setPrefetchCount(count);
+    set({ prefetchCount: count });
   },
 
   setPlaylistSort: async (by, direction) => {

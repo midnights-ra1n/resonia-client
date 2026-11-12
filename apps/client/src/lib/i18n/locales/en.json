@@ -68,7 +68,9 @@
     "yourPlaylists": "Your playlists",
     "newReleases": "New releases",
     "recentlyPlayed": "Recently played",
-    "discover": "Discover"
+    "discover": "Discover",
+    "becauseYouListened": "Because you listened to {{artist}}",
+    "similarArtists": "In the same vein as {{artist}}"
   },
   "playlists": {
     "loadError": "Failed to load playlists",

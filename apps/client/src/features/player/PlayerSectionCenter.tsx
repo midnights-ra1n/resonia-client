@@ -52,7 +52,7 @@ export function PlayerSectionCenter() {
           className="text-neutral-400 hover:text-white transition-colors"
           title="Previous"
         >
-          <SkipBack size={22} fill="currentColor" />
+          <SkipBack size={16} fill="currentColor" />
         </button>
 
         <button
@@ -74,7 +74,7 @@ export function PlayerSectionCenter() {
             className="text-neutral-400 hover:text-white transition-colors"
             title="Next"
           >
-            <SkipForward size={22} fill="currentColor" />
+            <SkipForward size={16} fill="currentColor" />
           </button>
 
           <button

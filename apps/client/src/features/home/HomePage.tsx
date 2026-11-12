@@ -6,6 +6,8 @@ import { ResultSection } from "../search/ResultSection";
 import { PlaylistCard } from "../search/PlaylistCard";
 import { useAlbumList } from "../../hooks/useAlbumList";
 import { useHomePlaylists } from "./useHomePlaylists";
+import { useBecauseYouListened } from "./useBecauseYouListened";
+import { ArtistCarousel } from "../artist/ArtistCarousel";
 import { useTranslation } from "../../lib/i18n";
 import { useServersStore } from "../../stores/serversStore";
 
@@ -29,6 +31,8 @@ export function HomePage() {
   const { albums: newAlbums, loading: newLoading } = useAlbumList("newest", 20);
   const { albums: recentAlbums, loading: recentLoading } = useAlbumList("recent", 20);
   const { albums: randomAlbums, loading: randomLoading } = useAlbumList("random", 20);
+
+  const because = useBecauseYouListened();
 
   // Bandeau : le dernier album écouté (à défaut, le plus écouté).
   const heroAlbum = recentAlbums[0] ?? frequentAlbums[0];
@@ -80,6 +84,12 @@ export function HomePage() {
           )}
 
           <AlbumCarousel title={t("home.mostPlayedAlbums")} albums={frequentAlbums} />
+          {because.seed && (
+            <>
+              <AlbumCarousel title={t("home.becauseYouListened", { artist: because.seed.name })} albums={because.albums} />
+              <ArtistCarousel title={t("home.similarArtists", { artist: because.seed.name })} artists={because.similar} />
+            </>
+          )}
           <AlbumCarousel title={t("home.recentlyPlayed")} albums={recentAlbums} />
           <AlbumCarousel title={t("home.newReleases")} albums={newAlbums} />
           <AlbumCarousel title={t("home.discover")} albums={randomAlbums} />

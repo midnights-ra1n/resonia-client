@@ -84,6 +84,18 @@ class PrefetchScheduler {
     waiters.forEach((wake) => wake());
   }
 
+  private retryAttempt = 0;
+  private retryScheduled = false;
+
+  private scheduleRetry(generation: number) {
+    if (this.retryScheduled) return;
+    this.retryScheduled = true;
+    void this.waitRetry(this.retryAttempt++).then(() => {
+      this.retryScheduled = false;
+      if (generation === this.generation) this.restart();
+    });
+  }
+
   private waitRetry(retry: number): Promise<void> {
     return new Promise((resolve) => {
       const done = () => {
@@ -159,6 +171,7 @@ class PrefetchScheduler {
 
   private replaceSlots(slots: QueueSlot[]) {
     this.slots = slots;
+    this.retryAttempt = 0;
     this.syncProtectedKeys();
     this.restart();
   }
@@ -252,8 +265,8 @@ class PrefetchScheduler {
       }
 
       this.inFlight.add(slot.trackId);
-      for (let retry = 0; ; retry++) {
-        networkDebugLog("prefetch:request", { trackId: slot.trackId, priority: slot.priority, retry });
+      for (;;) {
+        networkDebugLog("prefetch:request", { trackId: slot.trackId, priority: slot.priority, retry: this.retryAttempt });
         const task = cacheStore.request(slot.trackId, this.qualityId, slot.streamUrl, slot.priority, undefined, this.limits.segments);
         // Re-vérifie après chaque réveil : une reprise peut attendre la fermeture du run précédent
         // (voir TrackDownloader.closing) avant de redémarrer.
@@ -269,11 +282,10 @@ class PrefetchScheduler {
         // Échec (le téléchargeur a déjà épuisé ses relances rapides) : retenté plus tard, sinon la
         // piste restait partielle jusqu'au prochain changement de piste — barre de chargement
         // figée, forme d'onde et enchaînement gapless jamais prêts.
-        if (!task.error || task.isComplete) break;
-        await this.waitRetry(retry);
-        if (generation !== this.generation) return;
-        await this.waitUntilResumed();
-        if (generation !== this.generation) return;
+        // Le worker n'attend PAS la relance : bloqué sur une piste en échec, il empêchait les
+        // suivantes (B, C, D) de se télécharger. La relance repart de la file entière (restart).
+        if (task.error && !task.isComplete) this.scheduleRetry(generation);
+        break;
       }
       // Fini ou budget atteint : on passe à la suivante.
       this.inFlight.delete(slot.trackId);

@@ -994,6 +994,11 @@ export const usePlayerStore = create<PlayerState>((set, get, api) => {
     // file une fois la lecture réellement démarrée (onPlaybackStarted).
     prefetchScheduler.stop();
 
+    // Retour visuel immédiat : la lecture des octets locaux et le décodage ci-dessous prennent
+    // un instant, l'interface ne doit pas attendre. Le `set` complet suit une fois le moteur lancé.
+    set({ currentTrack: track, queue, currentTime: offset, duration: track.duration, isPlaying: true });
+    updateNowPlayingMetadata(track);
+
     const key = decodedCacheKey(track.id, resolved.qualityId);
     const decoded = decodedCache.get(key) ?? (await decodeLocal(track, resolved.qualityId));
     if (myGeneration !== loadGeneration) return;

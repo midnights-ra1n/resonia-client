@@ -68,7 +68,9 @@
     "yourPlaylists": "Tes playlists",
     "newReleases": "Nouveautés",
     "recentlyPlayed": "Écoutés récemment",
-    "discover": "Découvrir"
+    "discover": "Découvrir",
+    "becauseYouListened": "Parce que vous avez écouté {{artist}}",
+    "similarArtists": "Dans le même esprit que {{artist}}"
   },
   "playlists": {
     "loadError": "Échec du chargement des playlists",

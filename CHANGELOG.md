@@ -16,6 +16,15 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.1.0-beta.5
+
+- New "Update channel" setting: choose between Stable, Beta and the new Nightly channel (daily builds with the very latest changes)
+- Songs already partly downloaded now start playing straight from the disk, and continue downloading where they stopped
+- Cached songs start right away instead of freezing for up to a second
+- Clicking in the playback bar jumps to the new position immediately
+- Fixed the playback bar sometimes showing odd extra segments and marks
+- Debug panel: clearer download states and error messages
+
 ## 1.1.0-beta.4
 
 - Fixed songs downloading again from the beginning when you leave them before they're fully cached and come back: the download now picks up where it stopped

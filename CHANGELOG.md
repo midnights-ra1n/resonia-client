@@ -16,6 +16,16 @@ to fail—this is intentional, to ensure empty or outdated notes are never publi
 this section '## X.Y.Z' (the version that was just bumped) and recreate an empty
 '## [Unreleased]' section above it for future changes. -->
 
+## 1.1.0-beta.4
+
+- Fixed songs downloading again from the beginning when you leave them before they're fully cached and come back: the download now picks up where it stopped
+- Fixed background caching sometimes stopping (buffer bar frozen, next songs not cached) after seeking
+- New setting: number of upcoming songs cached in advance
+- Lyrics: wider lines, punctuation no longer wraps alone, and scrolling with the mouse wheel pauses auto-scroll for 5 seconds
+- Context menus no longer touch the window edges
+- Darker background for the default and Spotify themes
+- Debug panel: time between pressing play and the music starting
+
 ## 1.1.0-beta.3
 
 - Fixed preloading of upcoming songs getting stuck when one of them fails to download

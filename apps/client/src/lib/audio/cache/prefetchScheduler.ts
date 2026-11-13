@@ -13,15 +13,17 @@ export const DEFAULT_PREFETCH_COUNT = 3;
 // revenir sur la piste retéléchargeait tout depuis le début.
 const MAX_LEFTOVERS = 2;
 
-// Téléchargements simultanés : la piste active ET la suivante démarrent ensemble. Les serveurs
+// Téléchargements simultanés : la piste active ET toute la fenêtre suivante démarrent ensemble
+// (jusqu'à 4 ; sur bureau, HTTP/1.1 plafonne à 6 connexions par hôte, d'où 1 plage par fichier). Les serveurs
 // derrière un proxy plafonnent souvent le débit PAR connexion (mesuré : ~50 Ko/s chacune, qui
 // s'additionnent) — en strict séquentiel, la piste suivante n'était prête qu'après la fin de la
 // piste courante, et l'enchaînement retombait sur un rechargement réseau (coupure + attente). La
 // piste en cours reste prioritaire : la pression réseau du moteur (hystérésis sur l'avance du
 // tampon de lecture) suspend tout dès que cette avance baisse.
-const MAX_CONCURRENT = 2;
-// Plages parallèles par fichier (bureau, voir `downloads` dans electron/main/index.ts).
-const MAX_SEGMENTS = 3;
+const MAX_CONCURRENT = 4;
+// Plages parallèles par fichier (bureau, voir `downloads` dans electron/main/index.ts) : 1, les
+// connexions sont mieux employées sur plusieurs pistes à la fois (défilement rapide).
+const MAX_SEGMENTS = 1;
 // Relances d'une piste dont le téléchargement a échoué : sans limite tant qu'elle reste dans la
 // fenêtre (réseau faible = on insiste), espacées de 5 s, 10 s, 20 s… 60 s au plus. Le retour du
 // réseau (événement "online") les relance aussitôt.
@@ -35,7 +37,7 @@ const FEED_RETRY_DELAY_MS = 1000;
 // retombait sur un rechargement réseau (coupure). Le flux lu reste prioritaire : la pression
 // réseau du moteur suspend tout dès que son avance baisse.
 const LIMITS: Record<Exclude<NetworkMode, "exclusive">, { concurrent: number; segments: number }> = {
-  shared: { concurrent: 2, segments: 1 },
+  shared: { concurrent: 3, segments: 1 },
   free: { concurrent: MAX_CONCURRENT, segments: MAX_SEGMENTS },
 };
 

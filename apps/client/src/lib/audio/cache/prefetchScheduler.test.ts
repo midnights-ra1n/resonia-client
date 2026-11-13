@@ -164,22 +164,20 @@ describe("prefetchScheduler — ordre de priorité et budget dégressif", () => 
   it("pendant une pause, la fin d'un téléchargement ne démarre pas le suivant avant resume()", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     prefetchScheduler.setQuality("aac-256");
+    prefetchScheduler.setPrefetchCount(5);
     prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
-    prefetchScheduler.setUpcoming([
-      { trackId: "next1", streamUrl: "https://x/1" },
-      { trackId: "next2", streamUrl: "https://x/2" },
-    ]);
+    prefetchScheduler.setUpcoming([1, 2, 3, 4].map((i) => ({ trackId: `next${i}`, streamUrl: `https://x/${i}` })));
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1"]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2", "next3"]);
 
     prefetchScheduler.pause();
     tasks.get("active")?.complete();
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1"]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2", "next3"]);
 
     prefetchScheduler.resume();
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2"]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2", "next3", "next4"]);
   });
 });
 
@@ -192,39 +190,35 @@ describe("prefetchScheduler — connexions limitées, jamais bloqué", () => {
     vi.resetModules();
   });
 
-  it("piste active et suivante téléchargées en parallèle, jamais plus de 2 connexions", async () => {
+  it("piste active et suivantes téléchargées en parallèle, jamais plus de 4 connexions", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     prefetchScheduler.setQuality("aac-256");
+    prefetchScheduler.setPrefetchCount(4);
     prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
-    prefetchScheduler.setUpcoming([
-      { trackId: "next1", streamUrl: "https://x/1" },
-      { trackId: "next2", streamUrl: "https://x/2" },
-    ]);
+    prefetchScheduler.setUpcoming([1, 2, 3, 4].map((i) => ({ trackId: `next${i}`, streamUrl: `https://x/${i}` })));
     await flush();
 
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1"]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2", "next3"]);
     tasks.get("next1")?.complete();
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2"]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2", "next3", "next4"]);
   });
 
-  it("piste active arrivée après le début du préchargement : la 3e connexion cède la place", async () => {
+  it("piste active arrivée après le début du préchargement : la 5e connexion cède la place", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     const { cacheStore } = await import("./cacheStore");
     prefetchScheduler.setQuality("aac-256");
 
     // Ordre réel dans playerStore : setUpcoming (synchrone) puis setActive (après un await).
-    prefetchScheduler.setUpcoming([
-      { trackId: "next1", streamUrl: "https://x/1" },
-      { trackId: "next2", streamUrl: "https://x/2" },
-    ]);
+    prefetchScheduler.setPrefetchCount(4);
+    prefetchScheduler.setUpcoming([1, 2, 3, 4].map((i) => ({ trackId: `next${i}`, streamUrl: `https://x/${i}` })));
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["next1", "next2"]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["next1", "next2", "next3", "next4"]);
 
     prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
     await flush();
 
-    expect(cacheStore.pause).toHaveBeenCalledWith("next2", "aac-256");
+    expect(cacheStore.pause).toHaveBeenCalledWith("next4", "aac-256");
     expect(tasks.get("next1")?.isRunning).toBe(true);
     expect(requestedOrder.at(-1)?.trackId).toBe("active");
   });
@@ -294,7 +288,7 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
     { trackId: "next2", streamUrl: "https://x/2" },
   ];
 
-  it("« shared » (flux lu encore en téléchargement) : piste active et suivante, sans plages parallèles", async () => {
+  it("« shared » (flux lu encore en téléchargement) : 3 connexions, sans plages parallèles", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     prefetchScheduler.setQuality("aac-256");
     prefetchScheduler.setNetworkMode("exclusive");
@@ -305,25 +299,22 @@ describe("prefetchScheduler — modes réseau du flux en cours de lecture", () =
 
     prefetchScheduler.setNetworkMode("shared");
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1"]);
-    expect(requestedSegments).toEqual([1, 1]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2"]);
+    expect(requestedSegments).toEqual([1, 1, 1]);
   });
 
-  it("« free » : deux connexions en parallèle, plages parallèles autorisées", async () => {
+  it("« free » : toute la fenêtre en parallèle, une connexion par fichier", async () => {
     const { prefetchScheduler } = await import("./prefetchScheduler");
     prefetchScheduler.setQuality("aac-256");
-    prefetchScheduler.setNetworkMode("shared");
+    prefetchScheduler.setNetworkMode("exclusive");
     prefetchScheduler.setActive({ trackId: "active", streamUrl: "https://x/active" });
     prefetchScheduler.setUpcoming(window3);
     await flush();
 
-    rangeResumable.add("active").add("next1");
-
-    // Fichiers à plages relancés pour passer en plages parallèles.
     prefetchScheduler.setNetworkMode("free");
     await flush();
-    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "active", "next1"]);
-    expect(requestedSegments.slice(2)).toEqual([3, 3]);
+    expect(requestedOrder.map((r) => r.trackId)).toEqual(["active", "next1", "next2"]);
+    expect(requestedSegments).toEqual([1, 1, 1]);
   });
 
   it("« exclusive » : coupe net un fichier à plages (reprise bon marché), suspend un flux transcodé", async () => {

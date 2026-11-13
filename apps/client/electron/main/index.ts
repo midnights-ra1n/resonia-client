@@ -568,6 +568,26 @@ function registerIpcHandlers() {
 
   let downloadSession: Electron.Session | null = null;
   const getDownloadSession = () => (downloadSession ??= session.fromPartition("resonia-downloads"));
+  // Dernier octet reçu par N'IMPORTE QUEL téléchargement. Si une requête cale (aucun octet pendant
+  // DOWNLOAD_STALL_TIMEOUT_MS) alors que plus rien ne circule nulle part, c'est le pool de
+  // connexions (6 par hôte) qui est bloqué — socket gardée par une connexion morte, proxy qui
+  // avale les requêtes : on ferme toutes les connexions de la session de téléchargement, ce que ni
+  // les relances ni la mise en attente des pistes ne font. Toutes les pistes s'étaient mises en
+  // « Délai réseau dépassé » à 0 octet, plus aucun préchargement donc plus de gapless.
+  let lastDownloadByteAt = Date.now();
+  let resettingConnections = false;
+  function resetDeadConnections() {
+    if (resettingConnections || Date.now() - lastDownloadByteAt < DOWNLOAD_STALL_TIMEOUT_MS) return;
+    resettingConnections = true;
+    lastDownloadByteAt = Date.now();
+    console.warn("[downloads] plus aucun octet depuis 20 s : fermeture des connexions de téléchargement");
+    void getDownloadSession()
+      .closeAllConnections()
+      .catch(() => {})
+      .finally(() => {
+        resettingConnections = false;
+      });
+  }
   const activeDownloads = new Map<number, AbortController>();
   // Pause douce (voir SuspendSignal côté renderer) : les réponses de ces téléchargements ne sont
   // plus lues — le contrôle de flux TCP fait cesser l'envoi côté serveur — sans fermer les
@@ -619,6 +639,7 @@ function registerIpcHandlers() {
     if (opts.baseDir !== "appCache" && opts.baseDir !== "appData") throw new Error("download:run : dossier inconnu");
 
     const userAbort = new AbortController();
+    if (activeDownloads.size === 0) lastDownloadByteAt = Date.now();
     activeDownloads.set(id, userAbort);
     // Annule aussi les autres plages dès qu'une échoue définitivement.
     const internal = new AbortController();
@@ -715,6 +736,7 @@ function registerIpcHandlers() {
         return { res, arm, disarm, dispose, stalled: () => stalled };
       } catch (err) {
         dispose();
+        if (stalled) resetDeadConnections();
         throw stalled ? new Error("Délai réseau dépassé") : err;
       }
     }
@@ -757,6 +779,7 @@ function registerIpcHandlers() {
           try {
             result = await reader.read();
           } catch (err) {
+            if (req.stalled()) resetDeadConnections();
             throw req.stalled() ? new Error("Délai réseau dépassé") : err;
           }
           req.arm();
@@ -774,6 +797,7 @@ function registerIpcHandlers() {
           if (chunk.byteLength > remaining) chunk = chunk.subarray(0, remaining);
           if (chunk.byteLength > 0) {
             await fh.write(chunk, 0, chunk.byteLength, seg.start + seg.done);
+            lastDownloadByteAt = Date.now();
             seg.done += chunk.byteLength;
             received += chunk.byteLength;
             windowBytes += chunk.byteLength;

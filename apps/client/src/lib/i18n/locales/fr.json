@@ -523,6 +523,8 @@
     "logCopied": "Journal copié",
     "startLatency": "Clic → lecture",
     "pauseLog": "Mettre le journal en pause",
-    "resumeLog": "Reprendre le journal"
+    "resumeLog": "Reprendre le journal",
+    "nowPlaying": "En cours de lecture",
+    "unknownTrack": "Piste hors de la file"
   }
 }

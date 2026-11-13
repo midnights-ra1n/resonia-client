@@ -159,9 +159,12 @@ function LiveChunkStrip({ events, trackId }: { events: DebugLogEntry[]; trackId:
 
 function NetworkTab() {
   const events = useDebugEvents("network");
-  const currentTrackId = usePlayerStore((s) => s.currentTrack?.id ?? null);
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const queue = usePlayerStore((s) => s.queue);
+  const currentTrackId = currentTrack?.id ?? null;
   const startLatencyMs = usePlayerStore((s) => s.startLatencyMs);
   const { t } = useTranslation();
+  const unknownLabel = t("debug.unknownTrack");
   const [now, setNow] = useState(() => performance.now());
   const [cacheUsed, setCacheUsed] = useState(0);
   const [cacheMax, setCacheMax] = useState(cacheStore.maxCacheBytes);
@@ -216,6 +219,13 @@ function NetworkTab() {
         />
       </div>
 
+      {currentTrack && (
+        <div className="truncate text-[11px] text-neutral-300">
+          <span className="text-neutral-500">{t("debug.nowPlaying")} · </span>
+          {currentTrack.title} — {currentTrack.artist}
+        </div>
+      )}
+
       <LiveChunkStrip events={events} trackId={currentTrackId} />
 
       <div>
@@ -239,11 +249,15 @@ function NetworkTab() {
         <div className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium text-neutral-400">Transfers</span>
           {tasks.map((t) => {
+            const trackId = t.key.split(":")[0];
+            const track = trackId === currentTrackId ? currentTrack : queue.find((q) => q.id === trackId);
             const pct = t.totalBytes > 0 ? Math.min(100, (t.bytesCached / t.totalBytes) * 100) : t.complete ? 100 : 0;
             return (
               <div key={t.key} className="text-[11px]">
                 <div className="flex items-center justify-between text-neutral-300">
-                  <span className="truncate font-mono">{formatKey(t.key)}</span>
+                  <span className="truncate" title={formatKey(t.key)}>
+                    {track ? `${trackId === currentTrackId ? "▶ " : ""}${track.title} — ${track.artist}` : `${formatKey(t.key)} · ${unknownLabel}`}
+                  </span>
                   <span className="shrink-0 tabular-nums text-neutral-500">
                     {t.complete
                       ? "cached"

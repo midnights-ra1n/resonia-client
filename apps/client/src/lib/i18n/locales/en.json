@@ -523,6 +523,8 @@
     "logCopied": "Log copied",
     "startLatency": "Click → playback",
     "pauseLog": "Pause log",
-    "resumeLog": "Resume log"
+    "resumeLog": "Resume log",
+    "nowPlaying": "Now playing",
+    "unknownTrack": "Track not in queue"
   }
 }

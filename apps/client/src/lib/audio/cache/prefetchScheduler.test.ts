@@ -76,6 +76,7 @@ vi.mock("./cacheStore", () => ({
     setSuspended: vi.fn(),
     isRangeResumable: vi.fn((trackId: string) => rangeResumable.has(trackId)),
     isFullyCached: vi.fn(async (trackId: string) => completed.has(trackId)),
+    isFullyCachedSync: vi.fn((trackId: string) => completed.has(trackId)),
     // Comme le vrai cacheStore : une tâche encore en cours est renvoyée telle quelle (run() no-op),
     // seul un (re)démarrage effectif compte comme une nouvelle requête réseau.
     request: vi.fn((trackId: string, _qualityId: string, _url: string, priority: string, budgetBytes?: number, maxSegments?: number) => {
@@ -445,6 +446,47 @@ describe("prefetchScheduler — relance après échec", () => {
 
       await vi.advanceTimersByTimeAsync(5000);
       expect(requestedOrder.filter((r) => r.trackId === "active")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("prefetchScheduler — piste en échec mise en attente", () => {
+  beforeEach(() => {
+    requestedOrder.length = 0;
+    requestedSegments.length = 0;
+    rangeResumable.clear();
+    completed.clear();
+    tasks.clear();
+    protectedKeysHistory = [];
+    vi.resetModules();
+  });
+
+  it("une piste en échec ne reprend pas la tête de file avant son délai : les suivantes passent", async () => {
+    vi.useFakeTimers();
+    try {
+      const { prefetchScheduler } = await import("./prefetchScheduler");
+      prefetchScheduler.setQuality("aac-256");
+      prefetchScheduler.setActive({ trackId: "a", streamUrl: "https://x/a" });
+      prefetchScheduler.setUpcoming([
+        { trackId: "b", streamUrl: "https://x/b" },
+        { trackId: "c", streamUrl: "https://x/c" },
+      ]);
+      await vi.advanceTimersByTimeAsync(0);
+      tasks.get("a")?.fail();
+      await vi.advanceTimersByTimeAsync(0);
+      // Changement de fenêtre avant la fin du délai : la file repart de la tête, "a" est sautée.
+      prefetchScheduler.setUpcoming([
+        { trackId: "b", streamUrl: "https://x/b" },
+        { trackId: "c", streamUrl: "https://x/c" },
+      ]);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requestedOrder.filter((r) => r.trackId === "a")).toHaveLength(1);
+      expect(requestedOrder.map((r) => r.trackId)).toContain("c");
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(requestedOrder.filter((r) => r.trackId === "a")).toHaveLength(2);
     } finally {
       vi.useRealTimers();
     }

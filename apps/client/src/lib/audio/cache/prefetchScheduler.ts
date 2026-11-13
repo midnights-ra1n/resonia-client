@@ -94,6 +94,7 @@ class PrefetchScheduler {
   private retryWaiters = new Set<() => void>();
 
   private wakeRetries() {
+    this.cooldown.clear();
     const waiters = [...this.retryWaiters];
     this.retryWaiters.clear();
     waiters.forEach((wake) => wake());
@@ -101,6 +102,25 @@ class PrefetchScheduler {
 
   private retryAttempt = 0;
   private retryScheduled = false;
+
+  // Piste en échec : mise en attente (jusqu'à la date donnée) pour que les suivantes de la fenêtre
+  // passent. Sans cela, une piste que le serveur ne sert pas gardait un worker en permanence — la
+  // file repartant toujours de la tête — et les pistes derrière n'étaient jamais téléchargées.
+  private cooldown = new Map<string, number>();
+  private failures = new Map<string, number>();
+  private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
+  private cooldownWakeAt = 0;
+
+  private wakeAfter(generation: number, ms: number) {
+    const at = Date.now() + ms;
+    if (this.cooldownTimer !== null && this.cooldownWakeAt <= at) return;
+    if (this.cooldownTimer !== null) clearTimeout(this.cooldownTimer);
+    this.cooldownWakeAt = at;
+    this.cooldownTimer = setTimeout(() => {
+      this.cooldownTimer = null;
+      if (generation === this.generation) this.restart();
+    }, ms);
+  }
 
   private scheduleRetry(generation: number, fast = false) {
     if (this.retryScheduled) return;
@@ -310,10 +330,17 @@ class PrefetchScheduler {
     this.cursor = 0;
     // Page en cours de chargement (web) : la nouvelle file attendra qu'elle ait fini.
     if (!this.paused && !isElectron() && isForegroundBusy()) this.paused = true;
-    // Seules les MAX_CONCURRENT premières pistes de la nouvelle fenêtre gardent leur connexion ;
-    // une piste sortie de la fenêtre (quittée, file réordonnée) ou reléguée plus loin cède la
-    // place — ses octets restent en cache pour une reprise.
-    this.pauseInFlight(new Set(this.slots.slice(0, this.limits.concurrent).map((s) => s.trackId)));
+    // Seules les `concurrent` premières pistes À TÉLÉCHARGER de la nouvelle fenêtre gardent leur
+    // connexion ; une piste sortie de la fenêtre (quittée, file réordonnée) ou reléguée plus loin
+    // cède la place — ses octets restent en cache pour une reprise. Les pistes déjà en cache ne
+    // comptent pas : sinon, à chaque changement de piste, elles occupaient ces places et le
+    // téléchargement en cours était coupé puis relancé (retour au dernier octet écrit, ou à 0 pour
+    // un flux transcodé).
+    const keep = this.slots
+      .filter((s) => !cacheStore.isFullyCachedSync(s.trackId, this.qualityId))
+      .slice(0, this.limits.concurrent)
+      .map((s) => s.trackId);
+    this.pauseInFlight(new Set(keep));
     for (let i = 0; i < this.limits.concurrent; i++) void this.runWorker(this.generation);
   }
 
@@ -322,6 +349,11 @@ class PrefetchScheduler {
       if (this.slots[this.cursor].trackId !== this.feedTrackId) await this.waitUntilResumed();
       if (generation !== this.generation || this.cursor >= this.slots.length) return;
       const slot = this.slots[this.cursor++];
+      const cooling = (this.cooldown.get(slot.trackId) ?? 0) - Date.now();
+      if (cooling > 0 && slot.trackId !== this.feedTrackId) {
+        this.wakeAfter(generation, cooling);
+        continue;
+      }
 
       const alreadyCached = await cacheStore.isFullyCached(slot.trackId, this.qualityId);
       if (generation !== this.generation) return;
@@ -352,7 +384,15 @@ class PrefetchScheduler {
         // figée, forme d'onde et enchaînement gapless jamais prêts.
         // Le worker n'attend PAS la relance : bloqué sur une piste en échec, il empêchait les
         // suivantes (B, C, D) de se télécharger. La relance repart de la file entière (restart).
-        if (task.error && !task.isComplete) this.scheduleRetry(generation, slot.trackId === this.feedTrackId);
+        if (task.error && !task.isComplete) {
+          const failed = this.failures.get(slot.trackId) ?? 0;
+          this.failures.set(slot.trackId, failed + 1);
+          this.cooldown.set(slot.trackId, Date.now() + Math.min(SLOT_RETRY_DELAY_MS * 2 ** failed, SLOT_RETRY_MAX_DELAY_MS));
+          this.scheduleRetry(generation, slot.trackId === this.feedTrackId);
+        } else if (task.isComplete) {
+          this.failures.delete(slot.trackId);
+          this.cooldown.delete(slot.trackId);
+        }
         break;
       }
       // Fini ou budget atteint : on passe à la suivante.
@@ -362,6 +402,9 @@ class PrefetchScheduler {
 
   stop() {
     this.generation++;
+    if (this.cooldownTimer !== null) clearTimeout(this.cooldownTimer);
+    this.cooldownTimer = null;
+    this.failures.clear();
     this.wakeRetries();
     this.resumeWaiters.forEach((wake) => wake());
     this.resumeWaiters.clear();

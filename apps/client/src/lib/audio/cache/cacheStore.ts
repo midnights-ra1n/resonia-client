@@ -287,6 +287,11 @@ class CacheStore {
     return opfsReadAll(cacheKeyFor(trackId, qualityId));
   }
 
+  /** Version synchrone de `isFullyCached` (métadonnées déjà chargées en mémoire, sinon `false`). */
+  isFullyCachedSync(trackId: string, qualityId: string): boolean {
+    return this.metaCache?.get(cacheKeyFor(trackId, qualityId))?.complete ?? false;
+  }
+
   async isFullyCached(trackId: string, qualityId: string): Promise<boolean> {
     const meta = await this.loadMeta();
     return meta.get(cacheKeyFor(trackId, qualityId))?.complete ?? false;

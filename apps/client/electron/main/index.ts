@@ -590,6 +590,10 @@ function registerIpcHandlers() {
   }
 
   function isRetryable(err: unknown): boolean {
+    // Aucun octet pendant DOWNLOAD_STALL_TIMEOUT_MS : retenter sur place monopolisait le slot ~80 s
+    // (4 essais de 20 s) et affamait les pistes suivantes. L'échec remonte au planificateur, qui
+    // met la piste en attente et passe à la suivante.
+    if (err instanceof Error && err.message === "Délai réseau dépassé") return false;
     if (err instanceof DownloadHttpError) return err.status >= 500 || err.status === 408 || err.status === 429;
     return true;
   }

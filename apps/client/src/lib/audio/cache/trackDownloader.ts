@@ -1,4 +1,4 @@
-import { EndOfStreamError, SlowStreamError, TruncatedStreamError, isTransientStreamError, streamRange } from "./rangeFetcher";
+import { EndOfStreamError, SlowStreamError, StreamStallError, TruncatedStreamError, isTransientStreamError, streamRange } from "./rangeFetcher";
 import type { DownloadPriority, ProgressListener } from "./types";
 import type { BlobStore, BlobWriter } from "../../storage/blobStore";
 import { networkDebugLog } from "../debug/audioDebugLogger";
@@ -248,7 +248,8 @@ export class TrackDownloader {
             networkDebugLog("download:slow-reconnect", { key: this.key, attempt: slowReconnects, error: err.message });
             continue; // relance immédiate, sur une autre connexion
           }
-          if (!isTransientStreamError(err) || attempt >= MAX_RETRIES) throw err;
+          // Un stall n'est pas retenté ici (voir PrefetchScheduler : mise en attente de la piste).
+          if (err instanceof StreamStallError || !isTransientStreamError(err) || attempt >= MAX_RETRIES) throw err;
           attempt++;
           networkDebugLog("chunk:retry", { key: this.key, attempt, error: String((err as Error)?.message ?? err) });
           await sleep(BASE_RETRY_DELAY_MS * 2 ** (attempt - 1), signal);

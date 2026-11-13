@@ -7,7 +7,7 @@ import {
   type DebugLogEntry,
 } from "../../../lib/audio/debug/audioDebugLogger";
 
-const MAX_DISPLAYED = 80;
+const MAX_DISPLAYED = 300;
 
 /** Historique (borné) des événements d'une catégorie donnée, mis à jour en direct — pour
  *  n'importe quel composant du panneau développeur. Ne s'abonne que pendant que le panneau

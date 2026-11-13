@@ -521,6 +521,8 @@
   "debug": {
     "copyLog": "Copy log (to attach to a bug report)",
     "logCopied": "Log copied",
-    "startLatency": "Click → playback"
+    "startLatency": "Click → playback",
+    "pauseLog": "Pause log",
+    "resumeLog": "Resume log"
   }
 }

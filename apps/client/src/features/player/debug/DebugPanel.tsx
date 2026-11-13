@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ClockCounterClockwise, Copy, Pulse, Radio, X } from "../../../components/icons";
+import { Check, ClockCounterClockwise, Copy, Pause, Play, Pulse, Radio, X } from "../../../components/icons";
 import { useTranslation } from "../../../lib/i18n";
 import { usePlayerStore } from "../../../stores/playerStore";
 import { cacheStore } from "../../../lib/audio/cache/cacheStore";
@@ -292,15 +292,33 @@ function DecodeTab() {
 }
 
 function EventLog({ events }: { events: DebugLogEntry[] }) {
+  const { t } = useTranslation();
+  // En pause, la liste affichée est figée : on peut lire et sélectionner sans qu'elle défile.
+  const [frozen, setFrozen] = useState<DebugLogEntry[] | null>(null);
+  // chunk:read / decode:throughput : des dizaines par seconde, ils noyaient les événements utiles.
+  const shown = (frozen ?? events).filter((e) => e.event !== "chunk:read" && e.event !== "decode:throughput");
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-medium text-neutral-400">Live log</span>
-      <div className="flex max-h-48 flex-col-reverse overflow-y-auto rounded-md bg-neutral-950/60 p-2 font-mono text-[10.5px] leading-relaxed">
-        {events.length === 0 ? (
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-neutral-400">Live log</span>
+        <button
+          onClick={() => setFrozen(frozen ? null : events)}
+          className="text-neutral-500 transition-colors hover:text-white"
+          title={frozen ? t("debug.resumeLog") : t("debug.pauseLog")}
+          aria-label={frozen ? t("debug.resumeLog") : t("debug.pauseLog")}
+        >
+          {frozen ? <Play size={13} /> : <Pause size={13} />}
+        </button>
+      </div>
+      {/* shrink-0 sur les lignes : sans lui, `truncate` (overflow hidden) les écrasait à 0 px de haut
+          dans ce conteneur flex à hauteur max — le journal paraissait vide. select-text : la
+          sélection est désactivée par défaut dans l'app. */}
+      <div className="flex max-h-48 select-text flex-col overflow-y-auto rounded-md bg-neutral-950/60 p-2 font-mono text-[10.5px] leading-relaxed [-webkit-user-select:text] [user-select:text]">
+        {shown.length === 0 ? (
           <span className="text-neutral-600">Waiting for activity…</span>
         ) : (
-          [...events].reverse().map((e) => (
-            <div key={e.id} className="truncate text-neutral-400">
+          [...shown].reverse().map((e) => (
+            <div key={e.id} className="shrink-0 break-all text-neutral-400">
               <span className="text-neutral-600">{(e.ts / 1000).toFixed(1)}s</span>{" "}
               <span className="text-neutral-200">{e.event}</span>{" "}
               <span className="text-neutral-500">{summarizeData(e.data)}</span>
@@ -352,7 +370,7 @@ export function DebugPanel() {
   if (!showDebugPanel) return null;
 
   return (
-    <div className="fixed bottom-[100px] right-6 z-40 flex w-80 flex-col overflow-hidden rounded-panel border border-white/5 bg-surface-2 shadow-e2">
+    <div className="fixed bottom-[100px] right-6 z-40 flex max-h-[calc(100vh-124px)] w-80 flex-col overflow-hidden rounded-panel border border-white/5 bg-surface-2 shadow-e2">
       <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-3 py-2">
         <div className="flex items-center gap-1.5">
           <TabButton icon={<Radio size={12} />} label="Network" active={tab === "network"} onClick={() => setTab("network")} />
@@ -375,11 +393,13 @@ export function DebugPanel() {
         </div>
       </div>
 
-      <div className="border-b border-neutral-800 p-3">
-        <BandwidthHistoryChart history={history} />
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="border-b border-neutral-800 p-3">
+          <BandwidthHistoryChart history={history} />
+        </div>
 
-      {tab === "network" ? <NetworkTab /> : <DecodeTab />}
+        {tab === "network" ? <NetworkTab /> : <DecodeTab />}
+      </div>
     </div>
   );
 }

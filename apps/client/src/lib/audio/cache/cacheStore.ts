@@ -231,7 +231,7 @@ class CacheStore {
           bytesCached: progress.bytesCached,
           totalBytes: progress.totalBytes,
           complete: progress.complete,
-        }).then(() => this.enforceLimit());
+        }).then(() => this.enforceLimit()).catch(() => {});
       });
       this.tasks.set(key, task);
     }
@@ -346,7 +346,8 @@ class CacheStore {
       if (currentTotal <= this.maxBytes) break;
       this.tasks.get(entry.key)?.cancel();
       this.tasks.delete(entry.key);
-      await opfsDelete(entry.key);
+      // Un échec de suppression ne doit pas stopper l'éviction (cache plein = plus aucune écriture).
+      await opfsDelete(entry.key).catch(() => {});
       meta.delete(entry.key);
       this.dirtyKeys.add(entry.key); // flush écrira sa suppression (voir flushMetaToDisk)
       this.indexDirty = true;

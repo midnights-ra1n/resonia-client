@@ -521,6 +521,8 @@
   "debug": {
     "copyLog": "Copier le journal (à joindre à un rapport de bug)",
     "logCopied": "Journal copié",
-    "startLatency": "Clic → lecture"
+    "startLatency": "Clic → lecture",
+    "pauseLog": "Mettre le journal en pause",
+    "resumeLog": "Reprendre le journal"
   }
 }

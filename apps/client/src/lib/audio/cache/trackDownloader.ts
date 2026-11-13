@@ -264,10 +264,17 @@ export class TrackDownloader {
         );
       }
     } finally {
-      if (writer) await writer.close();
-      this.running = false;
-      this.closing = null;
-      resolveClosing();
+      // close() peut échouer (quota, handle invalidé) : sans try/finally, `closing` ne se résolvait
+      // jamais et tout run()/whenIdle() suivant de cette piste restait bloqué pour toujours.
+      try {
+        if (writer) await writer.close();
+      } catch (err) {
+        console.warn(`[cache] Fermeture du fichier impossible pour ${this.key}`, err);
+      } finally {
+        this.running = false;
+        this.closing = null;
+        resolveClosing();
+      }
     }
   }
 

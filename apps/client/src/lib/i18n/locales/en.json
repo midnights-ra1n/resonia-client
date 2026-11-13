@@ -376,6 +376,8 @@
     "spotifyTestError": "Failed: {{error}}",
     "waveform": "Waveform in the playback bar",
     "animatedBackground": "Animated background in full screen",
+    "fullscreenAnimatedCover": "Animated cover in full screen",
+    "fullscreenAnimatedCoverDescription": "Plays the album's animated cover (when one exists), like on the album page. Uses more GPU and battery.",
     "animatedBackgroundDescription": "Slowly drifting gradient built from the cover's colors. Only animates while playing; costs a little more GPU and battery.",
     "waveformStyle": "Style of the waveform",
     "waveformStyleBands": "Three bands (lows, mids, highs)",

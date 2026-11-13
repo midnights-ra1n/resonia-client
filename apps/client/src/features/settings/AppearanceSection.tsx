@@ -42,6 +42,8 @@ export function AppearanceSection() {
   const setShowWaveform = useSettingsStore((s) => s.setShowWaveform);
   const animatedBackground = useSettingsStore((s) => s.animatedBackground);
   const setAnimatedBackground = useSettingsStore((s) => s.setAnimatedBackground);
+  const fullscreenAnimatedCover = useSettingsStore((s) => s.fullscreenAnimatedCover);
+  const setFullscreenAnimatedCover = useSettingsStore((s) => s.setFullscreenAnimatedCover);
   const waveformStyle = useSettingsStore((s) => s.waveformStyle);
   const setWaveformStyle = useSettingsStore((s) => s.setWaveformStyle);
 
@@ -162,6 +164,30 @@ export function AppearanceSection() {
             <span
               className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
                 animatedBackground ? "translate-x-4" : "translate-x-0"
+              }`}
+            />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={fullscreenAnimatedCover}
+          onClick={() => setFullscreenAnimatedCover(!fullscreenAnimatedCover)}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <span>
+            <span className="block text-sm font-medium text-white">{t("settings.fullscreenAnimatedCover")}</span>
+            <span className="mt-1 block text-xs text-neutral-500">{t("settings.fullscreenAnimatedCoverDescription")}</span>
+          </span>
+          <span
+            className={`relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors ${
+              fullscreenAnimatedCover ? "bg-accent" : "bg-neutral-700"
+            }`}
+          >
+            <span
+              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                fullscreenAnimatedCover ? "translate-x-4" : "translate-x-0"
               }`}
             />
           </span>

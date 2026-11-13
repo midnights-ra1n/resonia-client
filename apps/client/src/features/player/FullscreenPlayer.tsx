@@ -10,6 +10,8 @@ import { getClientForServer } from "../../lib/subsonic/getClientForServer";
 import { DEFAULT_COVER_URL, usePlayerStore } from "../../stores/playerStore";
 import { useServersStore } from "../../stores/serversStore";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { AnimatedAlbumCoverVideo } from "../album/AnimatedAlbumCoverVideo";
+import { useAnimatedAlbumCover } from "../album/useAnimatedAlbumCover";
 import { LyricsView } from "../lyrics/LyricsView";
 import { LikeButton } from "./LikeButton";
 import { PlayerSectionCenter } from "./PlayerSectionCenter";
@@ -74,6 +76,7 @@ export function FullscreenPlayer() {
   const activeServerId = useServersStore((s) => s.activeServerId);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const animated = useSettingsStore((s) => s.animatedBackground);
+  const animatedCover = useSettingsStore((s) => s.fullscreenAnimatedCover);
   const [windowFs, setWindowFs] = useSystemFullscreen();
   const server = useServersStore((s) => s.servers.find((x) => x.id === activeServerId));
 
@@ -90,6 +93,13 @@ export function FullscreenPlayer() {
     activeServerId ?? undefined,
     currentTrack?.coverArtId,
     coverUrl !== DEFAULT_COVER_URL ? coverUrl : undefined,
+  );
+
+  // Clé absente quand le réglage est off : le hook ne fait alors aucune requête.
+  const animatedCoverUrl = useAnimatedAlbumCover(
+    animatedCover && activeServerId && currentTrack?.albumId ? `${activeServerId}:${currentTrack.albumId}` : undefined,
+    currentTrack?.artist,
+    currentTrack?.album,
   );
 
   // Échap ferme ; sans piste il n'y a rien à montrer.
@@ -153,13 +163,16 @@ export function FullscreenPlayer() {
       <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center gap-[6vw] px-[5vw] pb-8">
         <div className={`flex min-w-0 flex-col items-center gap-6 ${lyricsOpen ? "w-[min(42vw,52vh)]" : "w-[min(70vw,56vh)]"} transition-[width] duration-300`}>
           {/* La pochette rétrécit en pause (transform seulement : composité par le GPU). */}
+          <div className={`relative aspect-square w-full overflow-hidden rounded-lg shadow-[0_24px_80px_rgba(0,0,0,0.55)] transition-transform duration-500 ${isPlaying ? "scale-100" : "scale-[0.92]"}`}>
           <CoverImage
             key={currentTrack.id}
             src={coverUrl}
             alt=""
             decoding="async"
-            className={`aspect-square w-full rounded-lg bg-surface-3 object-cover shadow-[0_24px_80px_rgba(0,0,0,0.55)] transition-transform duration-500 ${isPlaying ? "scale-100" : "scale-[0.92]"}`}
+            className="h-full w-full bg-surface-3 object-cover"
           />
+            {animatedCoverUrl && <AnimatedAlbumCoverVideo masterUrl={animatedCoverUrl} className="absolute inset-0 h-full w-full object-cover" />}
+          </div>
           <div className="flex w-full items-center gap-3">
             <div className="min-w-0 flex-1">
               <MarqueeText auto text={currentTrack.title} to={currentTrack.albumId ? `/albums/${currentTrack.albumId}` : undefined} className="text-2xl font-bold hover:underline" />

@@ -376,6 +376,8 @@
     "spotifyTestError": "Échec : {{error}}",
     "waveform": "Forme d'onde dans la barre de lecture",
     "animatedBackground": "Fond animé en plein écran",
+    "fullscreenAnimatedCover": "Pochette animée en plein écran",
+    "fullscreenAnimatedCoverDescription": "Joue la pochette animée de l'album (quand elle existe), comme sur la page album. Consomme plus de GPU et de batterie.",
     "animatedBackgroundDescription": "Dégradé qui dérive lentement, tiré des couleurs de la pochette. Ne s'anime que pendant la lecture ; consomme un peu plus de GPU et de batterie.",
     "waveformStyle": "Style de la forme d'onde",
     "waveformStyleBands": "Trois bandes (graves, médiums, aigus)",
